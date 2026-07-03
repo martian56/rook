@@ -1,0 +1,87 @@
+// Conversation entries and how they turn into styled display lines.
+
+import std/string
+import "github.com/martian56/plumage/style" { Style, Color }
+import "github.com/martian56/plumage/text" { Span, Line, wrap }
+
+enum Entry {
+    UserMsg(String),
+    BotMsg(String),
+    ToolMsg(String, String),
+    Notice(String),
+}
+
+// Rook's coral accent, used for the banner, bullets, and the spinner.
+fun accent() -> Style {
+    return Style.new().fg(Color.Rgb(215, 119, 87))
+}
+
+fun dim() -> Style {
+    return Style.new().fg(Color.Gray)
+}
+
+// Lay the conversation out as lines wrapped to w columns: user prompts as
+// muted "> " lines, replies behind a coral bullet, tool calls behind a
+// green one with their result indented under an elbow.
+fun build_lines(entries: List<Entry>, w: Int) -> List<Line> {
+    let out: List<Line> = []
+    let body = w - 2
+    if body < 8 {
+        body = 8
+    }
+    let i = 0
+    while i < entries.len() {
+        match entries[i] {
+            UserMsg(t) -> {
+                _push_wrapped(out, t, body, "> ", dim(), dim())
+            },
+            BotMsg(t) -> {
+                _push_wrapped(out, t, body, "● ", accent(), Style.new())
+            },
+            ToolMsg(name, result) -> {
+                out.push(
+                    Line.from_spans(
+                        [
+                            Span.styled("● ", Style.new().fg(Color.Green)),
+                            Span.styled(name, Style.new().bold()),
+                        ],
+                    ),
+                )
+                out.push(Line.from_spans([Span.styled("  ⎿  ", dim()), Span.styled(result, dim())]))
+            },
+            Notice(t) -> {
+                out.push(Line.styled("  ${t}", Style.new().fg(Color.Red)))
+            },
+        }
+        out.push(Line.raw(""))
+        i = i + 1
+    }
+    return out
+}
+
+// Wrap t to the body width and push its rows: the first behind the lead
+// marker, the rest indented to line up under it.
+fun _push_wrapped(
+    out: List<Line>,
+    t: String,
+    body: Int,
+    lead: String,
+    lead_style: Style,
+    text_style: Style,
+) {
+    let rows = wrap(t, body)
+    if rows.len() == 0 {
+        out.push(Line.from_spans([Span.styled(lead, lead_style)]))
+        return
+    }
+    let r = 0
+    while r < rows.len() {
+        if r == 0 {
+            out.push(Line.from_spans([Span.styled(lead, lead_style), Span.styled(rows[r], text_style)]))
+        } else {
+            out.push(Line.from_spans([Span.styled("  ", text_style), Span.styled(rows[r], text_style)]))
+        }
+        r = r + 1
+    }
+    return
+}

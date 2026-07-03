@@ -1,0 +1,5 @@
+*.exe
+*.o
+*.pdb
+target/
+rv.lock

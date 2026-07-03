@@ -1,0 +1,54 @@
+// The pretend model: spinner frames, thinking verbs, and rotating canned
+// replies. No network anywhere; this file is the whole brain.
+
+import std/string
+
+struct MockReply {
+    tool: String,
+    tool_result: String,
+    text: String,
+}
+
+// Pick the next canned reply. Some come with a fake tool step in front, so
+// the transcript shows the tool-call shape too.
+fun reply_for(prompt: String, index: Int) -> MockReply {
+    let n = index % 4
+    if n == 0 {
+        return MockReply {
+            tool: "Read(src/main.rv)",
+            tool_result: "Read 214 lines",
+            text: "I read through the file. The update function is the right place for this: it already owns the model, and the view rebuilds every widget from it each frame, so adding one field there keeps the change small.",
+        }
+    }
+    if n == 1 {
+        return MockReply {
+            tool: "Bash(rvpm test)",
+            tool_result: "test result: ok. 85 passed; 0 failed",
+            text: "Done. I made the change and the whole suite still passes. Only buffer.rv is touched; the diff stays small because the renderer already tracks styles per cell.",
+        }
+    }
+    if n == 2 {
+        return MockReply {
+            tool: "",
+            tool_result: "",
+            text: "Good question. Two options make sense here:\n1. Keep the state in the model and rebuild the widget each frame. Simple, nothing hides.\n2. Let the widget own its state and feed it events. Less plumbing, but now state lives in two places.\nI would take the first: it matches how the rest of the app already works.",
+        }
+    }
+    return MockReply {
+        tool: "Grep(\"set_string\")",
+        tool_result: "6 matches in 4 files",
+        text: "Found it. Clipping happens inside set_string, so widgets never need their own bounds checks. If you want per-widget clipping anyway, wrap the buffer in a view that offsets and clamps coordinates before writing.",
+    }
+}
+
+// The verb shown while the mock model works.
+fun thinking_word(index: Int) -> String {
+    let words = ["Thinking", "Pondering", "Brewing", "Musing", "Tinkering", "Percolating"]
+    return words[index % words.len()]
+}
+
+// The pulsing marker in front of the verb.
+fun pulse(tick: Int) -> String {
+    let frames = ["·", "✢", "✳", "✻", "✽", "✻", "✳", "✢"]
+    return frames[tick % frames.len()]
+}
