@@ -5,6 +5,7 @@
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
 import "../ui/transcript" { Entry }
+import "../ui/theme" { Theme, default_theme }
 import "../config/config" { resolve_model, resolve_base, resolve_key, save_model }
 
 struct Chat {
@@ -36,6 +37,8 @@ struct Chat {
     // The API-key entry overlay.
     entering_key: Bool,
     key_input: TextInput,
+    // The active palette; every view reads its styles from here.
+    theme: Theme,
 }
 
 fun chat_init() -> Chat {
@@ -62,6 +65,7 @@ fun chat_init() -> Chat {
         pick_sel: 0,
         entering_key: false,
         key_input: TextInput.new(),
+        theme: default_theme(),
     }
 }
 

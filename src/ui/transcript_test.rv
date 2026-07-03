@@ -2,6 +2,7 @@ import std/string
 import std/test { assert_eq_str, assert_true }
 import "github.com/martian56/plumage/text" { Line }
 import "./transcript" { Entry, build_lines }
+import "./theme" { default_theme }
 
 fun line_text(lines: List<Line>, i: Int) -> String {
     let out = ""
@@ -14,30 +15,30 @@ fun line_text(lines: List<Line>, i: Int) -> String {
 }
 
 fun test_user_message_gets_prompt_marker() {
-    let lines = build_lines([Entry.UserMsg("hello there")], 40)
+    let lines = build_lines([Entry.UserMsg("hello there")], 40, default_theme())
     assert_eq_str(line_text(lines, 0), "> hello there")
 }
 
 fun test_bot_message_gets_bullet() {
-    let lines = build_lines([Entry.BotMsg("sure thing")], 40)
+    let lines = build_lines([Entry.BotMsg("sure thing")], 40, default_theme())
     assert_eq_str(line_text(lines, 0), "● sure thing")
 }
 
 fun test_long_messages_wrap_with_indent() {
-    let lines = build_lines([Entry.BotMsg("one two three four five six")], 16)
+    let lines = build_lines([Entry.BotMsg("one two three four five six")], 16, default_theme())
     assert_true(lines.len() > 2)
     assert_true(line_text(lines, 0).starts_with("● "))
     assert_true(line_text(lines, 1).starts_with("  "))
 }
 
 fun test_tool_entry_shows_call_and_result() {
-    let lines = build_lines([Entry.ToolMsg("Bash(ls)", "3 files")], 40)
+    let lines = build_lines([Entry.ToolMsg("Bash(ls)", "3 files")], 40, default_theme())
     assert_eq_str(line_text(lines, 0), "● Bash(ls)")
     assert_eq_str(line_text(lines, 1), "  ⎿  3 files")
 }
 
 fun test_entries_are_separated_by_blank_lines() {
-    let lines = build_lines([Entry.UserMsg("a"), Entry.BotMsg("b")], 40)
+    let lines = build_lines([Entry.UserMsg("a"), Entry.BotMsg("b")], 40, default_theme())
     assert_eq_str(line_text(lines, 1), "")
     assert_eq_str(line_text(lines, 2), "● b")
 }

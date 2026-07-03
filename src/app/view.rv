@@ -12,7 +12,6 @@ import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
 import "./model" { Chat }
 import "../ui/transcript" { build_lines }
-import "../ui/theme" { accent, dim, warn_color }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
 import "../config/catalog" { catalog }
@@ -29,10 +28,10 @@ fun chat_view(m: Chat, f: Frame) {
         _transcript(m, body, f)
     }
     _thinking_line(m, rows[1], f)
-    let box = Block.new().rounded().style(dim())
+    let box = Block.new().rounded().style(m.theme.border)
     box.render(rows[2], f.buf)
     let ia = box.inner(rows[2])
-    f.buf.set_string(ia.x + 1, ia.y, "> ", dim())
+    f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[3], f)
     if m.pending != "" {
@@ -61,10 +60,10 @@ fun _key_modal(m: Chat, f: Frame) {
         y = full.y
     }
     let area = Rect.new(x, y, w, h)
-    f.buf.fill(area, " ", dim())
-    let box = Block.new().rounded().title("API key for ${provider_of(m.model)}").style(accent()).title_style(
-        accent().bold(),
-    )
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("API key for ${provider_of(m.model)}").style(
+        m.theme.modal,
+    ).title_style(m.theme.modal.bold())
     box.render(area, f.buf)
     let inner = box.inner(area)
     f.buf.set_string(inner.x + 1, inner.y, _mask(m.key_input.value, inner.w - 2), Style.new())
@@ -72,7 +71,7 @@ fun _key_modal(m: Chat, f: Frame) {
         inner.x + 1,
         inner.y + 2,
         "paste the key, enter to save · esc to cancel",
-        dim(),
+        m.theme.dim,
     )
     return
 }
@@ -103,14 +102,19 @@ fun _approval(m: Chat, f: Frame) {
         y = full.y
     }
     let area = Rect.new(x, y, w, h)
-    f.buf.fill(area, " ", dim())
-    let box = Block.new().rounded().title("Approve this action?").style(warn_color()).title_style(
-        warn_color().bold(),
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Approve this action?").style(m.theme.warn).title_style(
+        m.theme.warn.bold(),
     )
     box.render(area, f.buf)
     let inner = box.inner(area)
     f.buf.set_string(inner.x + 1, inner.y, m.pending, Style.new().bold())
-    f.buf.set_string(inner.x + 1, inner.y + 2, "[y] allow    [a] allow all    [n] deny", dim())
+    f.buf.set_string(
+        inner.x + 1,
+        inner.y + 2,
+        "[y] allow    [a] allow all    [n] deny",
+        m.theme.dim,
+    )
     return
 }
 
@@ -132,12 +136,12 @@ fun _picker(m: Chat, f: Frame) {
         y = full.y
     }
     let area = Rect.new(x, y, w, h)
-    f.buf.fill(area, " ", dim())
-    let box = Block.new().rounded().title("Select a model  (enter, esc)").style(accent()).title_style(
-        accent().bold(),
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Select a model  (enter, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
     )
     box.render(area, f.buf)
-    ListView.new(items).selected(m.pick_sel).highlight_style(accent().reverse()).render(
+    ListView.new(items).selected(m.pick_sel).highlight_style(m.theme.modal.reverse()).render(
         box.inner(area),
         f.buf,
     )
@@ -149,12 +153,12 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     if bw > area.w {
         bw = area.w
     }
-    let box = Block.new().rounded().style(accent())
+    let box = Block.new().rounded().style(m.theme.accent)
     let br = Rect.new(area.x, area.y, bw, 5)
     box.render(br, f.buf)
     let inner = box.inner(br)
-    f.buf.set_string(inner.x + 1, inner.y, "✻ Welcome to Rook!", accent().bold())
-    f.buf.set_string(inner.x + 3, inner.y + 2, "model: ${m.model}", dim())
+    f.buf.set_string(inner.x + 1, inner.y, "✻ Welcome to Rook!", m.theme.accent.bold())
+    f.buf.set_string(inner.x + 3, inner.y + 2, "model: ${m.model}", m.theme.dim)
 
     let tips = "Ask anything below and I will stream the answer.\n\n  1. /model switches model, /key sets an API key, /clear starts over.\n  2. ctrl+c twice to quit."
     if m.api_key == "" && provider_of(m.model) != "ollama" {
@@ -165,7 +169,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
         }
         tips = "Heads up: ${hint}.\n\n${tips}"
     }
-    Paragraph.new(tips).style(dim()).render(
+    Paragraph.new(tips).style(m.theme.dim).render(
         Rect.new(area.x + 1, area.y + 6, area.w - 1, area.h - 6),
         f.buf,
     )
@@ -173,7 +177,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
 }
 
 fun _transcript(m: Chat, area: Rect, f: Frame) {
-    let lines = build_lines(m.entries, area.w)
+    let lines = build_lines(m.entries, area.w, m.theme)
     let max_up = lines.len() - area.h
     if max_up < 0 {
         max_up = 0
@@ -191,29 +195,29 @@ fun _thinking_line(m: Chat, area: Rect, f: Frame) {
         return
     }
     if m.pending != "" {
-        f.buf.set_string(area.x + 1, area.y, "awaiting approval…", warn_color())
+        f.buf.set_string(area.x + 1, area.y, "awaiting approval…", m.theme.warn)
         return
     }
-    let x = f.buf.set_string(area.x + 1, area.y, "${pulse(m.tick)} ${m.word}… ", accent())
-    f.buf.set_string(x, area.y, "(esc to interrupt)", dim())
+    let x = f.buf.set_string(area.x + 1, area.y, "${pulse(m.tick)} ${m.word}… ", m.theme.spinner)
+    f.buf.set_string(x, area.y, "(esc to interrupt)", m.theme.dim)
     return
 }
 
 fun _status(m: Chat, area: Rect, f: Frame) {
     let left = "enter to send · /model /clear /help · ctrl+c twice to quit"
-    let sty = dim()
+    let sty = m.theme.status
     if m.active {
         left = "streaming · esc to interrupt"
     }
     if m.armed {
         left = "Press ctrl+c again to exit"
-        sty = accent()
+        sty = m.theme.accent
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)
     let right = "rook · ${m.model}"
     let rx = area.x + area.w - width(right) - 1
     if rx > area.x + width(left) + 2 {
-        f.buf.set_string(rx, area.y, right, dim())
+        f.buf.set_string(rx, area.y, right, m.theme.status)
         return
     }
     return

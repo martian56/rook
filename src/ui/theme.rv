@@ -1,24 +1,60 @@
-// Rook's colors. The coral accent runs through the banner, the reply
-// bullets, and the spinner; dim gray is for chrome and secondary text.
+// The theme: one value that maps every UI element to a style. The whole app
+// reads the active Theme, so swapping it restyles the interface at once. The
+// built-in look is coral over dim gray; more palettes plug in by returning a
+// different Theme from a constructor like default_theme.
 
 import "github.com/martian56/plumage/style" { Style, Color }
 
-fun accent() -> Style {
-    return Style.new().fg(Color.Rgb(215, 119, 87))
+struct Theme {
+    // The palette's name, shown in the picker.
+    name: String,
+    // Brand color: the welcome banner border and title, the armed status hint.
+    accent: Style,
+    // Chrome and secondary text: hints, the input prompt, the model line.
+    dim: Style,
+    // Primary body text: the assistant's reply, the wrapped continuation rows.
+    text: Style,
+    // The user's own prompt marker and text.
+    user: Style,
+    // The assistant reply bullet.
+    assistant: Style,
+    // The tool-call bullet and name.
+    tool: Style,
+    // The tool result row under a call.
+    result: Style,
+    // The input box border.
+    border: Style,
+    // Modal borders and titles: the model picker and the key entry.
+    modal: Style,
+    // The status bar text.
+    status: Style,
+    // The pulsing thinking marker.
+    spinner: Style,
+    // The approval prompt and the awaiting-approval line.
+    warn: Style,
+    // Notices and errors.
+    error: Style,
 }
 
-fun dim() -> Style {
-    return Style.new().fg(Color.Gray)
-}
-
-fun tool_color() -> Style {
-    return Style.new().fg(Color.Green)
-}
-
-fun warn_color() -> Style {
-    return Style.new().fg(Color.Yellow)
-}
-
-fun error_color() -> Style {
-    return Style.new().fg(Color.Red)
+// The built-in palette: coral accent, dim gray chrome, matching the look rook
+// has always shipped. Every other theme is a variation on this shape.
+fun default_theme() -> Theme {
+    let coral = Style.new().fg(Color.Rgb(215, 119, 87))
+    let gray = Style.new().fg(Color.Gray)
+    return Theme {
+        name: "Rook",
+        accent: coral,
+        dim: gray,
+        text: Style.new(),
+        user: gray,
+        assistant: coral,
+        tool: Style.new().fg(Color.Green),
+        result: gray,
+        border: gray,
+        modal: coral,
+        status: gray,
+        spinner: coral,
+        warn: Style.new().fg(Color.Yellow),
+        error: Style.new().fg(Color.Red),
+    }
 }
