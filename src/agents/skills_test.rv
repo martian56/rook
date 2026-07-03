@@ -1,0 +1,82 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./skills" { Skill, load_skills, parse_skill, skills_prompt }
+
+const SAMPLE: String = "---\nname: release\ndescription: \"How to cut a release\"\n---\n\nSteps:\n1. bump the version"
+
+fun test_parse_reads_frontmatter_and_body() {
+    let s = parse_skill(SAMPLE, "folder-name", "x/SKILL.md")
+    assert_eq_str(s.name, "release")
+    assert_eq_str(s.description, "How to cut a release")
+    assert_eq_str(s.body, "Steps:\n1. bump the version")
+    assert_eq_str(s.path, "x/SKILL.md")
+}
+
+fun test_parse_without_frontmatter_is_all_body() {
+    let s = parse_skill("just instructions", "fixup", "y/SKILL.md")
+    assert_eq_str(s.name, "fixup")
+    assert_eq_str(s.description, "")
+    assert_eq_str(s.body, "just instructions")
+}
+
+fun test_parse_unquoted_description() {
+    let s = parse_skill("---\ndescription: plain words\n---\nbody", "n", "p")
+    assert_eq_str(s.description, "plain words")
+    assert_eq_str(s.body, "body")
+}
+
+fun test_load_skills_shadows_project_over_global() {
+    create_dir_all("_rook_sk_p/skills/deploy")
+    create_dir_all("_rook_sk_g/skills/deploy")
+    create_dir_all("_rook_sk_g/skills/lint")
+    create_dir_all("_rook_sk_g/skills/broken")
+    write(
+        "_rook_sk_p/skills/deploy/SKILL.md",
+        "---\nname: deploy\ndescription: project way\n---\nproject body",
+    )
+    write(
+        "_rook_sk_g/skills/deploy/SKILL.md",
+        "---\nname: deploy\ndescription: global way\n---\nglobal body",
+    )
+    write("_rook_sk_g/skills/lint/SKILL.md", "run the linter")
+
+    let skills = load_skills(["_rook_sk_p", "_rook_sk_g"])
+    assert_true(skills.len() == 2)
+    let deploy = _find(skills, "deploy")
+    assert_eq_str(deploy.description, "project way")
+    assert_eq_str(deploy.body, "project body")
+    assert_eq_str(_find(skills, "lint").body, "run the linter")
+
+    remove_file("_rook_sk_p/skills/deploy/SKILL.md")
+    remove_file("_rook_sk_g/skills/deploy/SKILL.md")
+    remove_file("_rook_sk_g/skills/lint/SKILL.md")
+    remove_dir("_rook_sk_p/skills/deploy")
+    remove_dir("_rook_sk_g/skills/deploy")
+    remove_dir("_rook_sk_g/skills/lint")
+    remove_dir("_rook_sk_g/skills/broken")
+    remove_dir("_rook_sk_p/skills")
+    remove_dir("_rook_sk_g/skills")
+    remove_dir("_rook_sk_p")
+    remove_dir("_rook_sk_g")
+    return
+}
+
+fun test_prompt_lists_names_and_descriptions() {
+    let none: List<Skill> = []
+    assert_eq_str(skills_prompt(none), "")
+    let one = [Skill { name: "release", description: "cut a release", body: "b", path: "p" }]
+    let p = skills_prompt(one)
+    assert_true(p.contains("- release: cut a release"))
+}
+
+fun _find(skills: List<Skill>, name: String) -> Skill {
+    let i = 0
+    while i < skills.len() {
+        if skills[i].name == name {
+            return skills[i]
+        }
+        i = i + 1
+    }
+    return Skill { name: "", description: "", body: "", path: "" }
+}

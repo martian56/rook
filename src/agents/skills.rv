@@ -1,0 +1,118 @@
+// Skills: reusable instruction files the model can see and pull in. A skill
+// is a folder under .agents/skills/ holding a SKILL.md in the cross-agent
+// shape: YAML-style frontmatter with a name and a one-line description, then
+// a markdown body of instructions. Loading builds the index; the body is
+// carried along so invocation (a later feature) can inject it on demand.
+
+import std/string
+import std/fs { read, is_dir }
+import "./dir" { merged_names, path_of }
+
+struct Skill {
+    name: String,
+    description: String,
+    body: String,
+    // Where the SKILL.md was loaded from, for display and debugging.
+    path: String,
+}
+
+// Load every skill under the roots' skills/ folders, project shadowing
+// global by folder name. A folder without a readable SKILL.md is skipped.
+fun load_skills(rs: List<String>) -> List<Skill> {
+    let out: List<Skill> = []
+    let names = merged_names(rs, "skills")
+    let i = 0
+    while i < names.len() {
+        let folder = path_of(rs, "skills", names[i])
+        if folder != "" && is_dir(folder) {
+            let p = "${folder}/SKILL.md"
+            match read(p) {
+                Ok(text) -> {
+                    out.push(parse_skill(text, names[i], p))
+                },
+                Err(e) -> {},
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Parse one SKILL.md. The frontmatter sits between two "---" lines and
+// carries "name:" and "description:" entries; everything after it is the
+// body. A file without frontmatter is all body, named after its folder.
+fun parse_skill(text: String, fallback_name: String, path: String) -> Skill {
+    let name = fallback_name
+    let description = ""
+    let body = text
+    let lines = text.lines()
+    if lines.len() > 0 && lines[0].trim() == "---" {
+        let i = 1
+        let closed = 0 - 1
+        while i < lines.len() {
+            if lines[i].trim() == "---" {
+                closed = i
+                break
+            }
+            let n = _value(lines[i], "name")
+            if n != "" {
+                name = n
+            }
+            let d = _value(lines[i], "description")
+            if d != "" {
+                description = d
+            }
+            i = i + 1
+        }
+        if closed >= 0 {
+            body = _join_from(lines, closed + 1)
+        }
+    }
+    return Skill { name, description, body: body.trim(), path }
+}
+
+// The index the model sees: one line per skill in the system prompt, so it
+// knows what exists and can ask for one. "" when there are no skills.
+fun skills_prompt(skills: List<Skill>) -> String {
+    if skills.len() == 0 {
+        return ""
+    }
+    let out = " The project defines skills, reusable instructions for specific tasks. Available skills:"
+    let i = 0
+    while i < skills.len() {
+        let d = skills[i].description
+        if d == "" {
+            d = "no description"
+        }
+        out = "${out}\n- ${skills[i].name}: ${d}"
+        i = i + 1
+    }
+    return out
+}
+
+// The "key: value" payload of a frontmatter line, unquoted and trimmed, or
+// "" when the line is some other key.
+fun _value(line: String, key: String) -> String {
+    let t = line.trim()
+    if !t.starts_with("${key}:") {
+        return ""
+    }
+    let v = t.substring(key.length() + 1, t.length()).trim()
+    if v.length() >= 2 && v.starts_with("\"") && v.ends_with("\"") {
+        v = v.substring(1, v.length() - 1)
+    }
+    return v
+}
+
+fun _join_from(lines: List<String>, start: Int) -> String {
+    let out = ""
+    let i = start
+    while i < lines.len() {
+        if i > start {
+            out = out.concat("\n")
+        }
+        out = out.concat(lines[i])
+        i = i + 1
+    }
+    return out
+}

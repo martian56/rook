@@ -91,6 +91,15 @@ from `COLORFGBG` where the terminal sets it). On terminals without
 truecolor, theme colors are downsampled to the 256-color cube or the
 basic 16, judged from `COLORTERM` and `TERM`.
 
+## Skills
+
+rook reads the cross-agent `.agents` layout: a project `./.agents` and a
+global `~/.agents`, with project entries winning. A skill is a folder
+`.agents/skills/<name>/` holding a `SKILL.md`, frontmatter with a `name`
+and one-line `description`, then a markdown body of instructions. The
+model sees an index of skill names and descriptions in its system
+prompt.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

@@ -4,13 +4,16 @@
 
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message }
+import "../agents/dir" { roots }
+import "../agents/skills" { load_skills, skills_prompt }
 
 const SYSTEM_PROMPT: String = "You are rook, a coding assistant working in the user's current directory. You have tools: read_file, list_dir, grep, write_file, edit_file, and run_command. Inspect the project with the read-only tools before answering, and use write_file, edit_file, and run_command to make changes and run builds or tests. Prefer edit_file for small changes. Writes and commands need the user's approval, so say what you intend before doing it. Keep replies concise and in plain prose."
 
 // Build a chat request from the running history. The caller has already
 // appended the user's new message to history. A non-empty base_url points at
 // a custom OpenAI-compatible endpoint (also how the e2e tests reach a local
-// server).
+// server). The system prompt carries the skill index from .agents when the
+// project or the user defines skills.
 fun build_request(
     model: String,
     history: List<Message>,
@@ -18,7 +21,9 @@ fun build_request(
     base_url: String,
     timeout_ms: Int,
 ) -> ChatRequest {
-    let req = ChatRequest.new(model).system(SYSTEM_PROMPT)
+    let req = ChatRequest.new(model).system(
+        "${SYSTEM_PROMPT}${skills_prompt(load_skills(roots()))}",
+    )
     let i = 0
     while i < history.len() {
         req = req.message(history[i])
