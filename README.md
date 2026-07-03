@@ -83,9 +83,11 @@ noisy command cannot bury the answer.
 theme; arrow keys preview it live, and the choice is remembered), `/key`
 (set the current provider's API key), `/quit`.
 
-Built-in themes: Rook, Dracula, Gruvbox Dark and Light, Nord, Solarized
-Dark and Light, Catppuccin Mocha and Latte, Tokyo Night. `/theme nord`
-sets one directly.
+Built-in themes: Rook and Rook Light, Dracula, Gruvbox Dark and Light,
+Nord, Solarized Dark and Light, Catppuccin Mocha and Latte, Tokyo Night.
+`/theme nord` sets one directly. With no theme chosen yet, rook starts
+with the dark or light default matching the terminal background (read
+from `COLORFGBG` where the terminal sets it).
 
 ## How it is built
 

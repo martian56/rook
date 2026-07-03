@@ -5,13 +5,16 @@
 // color is the chrome, and green, yellow, and red keep their usual jobs.
 
 import std/string
+import std/env { get_env, has_env }
 import "github.com/martian56/plumage/style" { Style, Color }
 import "./theme" { Theme, default_theme }
 
-// Every built-in, the default first. The order here is the picker's order.
+// Every built-in, the two defaults first. The order here is the picker's
+// order.
 fun all_themes() -> List<Theme> {
     return [
         default_theme(),
+        rook_light(),
         dracula(),
         gruvbox_dark(),
         gruvbox_light(),
@@ -22,6 +25,43 @@ fun all_themes() -> List<Theme> {
         catppuccin_latte(),
         tokyo_night(),
     ]
+}
+
+// The theme to start with: the remembered choice when it names a built-in,
+// else the dark or light default matching the terminal background.
+fun startup_theme(saved: String) -> Theme {
+    let idx = theme_index(saved)
+    if idx >= 0 {
+        return all_themes()[idx]
+    }
+    if background_is_light() {
+        return rook_light()
+    }
+    return default_theme()
+}
+
+// Whether the terminal background looks light. The COLORFGBG variable, set by
+// several terminals, ends in the background color index; 7 (white) or 15
+// (bright white) means light. Absent or unparsable means dark, the common
+// case.
+fun background_is_light() -> Bool {
+    if !has_env("COLORFGBG") {
+        return false
+    }
+    return light_from_colorfgbg(get_env("COLORFGBG"))
+}
+
+// The pure half of the detection, split out for tests: parse a COLORFGBG
+// value like "15;0" or "0;default;15" and judge its background field.
+fun light_from_colorfgbg(v: String) -> Bool {
+    let parts = v.split(";")
+    if parts.len() < 2 {
+        return false
+    }
+    return match parts[parts.len() - 1].trim().parse_int() {
+        Some(bg) -> bg == 7 || bg == 15,
+        None -> false,
+    }
 }
 
 // Look a theme up by name; unknown names fall back to the default.
@@ -46,6 +86,20 @@ fun theme_index(name: String) -> Int {
         i = i + 1
     }
     return 0 - 1
+}
+
+// The light counterpart of the default: the coral deepened to stay readable
+// on a white background, with darker chrome and inks to match.
+fun rook_light() -> Theme {
+    return _theme(
+        "Rook Light",
+        Color.Rgb(180, 70, 38),
+        Color.Rgb(115, 115, 115),
+        Color.Rgb(50, 48, 47),
+        Color.Rgb(0, 128, 0),
+        Color.Rgb(176, 121, 0),
+        Color.Rgb(205, 49, 49),
+    )
 }
 
 fun dracula() -> Theme {

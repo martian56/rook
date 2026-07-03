@@ -1,10 +1,11 @@
 import std/test { assert_eq_str, assert_true }
-import "./themes" { all_themes, theme_by_name, theme_index }
+import "./themes" { all_themes, theme_by_name, theme_index, startup_theme, light_from_colorfgbg }
 
-fun test_the_default_leads_the_list() {
+fun test_the_defaults_lead_the_list() {
     let themes = all_themes()
-    assert_true(themes.len() == 10)
+    assert_true(themes.len() == 11)
     assert_eq_str(themes[0].name, "Rook")
+    assert_eq_str(themes[1].name, "Rook Light")
 }
 
 fun test_lookup_by_name() {
@@ -17,13 +18,32 @@ fun test_unknown_name_falls_back_to_the_default() {
 }
 
 fun test_index_ignores_case() {
-    assert_true(theme_index("dracula") == 1)
-    assert_true(theme_index("TOKYO NIGHT") == 9)
+    assert_true(theme_index("dracula") == 2)
+    assert_true(theme_index("TOKYO NIGHT") == 10)
     assert_eq_str(theme_by_name("gruvbox dark").name, "Gruvbox Dark")
 }
 
 fun test_index_of_unknown_is_negative() {
     assert_true(theme_index("no such palette") < 0)
+}
+
+fun test_startup_prefers_the_saved_theme() {
+    assert_eq_str(startup_theme("Nord").name, "Nord")
+}
+
+fun test_startup_without_a_saved_theme_picks_a_default() {
+    let name = startup_theme("").name
+    assert_true(name == "Rook" || name == "Rook Light")
+    assert_eq_str(startup_theme("stale name").name, name)
+}
+
+fun test_colorfgbg_judges_the_background_field() {
+    assert_true(light_from_colorfgbg("0;15"))
+    assert_true(light_from_colorfgbg("0;default;7"))
+    assert_true(!light_from_colorfgbg("15;0"))
+    assert_true(!light_from_colorfgbg("15;8"))
+    assert_true(!light_from_colorfgbg(""))
+    assert_true(!light_from_colorfgbg("garbage"))
 }
 
 fun test_names_are_unique() {

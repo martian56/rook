@@ -6,7 +6,7 @@ import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
 import "../ui/transcript" { Entry }
 import "../ui/theme" { Theme }
-import "../ui/themes" { theme_by_name }
+import "../ui/themes" { startup_theme }
 import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model }
 
 struct Chat {
@@ -71,7 +71,7 @@ fun chat_init() -> Chat {
         pick_sel: 0,
         entering_key: false,
         key_input: TextInput.new(),
-        theme: theme_by_name(resolve_theme()),
+        theme: startup_theme(resolve_theme()),
         theme_picking: false,
         theme_sel: 0,
         theme_prev: "",
