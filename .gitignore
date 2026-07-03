@@ -3,3 +3,5 @@
 *.pdb
 target/
 rv.lock
+_rook_*
+rook.json

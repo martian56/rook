@@ -1,0 +1,37 @@
+import std/string
+import std/test { assert_eq_str, assert_true, assert_false }
+import "./config" { provider_of, key_env, key_present }
+import "./catalog" { catalog, index_of }
+
+fun test_provider_of() {
+    assert_eq_str(provider_of("openai/gpt-4o"), "openai")
+    assert_eq_str(provider_of("openrouter/anthropic/claude-3.5-sonnet"), "openrouter")
+    assert_eq_str(provider_of("nomodel"), "")
+}
+
+fun test_key_env_mapping() {
+    assert_eq_str(key_env("anthropic"), "ANTHROPIC_API_KEY")
+    assert_eq_str(key_env("claude"), "ANTHROPIC_API_KEY")
+    assert_eq_str(key_env("openai"), "OPENAI_API_KEY")
+    assert_eq_str(key_env("grok"), "XAI_API_KEY")
+    assert_eq_str(key_env("unknown"), "")
+}
+
+fun test_ollama_needs_no_key() {
+    assert_true(key_present("ollama/llama3"))
+}
+
+fun test_unknown_provider_has_no_key() {
+    assert_false(key_present("mystery/model"))
+}
+
+fun test_catalog_index_round_trips() {
+    let items = catalog()
+    assert_true(items.len() > 3)
+    let pick = "openai/gpt-4o-mini"
+    assert_eq_str(items[index_of(pick)], pick)
+}
+
+fun test_catalog_index_of_unlisted_is_zero() {
+    assert_true(index_of("not/in/the/list") == 0)
+}

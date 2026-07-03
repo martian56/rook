@@ -1,0 +1,28 @@
+import std/string
+import std/test { assert_true }
+import std/fs { create_dir_all, remove_file, remove_dir, write as fs_write }
+import "./search" { grep }
+
+fun test_grep_finds_matching_lines() {
+    create_dir_all("_rook_gr")
+    fs_write("_rook_gr/f.txt", "alpha\nbeta needle here\ngamma")
+    let out = grep("needle", "_rook_gr")
+    assert_true(out.contains("beta needle here"))
+    assert_true(out.contains("f.txt"))
+    remove_file("_rook_gr/f.txt")
+    remove_dir("_rook_gr")
+    return
+}
+
+fun test_grep_reports_no_matches() {
+    create_dir_all("_rook_gr2")
+    fs_write("_rook_gr2/f.txt", "nothing to see")
+    assert_true(grep("zzzz", "_rook_gr2").starts_with("no matches"))
+    remove_file("_rook_gr2/f.txt")
+    remove_dir("_rook_gr2")
+    return
+}
+
+fun test_grep_without_pattern_is_error() {
+    assert_true(grep("", ".").starts_with("error:"))
+}

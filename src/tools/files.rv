@@ -1,0 +1,88 @@
+// File tools. Each returns a plain result string that is both shown in the
+// transcript and fed back to the model, so an error is just a string that
+// starts with "error:".
+
+import std/string
+import std/fs { read, write, exists, list_dir as fs_list }
+
+fun read_file(path: String) -> String {
+    if path == "" {
+        return "error: no path given"
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "error: ${e.message}",
+    }
+}
+
+fun list_dir(path: String) -> String {
+    let p = path
+    if p == "" {
+        p = "."
+    }
+    return match fs_list(p) {
+        Ok(names) -> _join_lines(names),
+        Err(e) -> "error: ${e.message}",
+    }
+}
+
+fun write_file(path: String, content: String) -> String {
+    if path == "" {
+        return "error: no path given"
+    }
+    return _write_result(path, content, "wrote ${content.length()} bytes to ${path}")
+}
+
+fun edit_file(path: String, old_text: String, new_text: String) -> String {
+    if path == "" {
+        return "error: no path given"
+    }
+    if old_text == "" {
+        return "error: old_text is empty"
+    }
+    if !exists(path) {
+        return "error: no such file: ${path}"
+    }
+    let ok = true
+    let content = ""
+    match read(path) {
+        Ok(s) -> {
+            content = s
+        },
+        Err(e) -> {
+            ok = false
+            content = e.message
+        },
+    }
+    if !ok {
+        return "error: ${content}"
+    }
+    let idx = content.index_of(old_text)
+    if idx < 0 {
+        return "error: old_text not found in ${path}"
+    }
+    let before = content.substring(0, idx)
+    let after = content.substring(idx + old_text.length(), content.length())
+    let updated = "${before}${new_text}${after}"
+    return _write_result(path, updated, "edited ${path}")
+}
+
+fun _write_result(path: String, content: String, ok_msg: String) -> String {
+    return match write(path, content) {
+        Ok(b) -> ok_msg,
+        Err(e) -> "error: ${e.message}",
+    }
+}
+
+fun _join_lines(xs: List<String>) -> String {
+    let out = ""
+    let i = 0
+    while i < xs.len() {
+        if i > 0 {
+            out = out.concat("\n")
+        }
+        out = out.concat(xs[i])
+        i = i + 1
+    }
+    return out
+}

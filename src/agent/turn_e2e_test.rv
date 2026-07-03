@@ -1,0 +1,153 @@
+// End-to-end turn tests against an in-process std/http server posing as an
+// OpenAI streaming endpoint. They exercise the whole path with no real
+// provider: stream, tool call, execution, feed-back, final answer, and the
+// approval handshake, using the base_url override to reach the local server.
+
+import std/string
+import std/http { Server, Request, Response }
+import std/sync { sleep_millis }
+import std/fs { write as fs_write, remove_file }
+import std/test { assert_true, assert_eq_int }
+import "./state" { AgentState, DisplayEvent, Snapshot }
+import "./turn" { run_turn }
+
+let read_hits = 0
+let write_hits = 0
+
+// Round 1: ask to read a file. Round 2: answer.
+fun read_handler(req: Request) -> Response {
+    read_hits = read_hits + 1
+    if read_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c1\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e.txt\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"The file says hello.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+// Round 1: ask to write a file (needs approval). Round 2: confirm.
+fun write_handler(req: Request) -> Response {
+    write_hits = write_hits + 1
+    if write_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"w1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e_out.txt\\\",\\\"content\\\":\\\"written by rook\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Done, wrote the file.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_read() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", read_handler)
+    app.listen("127.0.0.1:8461")
+}
+
+fun serve_write() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", write_handler)
+    app.listen("127.0.0.1:8462")
+}
+
+fun e2e_replay(events: List<DisplayEvent>) -> String {
+    let out = ""
+    let i = 0
+    while i < events.len() {
+        match events[i] {
+            Started -> {
+                out = out.concat("")
+            },
+            Chunk(d) -> {
+                out = out.concat(d)
+            },
+            ToolRan(name, result) -> {
+                out = out.concat("[${name} => ${result}]")
+            },
+            Info(t) -> {
+                out = out.concat("[info ${t}]")
+            },
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun e2e_drain(st: AgentState) -> String {
+    let acc = ""
+    let tries = 0
+    while tries < 400 {
+        let snap = st.drain()
+        acc = acc.concat(e2e_replay(snap.events))
+        if snap.done {
+            return acc
+        }
+        sleep_millis(10)
+        tries = tries + 1
+    }
+    return acc
+}
+
+fun test_full_read_tool_turn() {
+    fs_write("_rook_e2e.txt", "hello")
+    spawn(fun() -> Unit {
+        serve_read()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("what does the file say?")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "http://127.0.0.1:8461/v1", false, "")
+    })
+    let got = e2e_drain(st)
+    // The read tool ran (auto, no approval) and the final answer streamed.
+    assert_true(got.contains("read_file(_rook_e2e.txt)"))
+    assert_true(got.contains("The file says hello."))
+    // user, assistant(tool_calls), tool_result, assistant(final).
+    let msgs = st.messages()
+    assert_eq_int(msgs.len(), 4)
+    remove_file("_rook_e2e.txt")
+    return
+}
+
+fun test_write_tool_turn_goes_through_approval() {
+    spawn(fun() -> Unit {
+        serve_write()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("please write the file")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "http://127.0.0.1:8462/v1", false, "")
+    })
+    // Play the user: wait for the approval prompt, then allow it.
+    _approve_when_pending(st)
+    let got = e2e_drain(st)
+    assert_true(got.contains("write_file(_rook_e2e_out.txt)"))
+    assert_true(got.contains("Done, wrote the file."))
+    // The approval led to a real write.
+    remove_file("_rook_e2e_out.txt")
+    return
+}
+
+// Poll for a pending approval and allow it once, the way the UI would. Uses
+// pending_now so it never drains display events out from under e2e_drain.
+fun _approve_when_pending(st: AgentState) {
+    spawn(fun() -> Unit {
+        let tries = 0
+        let answered = false
+        while tries < 400 && !answered {
+            if st.pending_now() != "" {
+                st.decide(1)
+                answered = true
+            }
+            sleep_millis(10)
+            tries = tries + 1
+        }
+    })
+    return
+}

@@ -1,0 +1,24 @@
+// Rook's colors. The coral accent runs through the banner, the reply
+// bullets, and the spinner; dim gray is for chrome and secondary text.
+
+import "github.com/martian56/plumage/style" { Style, Color }
+
+fun accent() -> Style {
+    return Style.new().fg(Color.Rgb(215, 119, 87))
+}
+
+fun dim() -> Style {
+    return Style.new().fg(Color.Gray)
+}
+
+fun tool_color() -> Style {
+    return Style.new().fg(Color.Green)
+}
+
+fun warn_color() -> Style {
+    return Style.new().fg(Color.Yellow)
+}
+
+fun error_color() -> Style {
+    return Style.new().fg(Color.Red)
+}

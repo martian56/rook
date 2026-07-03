@@ -1,0 +1,194 @@
+// Which model to use, where its key lives, and how the choice persists.
+//
+// Startup resolution order (highest first): the --model flag, ROOK_MODEL,
+// a project ./rook.json "model", a global ~/.config/rook/rook.json "model",
+// the last model picked in a previous session (~/.rook/last-model), then a
+// built-in default. Picking a model at runtime writes the last-model file so
+// it is remembered next time.
+
+import std/string
+import std/env { get_env, has_env, args }
+import std/fs { read, write, exists, create_dir_all }
+import std/json { JsonValue, parse }
+
+// The model used when nothing else selects one. A "provider/model" string.
+const DEFAULT_MODEL: String = "anthropic/claude-sonnet-4-5"
+
+fun resolve_model() -> String {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "--model" && i + 1 < a.len() {
+            return a[i + 1]
+        }
+        i = i + 1
+    }
+    if has_env("ROOK_MODEL") {
+        let v = get_env("ROOK_MODEL")
+        if v != "" {
+            return v
+        }
+    }
+    let proj = _json_str(_read_opt("rook.json"), "model")
+    if proj != "" {
+        return proj
+    }
+    let h = _home()
+    if h != "" {
+        let glob = _json_str(_read_opt("${h}/.config/rook/rook.json"), "model")
+        if glob != "" {
+            return glob
+        }
+    }
+    let last = last_used()
+    if last != "" {
+        return last
+    }
+    return DEFAULT_MODEL
+}
+
+// A custom OpenAI-compatible endpoint, from ROOK_BASE_URL or rook.json
+// "base_url". Empty means use the provider's default endpoint.
+fun resolve_base() -> String {
+    if has_env("ROOK_BASE_URL") {
+        let v = get_env("ROOK_BASE_URL")
+        if v != "" {
+            return v
+        }
+    }
+    return _json_str(_read_opt("rook.json"), "base_url")
+}
+
+// The last model picked in a previous session, or "" when none was saved.
+fun last_used() -> String {
+    let p = _state_path()
+    if p == "" {
+        return ""
+    }
+    return _read_opt(p).trim()
+}
+
+// Remember `model` as the last-used choice for the next session.
+fun save_model(model: String) {
+    let h = _home()
+    if h == "" {
+        return
+    }
+    let dir = "${h}/.rook"
+    create_dir_all(dir)
+    write("${dir}/last-model", model)
+    return
+}
+
+// The provider part of a "provider/model" string, or "" when malformed.
+fun provider_of(model: String) -> String {
+    let slash = model.index_of("/")
+    if slash < 0 {
+        return ""
+    }
+    return model.substring(0, slash)
+}
+
+// The environment variable holding a provider's API key, or "" when the
+// provider needs none (Ollama) or is unknown.
+fun key_env(provider: String) -> String {
+    if provider == "openai" {
+        return "OPENAI_API_KEY"
+    }
+    if provider == "anthropic" || provider == "claude" {
+        return "ANTHROPIC_API_KEY"
+    }
+    if provider == "gemini" || provider == "google" {
+        return "GEMINI_API_KEY"
+    }
+    if provider == "groq" {
+        return "GROQ_API_KEY"
+    }
+    if provider == "mistral" {
+        return "MISTRAL_API_KEY"
+    }
+    if provider == "deepseek" {
+        return "DEEPSEEK_API_KEY"
+    }
+    if provider == "openrouter" {
+        return "OPENROUTER_API_KEY"
+    }
+    if provider == "cohere" {
+        return "COHERE_API_KEY"
+    }
+    if provider == "xai" || provider == "grok" {
+        return "XAI_API_KEY"
+    }
+    return ""
+}
+
+// Whether the model's provider can authenticate: its key env var is set, or
+// it needs none (Ollama).
+fun key_present(model: String) -> Bool {
+    let p = provider_of(model)
+    if p == "ollama" {
+        return true
+    }
+    let env = key_env(p)
+    if env == "" {
+        return false
+    }
+    return has_env(env)
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}
+
+fun _state_path() -> String {
+    let h = _home()
+    if h == "" {
+        return ""
+    }
+    return "${h}/.rook/last-model"
+}
+
+// Read a file, returning "" when it is missing or unreadable.
+fun _read_opt(path: String) -> String {
+    if !exists(path) {
+        return ""
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+}
+
+// A string field from a JSON config document, or "" when absent.
+fun _json_str(text: String, key: String) -> String {
+    if text.trim() == "" {
+        return ""
+    }
+    return match parse(text) {
+        Ok(j) -> _field_str(j, key),
+        Err(e) -> "",
+    }
+}
+
+fun _field_str(j: JsonValue, key: String) -> String {
+    return match j.get(key) {
+        Some(v) -> _as_str(v),
+        None -> "",
+    }
+}
+
+fun _as_str(v: JsonValue) -> String {
+    return match v.as_string() {
+        Some(s) -> s,
+        None -> "",
+    }
+}

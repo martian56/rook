@@ -1,0 +1,42 @@
+import std/string
+import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
+import "github.com/martian56/aviary/message" { ToolCall }
+import "./registry" { tools, needs_approval, dispatch, label }
+
+fun call(name: String, args: String) -> ToolCall {
+    return ToolCall { id: "1", name, arguments: args }
+}
+
+fun test_all_tools_are_defined() {
+    assert_eq_int(tools().len(), 6)
+}
+
+fun test_approval_policy() {
+    assert_true(needs_approval("write_file"))
+    assert_true(needs_approval("edit_file"))
+    assert_true(needs_approval("run_command"))
+    assert_false(needs_approval("read_file"))
+    assert_false(needs_approval("list_dir"))
+    assert_false(needs_approval("grep"))
+}
+
+fun test_label_reads_arguments() {
+    assert_eq_str(label(call("read_file", "{\"path\":\"src/main.rv\"}")), "read_file(src/main.rv)")
+    assert_eq_str(
+        label(call("run_command", "{\"command\":\"rvpm test\"}")),
+        "run_command(rvpm test)",
+    )
+    assert_eq_str(label(call("grep", "{\"pattern\":\"needle\"}")), "grep(needle)")
+}
+
+fun test_dispatch_routes_read_command() {
+    // read_file on a missing file returns its error string, proving dispatch
+    // reached the executor with the parsed path.
+    assert_true(
+        dispatch(call("read_file", "{\"path\":\"_rook_absent.txt\"}")).starts_with("error:"),
+    )
+}
+
+fun test_dispatch_unknown_tool() {
+    assert_true(dispatch(call("nope", "{}")).starts_with("error:"))
+}

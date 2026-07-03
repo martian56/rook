@@ -1,0 +1,29 @@
+// Read a named string argument out of a tool call's JSON arguments. The
+// model produces this JSON; a missing or non-string field reads as "".
+
+import std/string
+import std/json { JsonValue, parse }
+
+fun arg(args_json: String, key: String) -> String {
+    if args_json.trim() == "" {
+        return ""
+    }
+    return match parse(args_json) {
+        Ok(j) -> _field(j, key),
+        Err(e) -> "",
+    }
+}
+
+fun _field(j: JsonValue, key: String) -> String {
+    return match j.get(key) {
+        Some(v) -> _as_str(v),
+        None -> "",
+    }
+}
+
+fun _as_str(v: JsonValue) -> String {
+    return match v.as_string() {
+        Some(s) -> s,
+        None -> "",
+    }
+}

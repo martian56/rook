@@ -1,0 +1,44 @@
+// Run a shell command in the working directory. The command string is
+// handed to the platform shell (sh -c / cmd /c), and stdout, stderr, and the
+// exit code come back as one result, truncated so a noisy command cannot
+// bury the answer.
+
+import std/string
+import std/env { os_name }
+import std/process { run, Output }
+
+const MAX_OUTPUT: Int = 4000
+
+fun run_command(command: String) -> String {
+    if command == "" {
+        return "error: no command given"
+    }
+    let shell = "sh"
+    let flag = "-c"
+    if os_name() == "windows" {
+        shell = "cmd"
+        flag = "/c"
+    }
+    return match run(shell, [flag, command]) {
+        Ok(out) -> _format(out),
+        Err(e) -> "error: ${e.message}",
+    }
+}
+
+fun _format(out: Output) -> String {
+    let body = out.stdout
+    if out.stderr != "" {
+        if body != "" {
+            body = "${body}\n"
+        }
+        body = "${body}${out.stderr}"
+    }
+    if body.length() > MAX_OUTPUT {
+        body = "${body.substring(0, MAX_OUTPUT)}\n… (truncated)"
+    }
+    let head = "exit ${out.code}"
+    if body == "" {
+        return head
+    }
+    return "${head}\n${body}"
+}

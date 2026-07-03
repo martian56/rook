@@ -1,0 +1,41 @@
+// Slash-command parsing. Everything the user types at the prompt goes
+// through here first: a leading slash is a command, anything else is a
+// message for the model. Kept pure so it is easy to test.
+
+import std/string
+
+enum Command {
+    Send(String),
+    Help,
+    Clear,
+    Quit,
+    ModelPicker,
+    ModelSet(String),
+    Unknown(String),
+}
+
+fun parse_command(text: String) -> Command {
+    if !text.starts_with("/") {
+        return Command.Send(text)
+    }
+    if text == "/quit" || text == "/exit" {
+        return Command.Quit
+    }
+    if text == "/clear" {
+        return Command.Clear
+    }
+    if text == "/help" {
+        return Command.Help
+    }
+    if text == "/model" {
+        return Command.ModelPicker
+    }
+    if text.starts_with("/model ") {
+        let arg = text.substring(7, text.length()).trim()
+        if arg == "" {
+            return Command.ModelPicker
+        }
+        return Command.ModelSet(arg)
+    }
+    return Command.Unknown(text)
+}

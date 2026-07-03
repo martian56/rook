@@ -1,0 +1,18 @@
+import std/string
+import std/test { assert_true }
+import "./shell" { run_command }
+
+fun test_echo_output_and_exit_zero() {
+    let out = run_command("echo hello")
+    assert_true(out.contains("hello"))
+    assert_true(out.contains("exit 0"))
+}
+
+fun test_nonzero_exit_is_reported() {
+    // Works on both sh -c and cmd /c.
+    assert_true(run_command("exit 3").contains("exit 3"))
+}
+
+fun test_empty_command_is_error() {
+    assert_true(run_command("").starts_with("error:"))
+}

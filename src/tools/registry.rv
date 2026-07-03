@@ -1,0 +1,138 @@
+// The tool catalog: the schemas the model sees, which tools change things
+// (and so need approval), and the dispatch from a tool call to its result.
+
+import std/string
+import std/json { JsonValue }
+import "github.com/martian56/aviary/message" { ToolDef, ToolCall }
+import "github.com/martian56/aviary/jsonutil" { Obj }
+import "./args" { arg }
+import "./files" { read_file, list_dir, write_file, edit_file }
+import "./search" { grep }
+import "./shell" { run_command }
+
+// One schema field: a string property and its description.
+struct Prop {
+    name: String,
+    desc: String,
+}
+
+// The tool definitions offered to the model.
+fun tools() -> List<ToolDef> {
+    return [
+        ToolDef.new(
+            "read_file",
+            "Read a UTF-8 text file and return its contents.",
+            _schema(
+                [Prop { name: "path", desc: "path to the file, relative to the working directory" }],
+            ),
+        ),
+        ToolDef.new(
+            "list_dir",
+            "List the entries of a directory (defaults to the working directory).",
+            _schema([Prop { name: "path", desc: "directory path; defaults to '.'" }]),
+        ),
+        ToolDef.new(
+            "grep",
+            "Search files under a directory for a literal substring; returns matching lines as path:line: text.",
+            _schema(
+                [
+                    Prop { name: "pattern", desc: "the substring to search for" },
+                    Prop { name: "path", desc: "directory to search; defaults to '.'" },
+                ],
+            ),
+        ),
+        ToolDef.new(
+            "write_file",
+            "Create or overwrite a file with the given contents.",
+            _schema(
+                [
+                    Prop { name: "path", desc: "file path to write" },
+                    Prop { name: "content", desc: "the full new contents of the file" },
+                ],
+            ),
+        ),
+        ToolDef.new(
+            "edit_file",
+            "Replace the first exact occurrence of old_text with new_text in a file.",
+            _schema(
+                [
+                    Prop { name: "path", desc: "file path to edit" },
+                    Prop { name: "old_text", desc: "exact text to find and replace once" },
+                    Prop { name: "new_text", desc: "replacement text" },
+                ],
+            ),
+        ),
+        ToolDef.new(
+            "run_command",
+            "Run a shell command in the working directory and return its stdout, stderr, and exit code.",
+            _schema([Prop { name: "command", desc: "the shell command to run" }]),
+        ),
+    ]
+}
+
+// Whether a tool changes the repo or the machine and so must be approved.
+fun needs_approval(name: String) -> Bool {
+    return name == "write_file" || name == "edit_file" || name == "run_command"
+}
+
+// Run a tool call and return its result string.
+fun dispatch(call: ToolCall) -> String {
+    let a = call.arguments
+    if call.name == "read_file" {
+        return read_file(arg(a, "path"))
+    }
+    if call.name == "list_dir" {
+        return list_dir(arg(a, "path"))
+    }
+    if call.name == "grep" {
+        return grep(arg(a, "pattern"), arg(a, "path"))
+    }
+    if call.name == "write_file" {
+        return write_file(arg(a, "path"), arg(a, "content"))
+    }
+    if call.name == "edit_file" {
+        return edit_file(arg(a, "path"), arg(a, "old_text"), arg(a, "new_text"))
+    }
+    if call.name == "run_command" {
+        return run_command(arg(a, "command"))
+    }
+    return "error: unknown tool '${call.name}'"
+}
+
+// A one-line label for a call, shown as the tool bullet and in the approval
+// prompt: "read_file(src/main.rv)", "run_command(rvpm test)".
+fun label(call: ToolCall) -> String {
+    let a = call.arguments
+    if call.name == "read_file" || call.name == "list_dir" {
+        return "${call.name}(${arg(a, "path")})"
+    }
+    if call.name == "grep" {
+        return "grep(${arg(a, "pattern")})"
+    }
+    if call.name == "write_file" || call.name == "edit_file" {
+        return "${call.name}(${arg(a, "path")})"
+    }
+    if call.name == "run_command" {
+        return "run_command(${arg(a, "command")})"
+    }
+    return call.name
+}
+
+fun _schema(props: List<Prop>) -> JsonValue {
+    let properties = Obj.new()
+    let required: List<JsonValue> = []
+    let i = 0
+    while i < props.len() {
+        let p = props[i]
+        properties = properties.set(
+            p.name,
+            Obj.new().str("type", "string").str("description", p.desc).build(),
+        )
+        required.push(JsonValue.Str(p.name))
+        i = i + 1
+    }
+    return Obj.new().str("type", "object").set("properties", properties.build()).set(
+        "required",
+        JsonValue.Array(required),
+    ).build()
+}

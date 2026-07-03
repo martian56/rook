@@ -1,8 +1,11 @@
-// Conversation entries and how they turn into styled display lines.
+// Conversation entries and how they turn into styled display lines. This is
+// the visual identity of rook: muted "> " user prompts, coral "● " replies,
+// green "● " tool calls with an indented result, red notices.
 
 import std/string
 import "github.com/martian56/plumage/style" { Style, Color }
 import "github.com/martian56/plumage/text" { Span, Line, wrap }
+import "./theme" { accent, dim, tool_color, error_color }
 
 enum Entry {
     UserMsg(String),
@@ -11,18 +14,7 @@ enum Entry {
     Notice(String),
 }
 
-// Rook's coral accent, used for the banner, bullets, and the spinner.
-fun accent() -> Style {
-    return Style.new().fg(Color.Rgb(215, 119, 87))
-}
-
-fun dim() -> Style {
-    return Style.new().fg(Color.Gray)
-}
-
-// Lay the conversation out as lines wrapped to w columns: user prompts as
-// muted "> " lines, replies behind a coral bullet, tool calls behind a
-// green one with their result indented under an elbow.
+// Lay the conversation out as lines wrapped to w columns.
 fun build_lines(entries: List<Entry>, w: Int) -> List<Line> {
     let out: List<Line> = []
     let body = w - 2
@@ -41,16 +33,13 @@ fun build_lines(entries: List<Entry>, w: Int) -> List<Line> {
             ToolMsg(name, result) -> {
                 out.push(
                     Line.from_spans(
-                        [
-                            Span.styled("● ", Style.new().fg(Color.Green)),
-                            Span.styled(name, Style.new().bold()),
-                        ],
+                        [Span.styled("● ", tool_color()), Span.styled(name, Style.new().bold())],
                     ),
                 )
                 out.push(Line.from_spans([Span.styled("  ⎿  ", dim()), Span.styled(result, dim())]))
             },
             Notice(t) -> {
-                out.push(Line.styled("  ${t}", Style.new().fg(Color.Red)))
+                out.push(Line.styled("  ${t}", error_color()))
             },
         }
         out.push(Line.raw(""))

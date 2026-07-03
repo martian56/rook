@@ -1,0 +1,33 @@
+// The models the /model picker offers. This is a convenience list, not a
+// limit: /model <provider/model> accepts any string aviary can route, so a
+// model missing here is still reachable by typing it.
+
+fun catalog() -> List<String> {
+    return [
+        "anthropic/claude-sonnet-4-5",
+        "anthropic/claude-opus-4-1",
+        "anthropic/claude-3-5-haiku-latest",
+        "openai/gpt-4o",
+        "openai/gpt-4o-mini",
+        "openai/o3-mini",
+        "google/gemini-2.0-flash",
+        "groq/llama-3.3-70b-versatile",
+        "deepseek/deepseek-chat",
+        "openrouter/anthropic/claude-3.5-sonnet",
+        "ollama/llama3",
+    ]
+}
+
+// The index of `model` in the catalog, or 0 when it is not listed (so the
+// picker opens at the top rather than out of range).
+fun index_of(model: String) -> Int {
+    let items = catalog()
+    let i = 0
+    while i < items.len() {
+        if items[i] == model {
+            return i
+        }
+        i = i + 1
+    }
+    return 0
+}

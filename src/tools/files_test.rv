@@ -1,0 +1,43 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { remove_file, create_dir_all, remove_dir }
+import "./files" { read_file, write_file, edit_file, list_dir }
+
+fun test_write_then_read_round_trips() {
+    let p = "_rook_ft_a.txt"
+    write_file(p, "hello world")
+    assert_eq_str(read_file(p), "hello world")
+    remove_file(p)
+    return
+}
+
+fun test_read_missing_is_an_error_string() {
+    assert_true(read_file("_rook_no_such_file.txt").starts_with("error:"))
+}
+
+fun test_edit_replaces_the_first_occurrence() {
+    let p = "_rook_ft_b.txt"
+    write_file(p, "the quick brown fox")
+    let r = edit_file(p, "quick", "slow")
+    assert_true(r.starts_with("edited"))
+    assert_eq_str(read_file(p), "the slow brown fox")
+    remove_file(p)
+    return
+}
+
+fun test_edit_missing_old_text_is_an_error() {
+    let p = "_rook_ft_c.txt"
+    write_file(p, "abc")
+    assert_true(edit_file(p, "xyz", "q").starts_with("error:"))
+    remove_file(p)
+    return
+}
+
+fun test_list_dir_shows_entries() {
+    create_dir_all("_rook_ld")
+    write_file("_rook_ld/x.txt", "1")
+    assert_true(list_dir("_rook_ld").contains("x.txt"))
+    remove_file("_rook_ld/x.txt")
+    remove_dir("_rook_ld")
+    return
+}

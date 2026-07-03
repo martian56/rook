@@ -1,0 +1,72 @@
+// The application model: everything the UI renders and the update logic
+// mutates. The conversation the model sees lives in the shared AgentState;
+// this holds the display transcript and the UI's own state.
+
+import "github.com/martian56/plumage/widgets/input" { TextInput }
+import "../agent/state" { AgentState }
+import "../ui/transcript" { Entry }
+import "../config/config" { resolve_model, resolve_base, key_present, save_model }
+
+struct Chat {
+    entries: List<Entry>,
+    entry: TextInput,
+    agent: AgentState,
+    // A turn is in flight (the goroutine is streaming).
+    active: Bool,
+    // The tool label awaiting approval, "" when none is pending.
+    pending: String,
+    // The streaming reply's accumulated text and the transcript index of its
+    // bubble (-1 when not streaming a bubble).
+    stream_text: String,
+    cur_bubble: Int,
+    tick: Int,
+    elapsed: Int,
+    word: String,
+    scroll_up: Int,
+    armed: Bool,
+    turns: Int,
+    // "provider/model"; use_mock is set when its key is absent.
+    model: String,
+    // A custom endpoint, "" for the provider default.
+    base_url: String,
+    use_mock: Bool,
+    // The /model picker overlay.
+    picking: Bool,
+    pick_sel: Int,
+}
+
+fun chat_init() -> Chat {
+    let model = resolve_model()
+    let base_url = resolve_base()
+    let use_mock = base_url == "" && !key_present(model)
+    let entries: List<Entry> = []
+    return Chat {
+        entries,
+        entry: TextInput.new(),
+        agent: AgentState.new(),
+        active: false,
+        pending: "",
+        stream_text: "",
+        cur_bubble: 0 - 1,
+        tick: 0,
+        elapsed: 0,
+        word: "Thinking",
+        scroll_up: 0,
+        armed: false,
+        turns: 0,
+        model,
+        base_url,
+        use_mock,
+        picking: false,
+        pick_sel: 0,
+    }
+}
+
+// Adopt a newly chosen model: update the running config and persist it so the
+// next session remembers it.
+fun set_model(m: Chat, model: String) {
+    m.model = model
+    m.use_mock = !key_present(model)
+    save_model(model)
+    return
+}

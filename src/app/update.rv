@@ -1,0 +1,291 @@
+// The update half of the plumage app: keys, commands, and approvals; running
+// a turn on the agent goroutine; and replaying the goroutine's display events
+// into the transcript on every tick.
+
+import std/string
+import "github.com/martian56/perch/keys" { Key }
+import "github.com/martian56/plumage" { Event, Step, next, quit }
+import "github.com/martian56/plumage/widgets/input" { TextInput }
+import "./model" { Chat, set_model }
+import "../agent/state" { DisplayEvent, Snapshot }
+import "../agent/turn" { run_turn }
+import "../agent/mock" { thinking_word, mock_reply }
+import "../ui/transcript" { Entry }
+import "../commands" { Command, parse_command }
+import "../config/catalog" { catalog, index_of }
+
+const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
+
+fun chat_update(m: Chat, e: Event) -> Step<Chat> {
+    match e {
+        Tick -> {
+            return _tick(m)
+        },
+        KeyPress(k) -> {
+            return _key(m, k)
+        },
+        Mouse(ev) -> {
+            match ev.kind {
+                ScrollUp -> {
+                    m.scroll_up = m.scroll_up + 3
+                },
+                ScrollDown -> {
+                    m.scroll_up = m.scroll_up - 3
+                    if m.scroll_up < 0 {
+                        m.scroll_up = 0
+                    }
+                },
+                _ -> {},
+            }
+            return next(m)
+        },
+        Resize(w, h) -> {
+            return next(m)
+        },
+    }
+    return next(m)
+}
+
+// Advance the spinner and replay any new display events from the goroutine.
+fun _tick(m: Chat) -> Step<Chat> {
+    m.tick = m.tick + 1
+    if m.active {
+        m.elapsed = m.elapsed + 1
+        let snap = m.agent.drain()
+        _apply(m, snap.events)
+        m.pending = snap.pending
+        if snap.done {
+            m.active = false
+            m.turns = m.turns + 1
+            m.cur_bubble = 0 - 1
+            m.pending = ""
+        }
+        m.scroll_up = 0
+    }
+    return next(m)
+}
+
+// Replay one batch of display events into the transcript.
+fun _apply(m: Chat, events: List<DisplayEvent>) {
+    let i = 0
+    while i < events.len() {
+        match events[i] {
+            Started -> {
+                m.entries.push(Entry.BotMsg(""))
+                m.cur_bubble = m.entries.len() - 1
+                m.stream_text = ""
+            },
+            Chunk(d) -> {
+                m.stream_text = m.stream_text.concat(d)
+                if m.cur_bubble >= 0 && m.cur_bubble < m.entries.len() {
+                    m.entries[m.cur_bubble] = Entry.BotMsg(m.stream_text)
+                }
+            },
+            ToolRan(name, result) -> {
+                m.entries.push(Entry.ToolMsg(name, result))
+                m.cur_bubble = 0 - 1
+            },
+            Info(t) -> {
+                m.entries.push(Entry.Notice(t))
+            },
+        }
+        i = i + 1
+    }
+    return
+}
+
+fun _key(m: Chat, k: Key) -> Step<Chat> {
+    // ctrl+c is always available, even over a modal.
+    match k {
+        Ctrl(c) -> {
+            if c == "c" {
+                if m.armed {
+                    return quit(m)
+                }
+                m.armed = true
+                return next(m)
+            }
+        },
+        _ -> {},
+    }
+    m.armed = false
+
+    if m.picking {
+        return _pick_key(m, k)
+    }
+    if m.pending != "" {
+        return _approval_key(m, k)
+    }
+
+    if m.active {
+        match k {
+            Esc -> {
+                m.agent.request_interrupt()
+                return next(m)
+            },
+            PageUp -> {
+                m.scroll_up = m.scroll_up + 5
+                return next(m)
+            },
+            PageDown -> {
+                m.scroll_up = m.scroll_up - 5
+                if m.scroll_up < 0 {
+                    m.scroll_up = 0
+                }
+                return next(m)
+            },
+            _ -> {},
+        }
+        m.entry.handle_key(k)
+        return next(m)
+    }
+
+    match k {
+        Enter -> {
+            return _submit(m)
+        },
+        PageUp -> {
+            m.scroll_up = m.scroll_up + 5
+            return next(m)
+        },
+        PageDown -> {
+            m.scroll_up = m.scroll_up - 5
+            if m.scroll_up < 0 {
+                m.scroll_up = 0
+            }
+            return next(m)
+        },
+        _ -> {},
+    }
+    m.entry.handle_key(k)
+    return next(m)
+}
+
+// Answer the pending approval: y allow, a allow all of this kind, n or esc
+// deny. Esc also interrupts the turn.
+fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
+    match k {
+        Char(c) -> {
+            if c == "y" {
+                m.agent.decide(1)
+                m.pending = ""
+            }
+            if c == "a" {
+                m.agent.decide(2)
+                m.pending = ""
+            }
+            if c == "n" {
+                m.agent.decide(0)
+                m.pending = ""
+            }
+        },
+        Enter -> {
+            m.agent.decide(1)
+            m.pending = ""
+        },
+        Esc -> {
+            m.agent.decide(0)
+            m.pending = ""
+            m.agent.request_interrupt()
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
+// Navigate the /model picker overlay.
+fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
+    let items = catalog()
+    match k {
+        Up -> {
+            if m.pick_sel > 0 {
+                m.pick_sel = m.pick_sel - 1
+            }
+        },
+        Down -> {
+            if m.pick_sel < items.len() - 1 {
+                m.pick_sel = m.pick_sel + 1
+            }
+        },
+        Enter -> {
+            set_model(m, items[m.pick_sel])
+            m.picking = false
+            m.entries.push(Entry.Notice("model set to ${m.model}"))
+            m.scroll_up = 0
+        },
+        Esc -> {
+            m.picking = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
+fun _submit(m: Chat) -> Step<Chat> {
+    let text = m.entry.value.trim()
+    if text == "" {
+        return next(m)
+    }
+    m.entry = TextInput.new()
+    m.scroll_up = 0
+
+    match parse_command(text) {
+        Quit -> {
+            return quit(m)
+        },
+        Clear -> {
+            let e: List<Entry> = []
+            m.entries = e
+            m.agent.clear_convo()
+            return next(m)
+        },
+        Help -> {
+            m.entries.push(Entry.UserMsg(text))
+            m.entries.push(Entry.BotMsg(HELP_TEXT))
+            return next(m)
+        },
+        ModelPicker -> {
+            m.picking = true
+            m.pick_sel = index_of(m.model)
+            return next(m)
+        },
+        ModelSet(id) -> {
+            set_model(m, id)
+            m.entries.push(Entry.Notice("model set to ${m.model}"))
+            return next(m)
+        },
+        Unknown(t) -> {
+            m.entries.push(Entry.UserMsg(t))
+            m.entries.push(Entry.Notice("Unknown command: ${t}"))
+            return next(m)
+        },
+        Send(t) -> {
+            return _send(m, t)
+        },
+    }
+    return next(m)
+}
+
+// Start a real turn: echo the prompt, record it in the conversation, and
+// spawn the agent goroutine to stream and run tools.
+fun _send(m: Chat, text: String) -> Step<Chat> {
+    m.entries.push(Entry.UserMsg(text))
+    m.agent.push_user(text)
+    m.agent.begin()
+    m.word = thinking_word(m.turns)
+    m.elapsed = 0
+    m.active = true
+    m.cur_bubble = 0 - 1
+    let st = m.agent
+    let model = m.model
+    let base_url = m.base_url
+    let use_mock = m.use_mock
+    let mock_text = ""
+    if use_mock {
+        mock_text = mock_reply(text, m.turns)
+    }
+    spawn(fun() -> Unit {
+        run_turn(st, model, base_url, use_mock, mock_text)
+    })
+    return next(m)
+}

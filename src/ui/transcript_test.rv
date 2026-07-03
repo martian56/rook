@@ -1,8 +1,7 @@
 import std/string
-import std/test { assert_eq_int, assert_eq_str, assert_true }
+import std/test { assert_eq_str, assert_true }
 import "github.com/martian56/plumage/text" { Line }
 import "./transcript" { Entry, build_lines }
-import "./mock" { reply_for, thinking_word, pulse }
 
 fun line_text(lines: List<Line>, i: Int) -> String {
     let out = ""
@@ -41,21 +40,4 @@ fun test_entries_are_separated_by_blank_lines() {
     let lines = build_lines([Entry.UserMsg("a"), Entry.BotMsg("b")], 40)
     assert_eq_str(line_text(lines, 1), "")
     assert_eq_str(line_text(lines, 2), "● b")
-}
-
-fun test_replies_rotate() {
-    let a = reply_for("x", 0)
-    let b = reply_for("x", 1)
-    assert_true(a.text != b.text)
-    assert_true(a.tool != "")
-}
-
-fun test_thinking_words_cycle() {
-    assert_eq_str(thinking_word(0), "Thinking")
-    assert_eq_str(thinking_word(6), "Thinking")
-    assert_true(thinking_word(1) != thinking_word(2))
-}
-
-fun test_pulse_repeats() {
-    assert_eq_str(pulse(0), pulse(8))
 }

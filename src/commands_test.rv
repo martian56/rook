@@ -1,0 +1,43 @@
+import std/string
+import std/test { assert_eq_str }
+import "./commands" { Command, parse_command }
+
+fun tag(c: Command) -> String {
+    return match c {
+        Send(t) -> "send:${t}",
+        Help -> "help",
+        Clear -> "clear",
+        Quit -> "quit",
+        ModelPicker -> "picker",
+        ModelSet(id) -> "set:${id}",
+        Unknown(t) -> "unknown:${t}",
+    }
+}
+
+fun test_plain_text_is_send() {
+    assert_eq_str(tag(parse_command("hello world")), "send:hello world")
+}
+
+fun test_slash_commands() {
+    assert_eq_str(tag(parse_command("/help")), "help")
+    assert_eq_str(tag(parse_command("/clear")), "clear")
+    assert_eq_str(tag(parse_command("/quit")), "quit")
+    assert_eq_str(tag(parse_command("/exit")), "quit")
+    assert_eq_str(tag(parse_command("/model")), "picker")
+}
+
+fun test_model_with_arg_sets_directly() {
+    assert_eq_str(tag(parse_command("/model openai/gpt-4o")), "set:openai/gpt-4o")
+}
+
+fun test_model_blank_arg_opens_picker() {
+    assert_eq_str(tag(parse_command("/model    ")), "picker")
+}
+
+fun test_unknown_command() {
+    assert_eq_str(tag(parse_command("/frobnicate")), "unknown:/frobnicate")
+}
+
+fun test_a_message_that_mentions_slash_midtext_is_send() {
+    assert_eq_str(tag(parse_command("what does a/b mean")), "send:what does a/b mean")
+}

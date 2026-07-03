@@ -1,0 +1,177 @@
+// The view half of the plumage app: the welcome banner, the transcript, the
+// thinking line, the input box, and the status bar. Pure rendering from the
+// model; no state changes here.
+
+import std/string
+import "github.com/martian56/plumage" { Frame }
+import "github.com/martian56/plumage/layout" { Rect, Constraint, split_v }
+import "github.com/martian56/plumage/widgets/block" { Block }
+import "github.com/martian56/plumage/widgets/paragraph" { Paragraph }
+import "github.com/martian56/plumage/widgets/list" { ListView }
+import "github.com/martian56/plumage/style" { Style }
+import "github.com/martian56/wingspan" { width }
+import "./model" { Chat }
+import "../ui/transcript" { build_lines }
+import "../ui/theme" { accent, dim, warn_color }
+import "../agent/mock" { pulse }
+import "../config/config" { provider_of, key_env }
+import "../config/catalog" { catalog }
+
+fun chat_view(m: Chat, f: Frame) {
+    let rows = split_v(
+        f.area(),
+        [Constraint.Fill(1), Constraint.Len(1), Constraint.Len(3), Constraint.Len(1)],
+    )
+    let body = Rect.new(rows[0].x + 1, rows[0].y, rows[0].w - 2, rows[0].h)
+    if m.entries.len() == 0 {
+        _welcome(m, body, f)
+    } else {
+        _transcript(m, body, f)
+    }
+    _thinking_line(m, rows[1], f)
+    let box = Block.new().rounded().style(dim())
+    box.render(rows[2], f.buf)
+    let ia = box.inner(rows[2])
+    f.buf.set_string(ia.x + 1, ia.y, "> ", dim())
+    m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
+    _status(m, rows[3], f)
+    if m.pending != "" {
+        _approval(m, f)
+    }
+    if m.picking {
+        _picker(m, f)
+    }
+}
+
+// A centered modal asking to approve one mutating tool call.
+fun _approval(m: Chat, f: Frame) {
+    let full = f.area()
+    let w = 62
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let h = 6
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", dim())
+    let box = Block.new().rounded().title("Approve this action?").style(warn_color()).title_style(
+        warn_color().bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    f.buf.set_string(inner.x + 1, inner.y, m.pending, Style.new().bold())
+    f.buf.set_string(inner.x + 1, inner.y + 2, "[y] allow    [a] allow all    [n] deny", dim())
+    return
+}
+
+// A centered modal listing the model catalog, drawn over everything else.
+fun _picker(m: Chat, f: Frame) {
+    let full = f.area()
+    let items = catalog()
+    let h = items.len() + 2
+    if h > full.h {
+        h = full.h
+    }
+    let w = 46
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", dim())
+    let box = Block.new().rounded().title("Select a model  (enter, esc)").style(accent()).title_style(
+        accent().bold(),
+    )
+    box.render(area, f.buf)
+    ListView.new(items).selected(m.pick_sel).highlight_style(accent().reverse()).render(
+        box.inner(area),
+        f.buf,
+    )
+    return
+}
+
+fun _welcome(m: Chat, area: Rect, f: Frame) {
+    let bw = 54
+    if bw > area.w {
+        bw = area.w
+    }
+    let box = Block.new().rounded().style(accent())
+    let br = Rect.new(area.x, area.y, bw, 5)
+    box.render(br, f.buf)
+    let inner = box.inner(br)
+    f.buf.set_string(inner.x + 1, inner.y, "✻ Welcome to Rook!", accent().bold())
+    f.buf.set_string(inner.x + 3, inner.y + 2, "model: ${m.model}", dim())
+
+    let tips = "Ask anything below and I will stream the answer.\n\n  1. /model switches model, /clear starts over, /help lists commands.\n  2. ctrl+c twice to quit."
+    if m.use_mock {
+        let env = key_env(provider_of(m.model))
+        let hint = "no API key found, so I am running the offline mock."
+        if env != "" {
+            hint = "set ${env} (or use /model) for real answers; offline mock for now."
+        }
+        tips = "Heads up: ${hint}\n\n${tips}"
+    }
+    Paragraph.new(tips).style(dim()).render(
+        Rect.new(area.x + 1, area.y + 6, area.w - 1, area.h - 6),
+        f.buf,
+    )
+    return
+}
+
+fun _transcript(m: Chat, area: Rect, f: Frame) {
+    let lines = build_lines(m.entries, area.w)
+    let max_up = lines.len() - area.h
+    if max_up < 0 {
+        max_up = 0
+    }
+    let up = m.scroll_up
+    if up > max_up {
+        up = max_up
+    }
+    Paragraph.from_lines(lines).scroll(max_up - up).render(area, f.buf)
+    return
+}
+
+fun _thinking_line(m: Chat, area: Rect, f: Frame) {
+    if !m.active {
+        return
+    }
+    if m.pending != "" {
+        f.buf.set_string(area.x + 1, area.y, "awaiting approval…", warn_color())
+        return
+    }
+    let x = f.buf.set_string(area.x + 1, area.y, "${pulse(m.tick)} ${m.word}… ", accent())
+    f.buf.set_string(x, area.y, "(esc to interrupt)", dim())
+    return
+}
+
+fun _status(m: Chat, area: Rect, f: Frame) {
+    let left = "enter to send · /model /clear /help · ctrl+c twice to quit"
+    let sty = dim()
+    if m.active {
+        left = "streaming · esc to interrupt"
+    }
+    if m.armed {
+        left = "Press ctrl+c again to exit"
+        sty = accent()
+    }
+    f.buf.set_string(area.x + 1, area.y, left, sty)
+    let right = "rook · ${m.model}"
+    if m.use_mock {
+        right = "rook · ${m.model} (mock)"
+    }
+    let rx = area.x + area.w - width(right) - 1
+    if rx > area.x + width(left) + 2 {
+        f.buf.set_string(rx, area.y, right, dim())
+        return
+    }
+    return
+}

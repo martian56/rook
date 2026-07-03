@@ -1,0 +1,184 @@
+// The shared handoff between the agent goroutine and the UI loop.
+//
+// The turn runs on a background goroutine because aviary's complete_stream
+// blocks; it never touches the display directly. Instead it emits an ordered
+// log of DisplayEvents (a bubble started, a text chunk, a finished tool, a
+// notice) that the UI drains and replays on every tick, and it owns the
+// conversation (the model-visible message list) which persists here across
+// turns. Approval is a one-slot channel: the goroutine blocks asking, the UI
+// answers with an Int.
+//
+// The UI never starts a new turn until the current one reports done, so a
+// single goroutine writes the conversation and the event log at any time.
+
+import std/string
+import std/sync { Mutex, mutex, Channel, channel_buffered }
+import "github.com/martian56/aviary/message" { Message, ToolCall }
+
+// What the goroutine tells the UI to show, in order.
+enum DisplayEvent {
+    Started,
+    Chunk(String),
+    ToolRan(String, String),
+    Info(String),
+}
+
+// A drained batch plus the turn's status, read under the lock and handed to
+// the UI to apply lock-free.
+struct Snapshot {
+    events: List<DisplayEvent>,
+    done: Bool,
+    pending: String,
+}
+
+struct AgentState {
+    lock: Mutex,
+    convo: List<Message>,
+    events: List<DisplayEvent>,
+    done: Bool,
+    interrupt: Bool,
+    // The tool label awaiting approval, "" when none is pending.
+    pending: String,
+    // One-slot decision channel: 0 deny, 1 allow, 2 allow all of this kind.
+    decisions: Channel,
+}
+
+impl AgentState {
+    fun new() -> AgentState {
+        let convo: List<Message> = []
+        let events: List<DisplayEvent> = []
+        return AgentState {
+            lock: mutex(),
+            convo,
+            events,
+            done: false,
+            interrupt: false,
+            pending: "",
+            decisions: channel_buffered(1),
+        }
+    }
+
+    // Start a fresh turn: keep the conversation, reset per-turn state.
+    fun begin(self) {
+        self.lock.lock()
+        self.done = false
+        self.interrupt = false
+        self.pending = ""
+        let e: List<DisplayEvent> = []
+        self.events = e
+        self.lock.unlock()
+    }
+
+    fun clear_convo(self) {
+        self.lock.lock()
+        let c: List<Message> = []
+        self.convo = c
+        self.lock.unlock()
+    }
+
+    fun push_user(self, text: String) {
+        self.lock.lock()
+        self.convo.push(Message.user(text))
+        self.lock.unlock()
+    }
+
+    fun push_assistant(self, text: String) {
+        self.lock.lock()
+        self.convo.push(Message.assistant(text))
+        self.lock.unlock()
+    }
+
+    fun push_assistant_calls(self, text: String, calls: List<ToolCall>) {
+        self.lock.lock()
+        self.convo.push(Message.assistant_calls(text, calls))
+        self.lock.unlock()
+    }
+
+    fun push_tool_result(self, id: String, name: String, content: String) {
+        self.lock.lock()
+        self.convo.push(Message.tool_result(id, name, content))
+        self.lock.unlock()
+    }
+
+    // A copy of the conversation, for building a request.
+    fun messages(self) -> List<Message> {
+        self.lock.lock()
+        let out: List<Message> = []
+        let i = 0
+        while i < self.convo.len() {
+            out.push(self.convo[i])
+            i = i + 1
+        }
+        self.lock.unlock()
+        return out
+    }
+
+    fun emit(self, ev: DisplayEvent) {
+        self.lock.lock()
+        self.events.push(ev)
+        self.lock.unlock()
+    }
+
+    fun chunk(self, d: String) {
+        self.lock.lock()
+        self.events.push(DisplayEvent.Chunk(d))
+        self.lock.unlock()
+    }
+
+    // Take the pending events and current status in one lock.
+    fun drain(self) -> Snapshot {
+        self.lock.lock()
+        let evs = self.events
+        let empty: List<DisplayEvent> = []
+        self.events = empty
+        let s = Snapshot { events: evs, done: self.done, pending: self.pending }
+        self.lock.unlock()
+        return s
+    }
+
+    fun finish(self) {
+        self.lock.lock()
+        self.done = true
+        self.lock.unlock()
+    }
+
+    // Read the pending approval without draining events, so a second reader
+    // (a test's approver) can watch for it without stealing display events.
+    fun pending_now(self) -> String {
+        self.lock.lock()
+        let p = self.pending
+        self.lock.unlock()
+        return p
+    }
+
+    fun request_interrupt(self) {
+        self.lock.lock()
+        self.interrupt = true
+        self.lock.unlock()
+    }
+
+    fun interrupted(self) -> Bool {
+        self.lock.lock()
+        let v = self.interrupt
+        self.lock.unlock()
+        return v
+    }
+
+    // Goroutine side: publish a pending approval and block until the UI
+    // answers. Returns 0 deny, 1 allow, 2 allow all of this kind.
+    fun ask(self, desc: String) -> Int {
+        self.lock.lock()
+        self.pending = desc
+        self.lock.unlock()
+        let d = self.decisions.recv()
+        self.lock.lock()
+        self.pending = ""
+        self.lock.unlock()
+        return d
+    }
+
+    // UI side: answer the pending approval.
+    fun decide(self, d: Int) {
+        self.decisions.send(d)
+    }
+}

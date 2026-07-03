@@ -1,0 +1,66 @@
+// A substring grep over a directory tree. Literal matching (no regex),
+// capped at a sane number of hits so a huge tree cannot flood the model's
+// context.
+
+import std/string
+import std/fs { walk, read, is_file }
+
+const MAX_MATCHES: Int = 50
+
+fun grep(pattern: String, path: String) -> String {
+    if pattern == "" {
+        return "error: no pattern given"
+    }
+    let root = path
+    if root == "" {
+        root = "."
+    }
+    let files: List<String> = []
+    let ok = true
+    match walk(root) {
+        Ok(fs) -> {
+            files = fs
+        },
+        Err(e) -> {
+            ok = false
+        },
+    }
+    if !ok {
+        return "error: cannot search ${root}"
+    }
+
+    let out = ""
+    let count = 0
+    let i = 0
+    while i < files.len() && count < MAX_MATCHES {
+        let f = files[i]
+        if is_file(f) {
+            let content = ""
+            let rok = true
+            match read(f) {
+                Ok(s) -> {
+                    content = s
+                },
+                Err(e) -> {
+                    rok = false
+                },
+            }
+            if rok {
+                let lines = content.lines()
+                let ln = 0
+                while ln < lines.len() && count < MAX_MATCHES {
+                    if lines[ln].contains(pattern) {
+                        out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
+                        count = count + 1
+                    }
+                    ln = ln + 1
+                }
+            }
+        }
+        i = i + 1
+    }
+    if count == 0 {
+        return "no matches for '${pattern}' under ${root}"
+    }
+    return out
+}
