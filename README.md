@@ -108,6 +108,25 @@ every turn, along with a global `~/.agents/AGENTS.md` for your own
 standing notes. The global file comes first so the project one can
 refine it.
 
+`.agents/settings.json` (project or global) configures rook alongside
+`rook.json`:
+
+```json
+{
+  "model": "openai/gpt-4o",
+  "theme": "Nord",
+  "base_url": "",
+  "permissions": {},
+  "tools": {},
+  "mcp": {}
+}
+```
+
+The string fields join the resolution chain (a root's `rook.json` wins
+over the same root's settings, and project beats global). The object
+sections are reserved for the permission rules, tool config, and MCP
+servers that will read them.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

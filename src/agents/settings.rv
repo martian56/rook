@@ -1,0 +1,77 @@
+// Settings: the .agents/settings.json read alongside rook.json. The schema:
+//
+//   {
+//     "model": "provider/model",
+//     "theme": "Nord",
+//     "base_url": "http://localhost:11434/v1",
+//     "permissions": { ... },
+//     "tools": { ... },
+//     "mcp": { ... }
+//   }
+//
+// The three string fields are consumed by config resolution today; the
+// object sections are reserved for the permission rules, tool config, and
+// MCP servers that read them as those features land. A project settings.json
+// outranks the global one, and each sits below the same root's rook.json in
+// the overall resolution order.
+
+import std/string
+import std/fs { read, exists }
+import std/json { JsonValue, parse }
+
+// A top-level string field from the settings.json under `root`, "" when the
+// root is empty, the file is absent or unreadable, or the field is not a
+// string.
+fun setting_str(root: String, key: String) -> String {
+    if root == "" {
+        return ""
+    }
+    return setting_from(_read_opt("${root}/settings.json"), key)
+}
+
+// The pure half: pull one string field out of a settings document.
+fun setting_from(text: String, key: String) -> String {
+    if text.trim() == "" {
+        return ""
+    }
+    return match parse(text) {
+        Ok(j) -> _field_str(j, key),
+        Err(e) -> "",
+    }
+}
+
+// A top-level object section (permissions, tools, mcp) from the settings
+// under `root`, for the features that consume them. None when absent.
+fun setting_section(root: String, key: String) -> Option<JsonValue> {
+    if root == "" {
+        return None
+    }
+    let text = _read_opt("${root}/settings.json")
+    if text.trim() == "" {
+        return None
+    }
+    return match parse(text) {
+        Ok(j) -> j.get(key),
+        Err(e) -> None,
+    }
+}
+
+fun _read_opt(path: String) -> String {
+    if !exists(path) {
+        return ""
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+}
+
+fun _field_str(j: JsonValue, key: String) -> String {
+    return match j.get(key) {
+        Some(v) -> match v.as_string() {
+            Some(s) -> s,
+            None -> "",
+        },
+        None -> "",
+    }
+}

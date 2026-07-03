@@ -1,0 +1,54 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./settings" { setting_str, setting_from, setting_section }
+
+const DOC: String = "{\"model\": \"openai/gpt-4o\", \"theme\": \"Nord\", \"permissions\": {\"allow\": [\"read_file\"]}}"
+
+fun test_setting_from_reads_string_fields() {
+    assert_eq_str(setting_from(DOC, "model"), "openai/gpt-4o")
+    assert_eq_str(setting_from(DOC, "theme"), "Nord")
+    assert_eq_str(setting_from(DOC, "base_url"), "")
+}
+
+fun test_setting_from_tolerates_bad_input() {
+    assert_eq_str(setting_from("", "model"), "")
+    assert_eq_str(setting_from("not json", "model"), "")
+    assert_eq_str(setting_from(DOC, "permissions"), "")
+}
+
+fun test_setting_str_reads_a_root() {
+    create_dir_all("_rook_set")
+    write("_rook_set/settings.json", DOC)
+    assert_eq_str(setting_str("_rook_set", "theme"), "Nord")
+    assert_eq_str(setting_str("_rook_set", "missing"), "")
+    assert_eq_str(setting_str("_rook_set_absent", "theme"), "")
+    assert_eq_str(setting_str("", "theme"), "")
+    remove_file("_rook_set/settings.json")
+    remove_dir("_rook_set")
+    return
+}
+
+fun test_setting_section_finds_objects() {
+    create_dir_all("_rook_sec")
+    write("_rook_sec/settings.json", DOC)
+    let found = false
+    match setting_section("_rook_sec", "permissions") {
+        Some(v) -> {
+            found = true
+        },
+        None -> {},
+    }
+    assert_true(found)
+    let absent = true
+    match setting_section("_rook_sec", "mcp") {
+        Some(v) -> {
+            absent = false
+        },
+        None -> {},
+    }
+    assert_true(absent)
+    remove_file("_rook_sec/settings.json")
+    remove_dir("_rook_sec")
+    return
+}

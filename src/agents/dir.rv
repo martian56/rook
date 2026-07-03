@@ -16,14 +16,32 @@ import std/fs { exists, is_dir, list_dir }
 // then the global one. Either or both may be absent.
 fun roots() -> List<String> {
     let out: List<String> = []
-    if is_dir(".agents") {
-        out.push(".agents")
+    let p = project_root()
+    if p != "" {
+        out.push(p)
     }
-    let h = _home()
-    if h != "" && is_dir("${h}/.agents") {
-        out.push("${h}/.agents")
+    let g = global_root()
+    if g != "" {
+        out.push(g)
     }
     return out
+}
+
+// The project's .agents folder, "" when the working directory has none.
+fun project_root() -> String {
+    if is_dir(".agents") {
+        return ".agents"
+    }
+    return ""
+}
+
+// The global ~/.agents folder, "" when absent.
+fun global_root() -> String {
+    let h = _home()
+    if h != "" && is_dir("${h}/.agents") {
+        return "${h}/.agents"
+    }
+    return ""
 }
 
 // The entry names inside `sub` across the roots, in precedence order and
