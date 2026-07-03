@@ -105,6 +105,7 @@ src/
   main.rv            entry: build the app and run it
   app/               model, update (events, keys, approvals), view
   agent/             the turn loop, shared state, session
+  agents/            the .agents folder loader (skills, commands, settings)
   tools/             file, search, and shell tools, plus the schema registry
   config/            model resolution, rook.json, the /model catalog
   ui/                the transcript renderer, theme, and spinner

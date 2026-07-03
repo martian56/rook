@@ -1,0 +1,122 @@
+// The .agents folder: rook's shared entry point for skills, subagents,
+// commands, and settings, following the cross-agent convention (the same
+// layout other coding agents read). A project .agents sits in the working
+// directory; a global one lives at ~/.agents. Project entries shadow global
+// ones of the same name.
+//
+// Discovery is the only part that touches the environment; everything else
+// takes the roots as a parameter, so the loaders built on top (and the
+// tests) can work over any list of directories.
+
+import std/string
+import std/env { get_env, has_env }
+import std/fs { exists, is_dir, list_dir }
+
+// The discovered .agents roots, highest precedence first: the project's,
+// then the global one. Either or both may be absent.
+fun roots() -> List<String> {
+    let out: List<String> = []
+    if is_dir(".agents") {
+        out.push(".agents")
+    }
+    let h = _home()
+    if h != "" && is_dir("${h}/.agents") {
+        out.push("${h}/.agents")
+    }
+    return out
+}
+
+// The entry names inside `sub` across the roots, in precedence order and
+// deduped: a project entry shadows a global entry with the same name.
+fun merged_names(rs: List<String>, sub: String) -> List<String> {
+    let out: List<String> = []
+    let r = 0
+    while r < rs.len() {
+        let names = _names(rs[r], sub)
+        let i = 0
+        while i < names.len() {
+            if !_has(out, names[i]) {
+                out.push(names[i])
+            }
+            i = i + 1
+        }
+        r = r + 1
+    }
+    return out
+}
+
+// The full path of `sub`/`name` under the first root that has it, "" when
+// no root does. The lookup half of merged_names.
+fun path_of(rs: List<String>, sub: String, name: String) -> String {
+    let r = 0
+    while r < rs.len() {
+        let p = "${rs[r]}/${sub}/${name}"
+        if exists(p) {
+            return p
+        }
+        r = r + 1
+    }
+    return ""
+}
+
+// The full path of `rel` under the first root that has it, "" when none
+// does. For single files like settings.json.
+fun first_file(rs: List<String>, rel: String) -> String {
+    let r = 0
+    while r < rs.len() {
+        let p = "${rs[r]}/${rel}"
+        if exists(p) {
+            return p
+        }
+        r = r + 1
+    }
+    return ""
+}
+
+// Every root's copy of `rel` that exists, in precedence order. For loaders
+// that merge (settings): iterate from the end so the project copy, first in
+// the list, is applied last and wins.
+fun existing(rs: List<String>, rel: String) -> List<String> {
+    let out: List<String> = []
+    let r = 0
+    while r < rs.len() {
+        let p = "${rs[r]}/${rel}"
+        if exists(p) {
+            out.push(p)
+        }
+        r = r + 1
+    }
+    return out
+}
+
+fun _names(root: String, sub: String) -> List<String> {
+    let empty: List<String> = []
+    return match list_dir("${root}/${sub}") {
+        Ok(names) -> names,
+        Err(e) -> empty,
+    }
+}
+
+fun _has(xs: List<String>, x: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == x {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}

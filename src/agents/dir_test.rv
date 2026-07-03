@@ -1,0 +1,93 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./dir" { roots, merged_names, path_of, first_file, existing }
+
+// Two fake roots: a "project" one and a "global" one, with skills/b.md
+// present in both so shadowing is observable.
+fun setup() {
+    create_dir_all("_rook_ag_p/skills")
+    create_dir_all("_rook_ag_g/skills")
+    write("_rook_ag_p/skills/a.md", "project a")
+    write("_rook_ag_p/skills/b.md", "project b")
+    write("_rook_ag_g/skills/b.md", "global b")
+    write("_rook_ag_g/skills/c.md", "global c")
+    write("_rook_ag_g/settings.json", "{}")
+    return
+}
+
+fun teardown() {
+    remove_file("_rook_ag_p/skills/a.md")
+    remove_file("_rook_ag_p/skills/b.md")
+    remove_file("_rook_ag_g/skills/b.md")
+    remove_file("_rook_ag_g/skills/c.md")
+    remove_file("_rook_ag_g/settings.json")
+    remove_dir("_rook_ag_p/skills")
+    remove_dir("_rook_ag_g/skills")
+    remove_dir("_rook_ag_p")
+    remove_dir("_rook_ag_g")
+    return
+}
+
+fun test_merged_names_dedups_project_over_global() {
+    setup()
+    let names = merged_names(["_rook_ag_p", "_rook_ag_g"], "skills")
+    assert_true(names.len() == 3)
+    assert_true(_has(names, "a.md"))
+    assert_true(_has(names, "b.md"))
+    assert_true(_has(names, "c.md"))
+    teardown()
+    return
+}
+
+fun test_path_of_prefers_the_project_copy() {
+    setup()
+    assert_eq_str(path_of(["_rook_ag_p", "_rook_ag_g"], "skills", "b.md"), "_rook_ag_p/skills/b.md")
+    assert_eq_str(path_of(["_rook_ag_p", "_rook_ag_g"], "skills", "c.md"), "_rook_ag_g/skills/c.md")
+    assert_eq_str(path_of(["_rook_ag_p", "_rook_ag_g"], "skills", "zz.md"), "")
+    teardown()
+    return
+}
+
+fun test_first_file_walks_the_roots_in_order() {
+    setup()
+    assert_eq_str(
+        first_file(["_rook_ag_p", "_rook_ag_g"], "settings.json"),
+        "_rook_ag_g/settings.json",
+    )
+    assert_eq_str(first_file(["_rook_ag_p", "_rook_ag_g"], "nope.json"), "")
+    teardown()
+    return
+}
+
+fun test_existing_lists_every_copy_in_precedence_order() {
+    setup()
+    let both = existing(["_rook_ag_p", "_rook_ag_g"], "skills/b.md")
+    assert_true(both.len() == 2)
+    assert_eq_str(both[0], "_rook_ag_p/skills/b.md")
+    assert_eq_str(both[1], "_rook_ag_g/skills/b.md")
+    teardown()
+    return
+}
+
+fun test_missing_roots_yield_empty_results() {
+    let none: List<String> = []
+    assert_true(merged_names(none, "skills").len() == 0)
+    assert_true(merged_names(["_rook_ag_missing"], "skills").len() == 0)
+    assert_eq_str(first_file(["_rook_ag_missing"], "settings.json"), "")
+}
+
+fun test_discovery_does_not_blow_up() {
+    assert_true(roots().len() <= 2)
+}
+
+fun _has(xs: List<String>, x: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == x {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
