@@ -9,12 +9,13 @@ import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, set_model }
 import "../agent/state" { DisplayEvent, Snapshot }
 import "../agent/turn" { run_turn }
-import "../agent/mock" { thinking_word, mock_reply }
+import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../commands" { Command, parse_command }
 import "../config/catalog" { catalog, index_of }
+import "../config/config" { provider_of, key_needed, save_key }
 
-const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
+const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /key sets the current provider's API key, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -110,6 +111,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     m.armed = false
 
+    if m.entering_key {
+        return _key_entry(m, k)
+    }
     if m.picking {
         return _pick_key(m, k)
     }
@@ -210,7 +214,7 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
         Enter -> {
             set_model(m, items[m.pick_sel])
             m.picking = false
-            m.entries.push(Entry.Notice("model set to ${m.model}"))
+            _after_model_set(m)
             m.scroll_up = 0
         },
         Esc -> {
@@ -219,6 +223,49 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
         _ -> {},
     }
     return next(m)
+}
+
+// Enter the current provider's API key. Enter saves it (to ~/.rook/auth.json)
+// and applies it to the session; esc cancels.
+fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
+    match k {
+        Enter -> {
+            let key = m.key_input.value.trim()
+            if key != "" {
+                let p = provider_of(m.model)
+                save_key(p, key)
+                m.api_key = key
+                m.entries.push(Entry.Notice("saved key for ${p}"))
+                m.scroll_up = 0
+            }
+            m.entering_key = false
+            return next(m)
+        },
+        Esc -> {
+            m.entering_key = false
+            return next(m)
+        },
+        _ -> {},
+    }
+    m.key_input.handle_key(k)
+    return next(m)
+}
+
+// After a model change, open the key entry if the new provider has no key.
+fun _after_model_set(m: Chat) {
+    if key_needed(m.model) {
+        _open_key_entry(m)
+        m.entries.push(Entry.Notice("model set to ${m.model}; enter its API key below"))
+    } else {
+        m.entries.push(Entry.Notice("model set to ${m.model}"))
+    }
+    return
+}
+
+fun _open_key_entry(m: Chat) {
+    m.entering_key = true
+    m.key_input = TextInput.new()
+    return
 }
 
 fun _submit(m: Chat) -> Step<Chat> {
@@ -251,7 +298,11 @@ fun _submit(m: Chat) -> Step<Chat> {
         },
         ModelSet(id) -> {
             set_model(m, id)
-            m.entries.push(Entry.Notice("model set to ${m.model}"))
+            _after_model_set(m)
+            return next(m)
+        },
+        Login -> {
+            _open_key_entry(m)
             return next(m)
         },
         Unknown(t) -> {
@@ -267,9 +318,18 @@ fun _submit(m: Chat) -> Step<Chat> {
 }
 
 // Start a real turn: echo the prompt, record it in the conversation, and
-// spawn the agent goroutine to stream and run tools.
+// spawn the agent goroutine to stream and run tools. With no key for the
+// provider, prompt for one instead of making a doomed request.
 fun _send(m: Chat, text: String) -> Step<Chat> {
     m.entries.push(Entry.UserMsg(text))
+    if key_needed(m.model) {
+        m.entries.push(
+            Entry.Notice("no API key for ${provider_of(m.model)}; enter one, then ask again"),
+        )
+        _open_key_entry(m)
+        m.scroll_up = 0
+        return next(m)
+    }
     m.agent.push_user(text)
     m.agent.begin()
     m.word = thinking_word(m.turns)
@@ -278,14 +338,10 @@ fun _send(m: Chat, text: String) -> Step<Chat> {
     m.cur_bubble = 0 - 1
     let st = m.agent
     let model = m.model
+    let api_key = m.api_key
     let base_url = m.base_url
-    let use_mock = m.use_mock
-    let mock_text = ""
-    if use_mock {
-        mock_text = mock_reply(text, m.turns)
-    }
     spawn(fun() -> Unit {
-        run_turn(st, model, base_url, use_mock, mock_text)
+        run_turn(st, model, api_key, base_url)
     })
     return next(m)
 }

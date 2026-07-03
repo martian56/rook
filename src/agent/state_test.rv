@@ -1,11 +1,7 @@
 import std/string
-import std/sync { sleep_millis }
-import std/test { assert_eq_str, assert_eq_int, assert_true }
+import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
 import "./state" { AgentState, DisplayEvent, Snapshot }
-import "./turn" { run_turn }
 
-// Replay a batch of display events into one accumulated string, the way the
-// UI does, so a test can assert what the goroutine produced.
 fun replay(events: List<DisplayEvent>) -> String {
     let out = ""
     let i = 0
@@ -29,56 +25,13 @@ fun replay(events: List<DisplayEvent>) -> String {
     return out
 }
 
-// Drain until the turn is done, accumulating every event.
-fun drain_until_done(st: AgentState) -> String {
-    let acc = ""
-    let tries = 0
-    while tries < 300 {
-        let snap = st.drain()
-        acc = acc.concat(replay(snap.events))
-        if snap.done {
-            return acc
-        }
-        sleep_millis(10)
-        tries = tries + 1
-    }
-    return acc
-}
-
-fun test_mock_turn_streams_across_goroutine() {
-    // A mock turn on a background goroutine emits Started then a Chunk per
-    // word; draining reassembles the full reply.
+fun test_conversation_accumulates() {
     let st = AgentState.new()
     st.push_user("hi")
-    st.begin()
-    spawn(fun() -> Unit {
-        run_turn(st, "mock/none", "", true, "hello there friend")
-    })
-    let got = drain_until_done(st)
-    assert_eq_str(got, "[start]hello there friend")
-}
-
-fun test_mock_reply_lands_in_the_conversation() {
-    let st = AgentState.new()
-    st.push_user("hi")
-    st.begin()
-    run_turn(st, "mock/none", "", true, "one two")
+    st.push_assistant("hello")
     let msgs = st.messages()
-    // user + assistant.
     assert_eq_int(msgs.len(), 2)
-    assert_eq_str(msgs[1].content, "one two")
-}
-
-fun test_interrupt_stops_the_mock_stream() {
-    let st = AgentState.new()
-    st.push_user("hi")
-    st.begin()
-    st.request_interrupt()
-    run_turn(st, "mock/none", "", true, "a b c d e")
-    assert_true(st.interrupted())
-    // Nothing streamed before the interrupt check fired.
-    let snap = st.drain()
-    assert_eq_str(replay(snap.events), "[start]")
+    assert_eq_str(msgs[1].content, "hello")
 }
 
 fun test_clear_convo_empties_history() {
@@ -87,4 +40,43 @@ fun test_clear_convo_empties_history() {
     st.push_assistant("b")
     st.clear_convo()
     assert_eq_int(st.messages().len(), 0)
+}
+
+fun test_events_drain_once_then_empty() {
+    let st = AgentState.new()
+    st.emit(DisplayEvent.Started)
+    st.chunk("hel")
+    st.chunk("lo")
+    let s = st.drain()
+    assert_eq_str(replay(s.events), "[start]hello")
+    let again = st.drain()
+    assert_eq_int(again.events.len(), 0)
+}
+
+fun test_begin_resets_flags_and_events() {
+    let st = AgentState.new()
+    st.request_interrupt()
+    st.emit(DisplayEvent.Started)
+    st.finish()
+    st.begin()
+    assert_false(st.interrupted())
+    let s = st.drain()
+    assert_eq_int(s.events.len(), 0)
+    assert_false(s.done)
+}
+
+fun test_interrupt_flag() {
+    let st = AgentState.new()
+    assert_false(st.interrupted())
+    st.request_interrupt()
+    assert_true(st.interrupted())
+}
+
+fun test_pending_is_readable_without_draining_events() {
+    let st = AgentState.new()
+    st.emit(DisplayEvent.Started)
+    // pending_now must not consume the queued event.
+    assert_eq_str(st.pending_now(), "")
+    let s = st.drain()
+    assert_eq_int(s.events.len(), 1)
 }

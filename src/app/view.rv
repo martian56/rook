@@ -13,7 +13,7 @@ import "github.com/martian56/wingspan" { width }
 import "./model" { Chat }
 import "../ui/transcript" { build_lines }
 import "../ui/theme" { accent, dim, warn_color }
-import "../agent/mock" { pulse }
+import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
 import "../config/catalog" { catalog }
 
@@ -41,6 +41,52 @@ fun chat_view(m: Chat, f: Frame) {
     if m.picking {
         _picker(m, f)
     }
+    if m.entering_key {
+        _key_modal(m, f)
+    }
+}
+
+// A centered modal to enter the current provider's API key. The value is
+// masked so a key is not left on screen.
+fun _key_modal(m: Chat, f: Frame) {
+    let full = f.area()
+    let w = 60
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let h = 6
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", dim())
+    let box = Block.new().rounded().title("API key for ${provider_of(m.model)}").style(accent()).title_style(
+        accent().bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    f.buf.set_string(inner.x + 1, inner.y, _mask(m.key_input.value, inner.w - 2), Style.new())
+    f.buf.set_string(
+        inner.x + 1,
+        inner.y + 2,
+        "paste the key, enter to save · esc to cancel",
+        dim(),
+    )
+    return
+}
+
+fun _mask(value: String, w: Int) -> String {
+    let n = value.length()
+    if n == 0 {
+        return ""
+    }
+    let count = n
+    if count > w {
+        count = w
+    }
+    return "•".repeat(count)
 }
 
 // A centered modal asking to approve one mutating tool call.
@@ -110,14 +156,14 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     f.buf.set_string(inner.x + 1, inner.y, "✻ Welcome to Rook!", accent().bold())
     f.buf.set_string(inner.x + 3, inner.y + 2, "model: ${m.model}", dim())
 
-    let tips = "Ask anything below and I will stream the answer.\n\n  1. /model switches model, /clear starts over, /help lists commands.\n  2. ctrl+c twice to quit."
-    if m.use_mock {
+    let tips = "Ask anything below and I will stream the answer.\n\n  1. /model switches model, /key sets an API key, /clear starts over.\n  2. ctrl+c twice to quit."
+    if m.api_key == "" && provider_of(m.model) != "ollama" {
         let env = key_env(provider_of(m.model))
-        let hint = "no API key found, so I am running the offline mock."
+        let hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
         if env != "" {
-            hint = "set ${env} (or use /model) for real answers; offline mock for now."
+            hint = "${hint} (or set ${env})"
         }
-        tips = "Heads up: ${hint}\n\n${tips}"
+        tips = "Heads up: ${hint}.\n\n${tips}"
     }
     Paragraph.new(tips).style(dim()).render(
         Rect.new(area.x + 1, area.y + 6, area.w - 1, area.h - 6),
@@ -165,9 +211,6 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)
     let right = "rook · ${m.model}"
-    if m.use_mock {
-        right = "rook · ${m.model} (mock)"
-    }
     let rx = area.x + area.w - width(right) - 1
     if rx > area.x + width(left) + 2 {
         f.buf.set_string(rx, area.y, right, dim())

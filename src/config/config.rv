@@ -1,18 +1,21 @@
-// Which model to use, where its key lives, and how the choice persists.
+// Which model to use, its API key, and how both persist.
 //
-// Startup resolution order (highest first): the --model flag, ROOK_MODEL,
+// Model resolution at startup (highest first): the --model flag, ROOK_MODEL,
 // a project ./rook.json "model", a global ~/.config/rook/rook.json "model",
-// the last model picked in a previous session (~/.rook/last-model), then a
-// built-in default. Picking a model at runtime writes the last-model file so
-// it is remembered next time.
+// the last model picked in a previous session, then a built-in default.
+//
+// The API key for a provider comes from its environment variable, else from
+// ~/.rook/auth.json (written when you enter a key with /key). A model whose
+// provider has no key runs nothing until one is supplied.
 
 import std/string
 import std/env { get_env, has_env, args }
 import std/fs { read, write, exists, create_dir_all }
-import std/json { JsonValue, parse }
+import std/json { JsonValue, parse, stringify }
+import "github.com/martian56/aviary/jsonutil" { Obj }
 
 // The model used when nothing else selects one. A "provider/model" string.
-const DEFAULT_MODEL: String = "anthropic/claude-sonnet-4-5"
+const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-4.5"
 
 fun resolve_model() -> String {
     let a = args()
@@ -80,6 +83,57 @@ fun save_model(model: String) {
     return
 }
 
+// The API key for a model's provider: its environment variable if set, else
+// the stored key from ~/.rook/auth.json, else "".
+fun resolve_key(model: String) -> String {
+    let p = provider_of(model)
+    let env = key_env(p)
+    if env != "" && has_env(env) {
+        let v = get_env(env)
+        if v != "" {
+            return v
+        }
+    }
+    return stored_key(p)
+}
+
+fun stored_key(provider: String) -> String {
+    if provider == "" {
+        return ""
+    }
+    return _json_str(_read_opt(_auth_path()), provider)
+}
+
+// Store `key` for `provider` in ~/.rook/auth.json, merging with any keys
+// already saved for other providers.
+fun save_key(provider: String, key: String) {
+    let h = _home()
+    if h == "" {
+        return
+    }
+    let dir = "${h}/.rook"
+    create_dir_all(dir)
+    let path = "${dir}/auth.json"
+    write(path, _merge_auth(_read_opt(path), provider, key))
+    return
+}
+
+// Whether a model can run: its provider has a key, or needs none (Ollama).
+fun key_present(model: String) -> Bool {
+    if provider_of(model) == "ollama" {
+        return true
+    }
+    return resolve_key(model) != ""
+}
+
+// Whether a model is missing the key it needs.
+fun key_needed(model: String) -> Bool {
+    if provider_of(model) == "ollama" {
+        return false
+    }
+    return resolve_key(model) == ""
+}
+
 // The provider part of a "provider/model" string, or "" when malformed.
 fun provider_of(model: String) -> String {
     let slash = model.index_of("/")
@@ -122,20 +176,6 @@ fun key_env(provider: String) -> String {
     return ""
 }
 
-// Whether the model's provider can authenticate: its key env var is set, or
-// it needs none (Ollama).
-fun key_present(model: String) -> Bool {
-    let p = provider_of(model)
-    if p == "ollama" {
-        return true
-    }
-    let env = key_env(p)
-    if env == "" {
-        return false
-    }
-    return has_env(env)
-}
-
 fun _home() -> String {
     if has_env("HOME") {
         let h = get_env("HOME")
@@ -157,8 +197,19 @@ fun _state_path() -> String {
     return "${h}/.rook/last-model"
 }
 
+fun _auth_path() -> String {
+    let h = _home()
+    if h == "" {
+        return ""
+    }
+    return "${h}/.rook/auth.json"
+}
+
 // Read a file, returning "" when it is missing or unreadable.
 fun _read_opt(path: String) -> String {
+    if path == "" {
+        return ""
+    }
     if !exists(path) {
         return ""
     }
@@ -166,6 +217,27 @@ fun _read_opt(path: String) -> String {
         Ok(s) -> s,
         Err(e) -> "",
     }
+}
+
+// Rebuild the auth JSON object with `provider` set to `key`, preserving any
+// other providers already present.
+fun _merge_auth(existing: String, provider: String, key: String) -> String {
+    let obj = Obj.new()
+    match parse(existing) {
+        Ok(j) -> {
+            let ks = j.keys()
+            let i = 0
+            while i < ks.len() {
+                if ks[i] != provider {
+                    obj = obj.str(ks[i], _field_str(j, ks[i]))
+                }
+                i = i + 1
+            }
+        },
+        Err(e) -> {},
+    }
+    obj = obj.str(provider, key)
+    return stringify(obj.build())
 }
 
 // A string field from a JSON config document, or "" when absent.

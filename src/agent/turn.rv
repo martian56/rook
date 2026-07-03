@@ -1,11 +1,9 @@
 // One agent turn on a background goroutine: stream a reply, and if the model
 // asks for tools, run them (approving mutating ones through the UI) and feed
 // the results back, until the model answers with no tool calls or the round
-// cap is hit. The mock path streams a canned reply word by word so the UI is
-// identical with and without a real model.
+// cap is hit.
 
 import std/string
-import std/sync { sleep_millis }
 import "github.com/martian56/aviary" { complete_stream }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { ToolCall }
@@ -15,11 +13,7 @@ import "../tools/registry" { tools, needs_approval, dispatch, label }
 
 const MAX_ROUNDS: Int = 25
 
-fun run_turn(st: AgentState, model: String, base_url: String, use_mock: Bool, mock_text: String) {
-    if use_mock {
-        _stream_mock(st, mock_text)
-        return
-    }
+fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
     // Tool kinds the user approved for the rest of this turn.
     let allowed: List<String> = []
     let round = 0
@@ -30,7 +24,7 @@ fun run_turn(st: AgentState, model: String, base_url: String, use_mock: Bool, mo
             return
         }
         st.emit(DisplayEvent.Started)
-        let req = _with_tools(build_request(model, st.messages(), base_url, 0))
+        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0))
         let on_chunk = fun(d: String) -> Unit = st.chunk(d)
 
         let reply_text = ""
@@ -127,27 +121,4 @@ fun _short(result: String) -> String {
         first = "${first.substring(0, 60)}…"
     }
     return first
-}
-
-fun _stream_mock(st: AgentState, text: String) {
-    st.emit(DisplayEvent.Started)
-    let words = text.split(" ")
-    let i = 0
-    while i < words.len() {
-        if st.interrupted() {
-            st.push_assistant(text)
-            st.finish()
-            return
-        }
-        let piece = words[i]
-        if i > 0 {
-            piece = " ".concat(piece)
-        }
-        st.chunk(piece)
-        sleep_millis(45)
-        i = i + 1
-    }
-    st.push_assistant(text)
-    st.finish()
-    return
 }

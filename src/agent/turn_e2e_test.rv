@@ -100,7 +100,7 @@ fun test_full_read_tool_turn() {
     st.push_user("what does the file say?")
     st.begin()
     spawn(fun() -> Unit {
-        run_turn(st, "custom/local", "http://127.0.0.1:8461/v1", false, "")
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8461/v1")
     })
     let got = e2e_drain(st)
     // The read tool ran (auto, no approval) and the final answer streamed.
@@ -122,7 +122,7 @@ fun test_write_tool_turn_goes_through_approval() {
     st.push_user("please write the file")
     st.begin()
     spawn(fun() -> Unit {
-        run_turn(st, "custom/local", "http://127.0.0.1:8462/v1", false, "")
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8462/v1")
     })
     // Play the user: wait for the approval prompt, then allow it.
     _approve_when_pending(st)

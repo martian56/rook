@@ -1,19 +1,32 @@
-// The models the /model picker offers. This is a convenience list, not a
-// limit: /model <provider/model> accepts any string aviary can route, so a
-// model missing here is still reachable by typing it.
+// The models the /model picker offers, OpenRouter first since that is the
+// common testing path. This is a convenience list, not a limit: /model
+// <provider/model> accepts any string aviary can route, so a model missing
+// here is still reachable by typing it.
 
 fun catalog() -> List<String> {
     return [
+        "openrouter/anthropic/claude-sonnet-4.5",
+        "openrouter/anthropic/claude-3.7-sonnet",
+        "openrouter/anthropic/claude-3.5-sonnet",
+        "openrouter/openai/gpt-4o",
+        "openrouter/openai/gpt-4o-mini",
+        "openrouter/openai/o3-mini",
+        "openrouter/google/gemini-2.5-pro",
+        "openrouter/google/gemini-2.0-flash-001",
+        "openrouter/meta-llama/llama-3.3-70b-instruct",
+        "openrouter/deepseek/deepseek-chat",
+        "openrouter/deepseek/deepseek-r1",
+        "openrouter/x-ai/grok-2-1212",
+        "openrouter/qwen/qwen-2.5-coder-32b-instruct",
+        "openrouter/mistralai/mistral-large",
         "anthropic/claude-sonnet-4-5",
-        "anthropic/claude-opus-4-1",
         "anthropic/claude-3-5-haiku-latest",
         "openai/gpt-4o",
         "openai/gpt-4o-mini",
-        "openai/o3-mini",
         "google/gemini-2.0-flash",
         "groq/llama-3.3-70b-versatile",
         "deepseek/deepseek-chat",
-        "openrouter/anthropic/claude-3.5-sonnet",
+        "mistral/mistral-large-latest",
         "ollama/llama3",
     ]
 }

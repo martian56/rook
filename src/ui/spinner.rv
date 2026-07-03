@@ -1,0 +1,14 @@
+// The thinking indicator: a rotating verb and a pulsing marker shown while a
+// turn is in flight.
+
+import std/string
+
+fun thinking_word(index: Int) -> String {
+    let words = ["Thinking", "Pondering", "Brewing", "Musing", "Tinkering", "Percolating"]
+    return words[index % words.len()]
+}
+
+fun pulse(tick: Int) -> String {
+    let frames = ["·", "✢", "✳", "✻", "✽", "✻", "✳", "✢"]
+    return frames[tick % frames.len()]
+}

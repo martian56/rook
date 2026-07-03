@@ -5,7 +5,7 @@
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
 import "../ui/transcript" { Entry }
-import "../config/config" { resolve_model, resolve_base, key_present, save_model }
+import "../config/config" { resolve_model, resolve_base, resolve_key, save_model }
 
 struct Chat {
     entries: List<Entry>,
@@ -25,20 +25,21 @@ struct Chat {
     scroll_up: Int,
     armed: Bool,
     turns: Int,
-    // "provider/model"; use_mock is set when its key is absent.
+    // "provider/model" and the key for its provider ("" when none is set).
     model: String,
+    api_key: String,
     // A custom endpoint, "" for the provider default.
     base_url: String,
-    use_mock: Bool,
     // The /model picker overlay.
     picking: Bool,
     pick_sel: Int,
+    // The API-key entry overlay.
+    entering_key: Bool,
+    key_input: TextInput,
 }
 
 fun chat_init() -> Chat {
     let model = resolve_model()
-    let base_url = resolve_base()
-    let use_mock = base_url == "" && !key_present(model)
     let entries: List<Entry> = []
     return Chat {
         entries,
@@ -55,18 +56,20 @@ fun chat_init() -> Chat {
         armed: false,
         turns: 0,
         model,
-        base_url,
-        use_mock,
+        api_key: resolve_key(model),
+        base_url: resolve_base(),
         picking: false,
         pick_sel: 0,
+        entering_key: false,
+        key_input: TextInput.new(),
     }
 }
 
-// Adopt a newly chosen model: update the running config and persist it so the
-// next session remembers it.
+// Adopt a newly chosen model: update the running config, resolve its key, and
+// persist the choice so the next session remembers it.
 fun set_model(m: Chat, model: String) {
     m.model = model
-    m.use_mock = !key_present(model)
+    m.api_key = resolve_key(model)
     save_model(model)
     return
 }

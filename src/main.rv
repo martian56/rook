@@ -1,10 +1,9 @@
 // rook: a terminal coding agent built on plumage. It streams a real model's
-// reply, and (from phase 3) runs tools with your approval; with no provider
-// key set it falls back to an offline mock so it runs anywhere.
+// reply and runs tools (read, search, edit, run commands) with your approval.
 //
 // Run with: rvpm run          (optionally: rvpm run -- --model openai/gpt-4o)
 // Keys: type and Enter to send. Esc interrupts. ctrl+c twice quits.
-// PageUp/PageDown or the mouse wheel scroll. Commands: /model /clear /help /quit.
+// PageUp/PageDown or the mouse wheel scroll. Commands: /model /key /clear /help /quit.
 
 import std/io { println }
 import "github.com/martian56/plumage" { App, run }

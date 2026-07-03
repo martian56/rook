@@ -14,6 +14,7 @@ const SYSTEM_PROMPT: String = "You are rook, a coding assistant working in the u
 fun build_request(
     model: String,
     history: List<Message>,
+    api_key: String,
     base_url: String,
     timeout_ms: Int,
 ) -> ChatRequest {
@@ -22,6 +23,9 @@ fun build_request(
     while i < history.len() {
         req = req.message(history[i])
         i = i + 1
+    }
+    if api_key != "" {
+        req = req.key(api_key)
     }
     if base_url != "" {
         req = req.base(base_url)

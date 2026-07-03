@@ -20,15 +20,15 @@ language.
 rvpm run
 ```
 
-in a real terminal. Set a provider key first (rook reads it from the
-environment):
+in a real terminal, then give it an API key. Either export one:
 
 ```
-export ANTHROPIC_API_KEY=...      # or OPENAI_API_KEY, GEMINI_API_KEY, ...
+export OPENROUTER_API_KEY=...     # or OPENAI_API_KEY, ANTHROPIC_API_KEY, ...
 ```
 
-With no key set, rook still runs on an offline mock so you can try the
-interface; the status bar shows `(mock)`.
+or type **`/key`** in the app and paste the key for the current provider. A
+key entered that way is saved to `~/.rook/auth.json` and reused next time.
+OpenRouter is the default provider, since one key there reaches most models.
 
 ## Talking to it
 
@@ -62,8 +62,9 @@ Models are `provider/model` strings (aviary's format).
 for a local or self-hosted model.
 
 The provider's key comes from its environment variable
-(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, and so on). If the
-selected provider has no key, rook warns and falls back to the mock.
+(`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and so on), or
+from a key you entered with `/key` (stored in `~/.rook/auth.json`). Picking a
+model whose provider has no key opens the key prompt automatically.
 
 ## Tools
 
@@ -78,7 +79,8 @@ noisy command cannot bury the answer.
 
 ## Commands
 
-`/help`, `/clear` (wipe the conversation), `/model`, `/quit`.
+`/help`, `/clear` (wipe the conversation), `/model`, `/key` (set the current
+provider's API key), `/quit`.
 
 ## How it is built
 
@@ -93,17 +95,17 @@ on while the UI renders the prompt.
 src/
   main.rv            entry: build the app and run it
   app/               model, update (events, keys, approvals), view
-  agent/             the turn loop, shared state, session, mock fallback
+  agent/             the turn loop, shared state, session
   tools/             file, search, and shell tools, plus the schema registry
   config/            model resolution, rook.json, the /model catalog
-  ui/                the transcript renderer and theme
+  ui/                the transcript renderer, theme, and spinner
   commands.rv        slash-command parsing
 ```
 
 ## Development
 
 ```
-rvpm test    # 39 tests: tools, config, commands, and end-to-end turns
+rvpm test    # 42 tests: tools, config, commands, and end-to-end turns
              # (streaming, tool calls, and approval) against a local server
 rvpm build
 rvpm fmt

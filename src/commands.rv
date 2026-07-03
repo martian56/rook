@@ -11,6 +11,7 @@ enum Command {
     Quit,
     ModelPicker,
     ModelSet(String),
+    Login,
     Unknown(String),
 }
 
@@ -26,6 +27,9 @@ fun parse_command(text: String) -> Command {
     }
     if text == "/help" {
         return Command.Help
+    }
+    if text == "/key" || text == "/login" {
+        return Command.Login
     }
     if text == "/model" {
         return Command.ModelPicker
