@@ -87,7 +87,34 @@ fun skills_prompt(skills: List<Skill>) -> String {
         out = "${out}\n- ${skills[i].name}: ${d}"
         i = i + 1
     }
-    return out
+    return "${out}\nWhen a skill matches the task at hand, call use_skill with its name to load the full instructions before proceeding."
+}
+
+// The full instructions of one skill, for the use_skill tool. Unknown names
+// get an error string listing what exists, so the model can correct itself.
+fun skill_body(rs: List<String>, name: String) -> String {
+    let skills = load_skills(rs)
+    if skills.len() == 0 {
+        return "error: no skills are defined"
+    }
+    let want = name.to_lower()
+    let i = 0
+    while i < skills.len() {
+        if skills[i].name.to_lower() == want {
+            return "skill ${skills[i].name}:\n${skills[i].body}"
+        }
+        i = i + 1
+    }
+    let names = ""
+    i = 0
+    while i < skills.len() {
+        if i > 0 {
+            names = names.concat(", ")
+        }
+        names = names.concat(skills[i].name)
+        i = i + 1
+    }
+    return "error: no skill named '${name}'; available: ${names}"
 }
 
 // The "key: value" payload of a frontmatter line, unquoted and trimmed, or

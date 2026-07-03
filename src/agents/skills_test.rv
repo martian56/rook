@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./skills" { Skill, load_skills, parse_skill, skills_prompt }
+import "./skills" { Skill, load_skills, parse_skill, skills_prompt, skill_body }
 
 const SAMPLE: String = "---\nname: release\ndescription: \"How to cut a release\"\n---\n\nSteps:\n1. bump the version"
 
@@ -68,6 +68,26 @@ fun test_prompt_lists_names_and_descriptions() {
     let one = [Skill { name: "release", description: "cut a release", body: "b", path: "p" }]
     let p = skills_prompt(one)
     assert_true(p.contains("- release: cut a release"))
+    assert_true(p.contains("use_skill"))
+}
+
+fun test_skill_body_finds_ignoring_case_and_reports_unknowns() {
+    create_dir_all("_rook_sb/skills/release")
+    write("_rook_sb/skills/release/SKILL.md", "---\nname: release\n---\nbump, tag, push")
+
+    let hit = skill_body(["_rook_sb"], "Release")
+    assert_true(hit.contains("bump, tag, push"))
+    let miss = skill_body(["_rook_sb"], "deploy")
+    assert_true(miss.starts_with("error:"))
+    assert_true(miss.contains("release"))
+    let empty: List<String> = []
+    assert_true(skill_body(empty, "x").starts_with("error:"))
+
+    remove_file("_rook_sb/skills/release/SKILL.md")
+    remove_dir("_rook_sb/skills/release")
+    remove_dir("_rook_sb/skills")
+    remove_dir("_rook_sb")
+    return
 }
 
 fun _find(skills: List<Skill>, name: String) -> Skill {

@@ -8,7 +8,7 @@ fun call(name: String, args: String) -> ToolCall {
 }
 
 fun test_all_tools_are_defined() {
-    assert_eq_int(tools().len(), 6)
+    assert_eq_int(tools().len(), 7)
 }
 
 fun test_approval_policy() {
@@ -18,6 +18,7 @@ fun test_approval_policy() {
     assert_false(needs_approval("read_file"))
     assert_false(needs_approval("list_dir"))
     assert_false(needs_approval("grep"))
+    assert_false(needs_approval("use_skill"))
 }
 
 fun test_label_reads_arguments() {
@@ -39,4 +40,11 @@ fun test_dispatch_routes_read_command() {
 
 fun test_dispatch_unknown_tool() {
     assert_true(dispatch(call("nope", "{}")).starts_with("error:"))
+}
+
+fun test_use_skill_routes_and_labels() {
+    // With no .agents folder in the repo, any skill lookup is the
+    // no-skills error, proving dispatch reached the skills module.
+    assert_true(dispatch(call("use_skill", "{\"name\":\"x\"}")).starts_with("error:"))
+    assert_eq_str(label(call("use_skill", "{\"name\":\"release\"}")), "use_skill(release)")
 }

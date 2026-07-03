@@ -9,6 +9,8 @@ import "./args" { arg }
 import "./files" { read_file, list_dir, write_file, edit_file }
 import "./search" { grep }
 import "./shell" { run_command }
+import "../agents/dir" { roots }
+import "../agents/skills" { skill_body }
 
 // One schema field: a string property and its description.
 struct Prop {
@@ -67,6 +69,11 @@ fun tools() -> List<ToolDef> {
             "Run a shell command in the working directory and return its stdout, stderr, and exit code.",
             _schema([Prop { name: "command", desc: "the shell command to run" }]),
         ),
+        ToolDef.new(
+            "use_skill",
+            "Load the full instructions of a skill listed in the system prompt. Call it when a skill matches the task, before doing that work.",
+            _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
+        ),
     ]
 }
 
@@ -96,6 +103,9 @@ fun dispatch(call: ToolCall) -> String {
     if call.name == "run_command" {
         return run_command(arg(a, "command"))
     }
+    if call.name == "use_skill" {
+        return skill_body(roots(), arg(a, "name"))
+    }
     return "error: unknown tool '${call.name}'"
 }
 
@@ -114,6 +124,9 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "run_command" {
         return "run_command(${arg(a, "command")})"
+    }
+    if call.name == "use_skill" {
+        return "use_skill(${arg(a, "name")})"
     }
     return call.name
 }

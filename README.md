@@ -98,7 +98,9 @@ global `~/.agents`, with project entries winning. A skill is a folder
 `.agents/skills/<name>/` holding a `SKILL.md`, frontmatter with a `name`
 and one-line `description`, then a markdown body of instructions. The
 model sees an index of skill names and descriptions in its system
-prompt.
+prompt, and pulls in a skill's full instructions with the `use_skill`
+tool when one matches the task (shown in the transcript like any other
+tool call).
 
 ## How it is built
 
