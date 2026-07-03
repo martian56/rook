@@ -2,8 +2,10 @@
 // persist.
 //
 // Model resolution at startup (highest first): the --model flag, ROOK_MODEL,
-// a project ./rook.json "model", a global ~/.config/rook/rook.json "model",
-// the last model picked in a previous session, then a built-in default.
+// a project ./rook.json "model", the project .agents/settings.json, a global
+// ~/.config/rook/rook.json "model", the global ~/.agents/settings.json, the
+// last model picked in a previous session, then a built-in default. The
+// theme and base_url resolve through the same chain (minus the flag).
 //
 // The API key for a provider comes from its environment variable, else from
 // ~/.rook/auth.json (written when you enter a key with /key). A model whose
@@ -14,6 +16,8 @@ import std/env { get_env, has_env, args }
 import std/fs { read, write, exists, create_dir_all }
 import std/json { JsonValue, parse, stringify }
 import "github.com/martian56/aviary/jsonutil" { Obj }
+import "../agents/dir" { project_root, global_root }
+import "../agents/settings" { setting_str }
 
 // The model used when nothing else selects one. A "provider/model" string.
 const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-4.5"
@@ -37,12 +41,20 @@ fun resolve_model() -> String {
     if proj != "" {
         return proj
     }
+    let ps = setting_str(project_root(), "model")
+    if ps != "" {
+        return ps
+    }
     let h = _home()
     if h != "" {
         let glob = _json_str(_read_opt("${h}/.config/rook/rook.json"), "model")
         if glob != "" {
             return glob
         }
+    }
+    let gs = setting_str(global_root(), "model")
+    if gs != "" {
+        return gs
     }
     let last = last_used()
     if last != "" {
@@ -51,8 +63,8 @@ fun resolve_model() -> String {
     return DEFAULT_MODEL
 }
 
-// A custom OpenAI-compatible endpoint, from ROOK_BASE_URL or rook.json
-// "base_url". Empty means use the provider's default endpoint.
+// A custom OpenAI-compatible endpoint, from ROOK_BASE_URL, rook.json, or the
+// .agents settings. Empty means use the provider's default endpoint.
 fun resolve_base() -> String {
     if has_env("ROOK_BASE_URL") {
         let v = get_env("ROOK_BASE_URL")
@@ -60,16 +72,29 @@ fun resolve_base() -> String {
             return v
         }
     }
-    return _json_str(_read_opt("rook.json"), "base_url")
+    let proj = _json_str(_read_opt("rook.json"), "base_url")
+    if proj != "" {
+        return proj
+    }
+    let ps = setting_str(project_root(), "base_url")
+    if ps != "" {
+        return ps
+    }
+    return setting_str(global_root(), "base_url")
 }
 
-// The theme to start with: a project ./rook.json "theme", a global
-// ~/.config/rook/rook.json "theme", the last theme picked in a previous
-// session, else "" (the caller falls back to the default palette).
+// The theme to start with: a project ./rook.json "theme", the project
+// .agents settings, a global ~/.config/rook/rook.json "theme", the global
+// .agents settings, the last theme picked in a previous session, else ""
+// (the caller falls back to the default palette).
 fun resolve_theme() -> String {
     let proj = _json_str(_read_opt("rook.json"), "theme")
     if proj != "" {
         return proj
+    }
+    let ps = setting_str(project_root(), "theme")
+    if ps != "" {
+        return ps
     }
     let h = _home()
     if h != "" {
@@ -77,6 +102,12 @@ fun resolve_theme() -> String {
         if glob != "" {
             return glob
         }
+    }
+    let gs = setting_str(global_root(), "theme")
+    if gs != "" {
+        return gs
+    }
+    if h != "" {
         return _read_opt("${h}/.rook/last-theme").trim()
     }
     return ""
