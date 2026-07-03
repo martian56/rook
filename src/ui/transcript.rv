@@ -5,7 +5,7 @@
 import std/string
 import "github.com/martian56/plumage/style" { Style, Color }
 import "github.com/martian56/plumage/text" { Span, Line, wrap }
-import "./theme" { accent, dim, tool_color, error_color }
+import "./theme" { Theme }
 
 enum Entry {
     UserMsg(String),
@@ -14,8 +14,8 @@ enum Entry {
     Notice(String),
 }
 
-// Lay the conversation out as lines wrapped to w columns.
-fun build_lines(entries: List<Entry>, w: Int) -> List<Line> {
+// Lay the conversation out as lines wrapped to w columns, styled by the theme.
+fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
     let out: List<Line> = []
     let body = w - 2
     if body < 8 {
@@ -25,21 +25,21 @@ fun build_lines(entries: List<Entry>, w: Int) -> List<Line> {
     while i < entries.len() {
         match entries[i] {
             UserMsg(t) -> {
-                _push_wrapped(out, t, body, "> ", dim(), dim())
+                _push_wrapped(out, t, body, "> ", theme.user, theme.user)
             },
             BotMsg(t) -> {
-                _push_wrapped(out, t, body, "● ", accent(), Style.new())
+                _push_wrapped(out, t, body, "● ", theme.assistant, theme.text)
             },
             ToolMsg(name, result) -> {
                 out.push(
-                    Line.from_spans(
-                        [Span.styled("● ", tool_color()), Span.styled(name, Style.new().bold())],
-                    ),
+                    Line.from_spans([Span.styled("● ", theme.tool), Span.styled(name, theme.text.bold())]),
                 )
-                out.push(Line.from_spans([Span.styled("  ⎿  ", dim()), Span.styled(result, dim())]))
+                out.push(
+                    Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(result, theme.result)]),
+                )
             },
             Notice(t) -> {
-                out.push(Line.styled("  ${t}", error_color()))
+                out.push(Line.styled("  ${t}", theme.error))
             },
         }
         out.push(Line.raw(""))
