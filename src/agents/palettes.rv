@@ -1,0 +1,132 @@
+// User-defined themes: palette files under .agents/themes/, one
+// <name>.json per palette, registered in the picker alongside the
+// built-ins. The schema is the six canonical colors as hex strings:
+//
+//   {
+//     "name": "Midnight",
+//     "accent": "#7aa2f7",
+//     "dim": "#565f89",
+//     "text": "#c0caf5",
+//     "tool": "#9ece6a",
+//     "warn": "#e0af68",
+//     "error": "#f7768e"
+//   }
+//
+// The name falls back to the file stem. A file that fails to parse, or
+// whose colors are not #rrggbb, is skipped.
+
+import std/string
+import std/fs { read, is_file }
+import std/json { JsonValue, parse }
+import "github.com/martian56/plumage/style" { Color }
+import "../ui/theme" { Theme, from_colors }
+import "./dir" { merged_names, path_of }
+
+// Load every palette under the roots' themes/ folders, project shadowing
+// global by file name.
+fun load_custom_themes(rs: List<String>) -> List<Theme> {
+    let out: List<Theme> = []
+    let names = merged_names(rs, "themes")
+    let i = 0
+    while i < names.len() {
+        if names[i].ends_with(".json") {
+            let p = path_of(rs, "themes", names[i])
+            if p != "" && is_file(p) {
+                match read(p) {
+                    Ok(text) -> {
+                        let t = parse_palette(text, names[i].substring(0, names[i].length() - 5))
+                        if t.name != "" {
+                            out.push(t)
+                        }
+                    },
+                    Err(e) -> {},
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Parse one palette document. An invalid document (bad JSON, or any of the
+// six colors missing or not #rrggbb) yields a Theme whose name is "", the
+// skip signal the loader checks.
+fun parse_palette(text: String, fallback_name: String) -> Theme {
+    let invalid = from_colors(
+        "",
+        Color.Gray,
+        Color.Gray,
+        Color.Gray,
+        Color.Gray,
+        Color.Gray,
+        Color.Gray,
+    )
+    return match parse(text) {
+        Ok(j) -> {
+            let av = _field(j, "accent")
+            let dv = _field(j, "dim")
+            let tv = _field(j, "text")
+            let ov = _field(j, "tool")
+            let wv = _field(j, "warn")
+            let ev = _field(j, "error")
+            let out = invalid
+            if is_hex(av) && is_hex(dv) && is_hex(tv) && is_hex(ov) && is_hex(wv) && is_hex(ev) {
+                let name = _field(j, "name")
+                if name == "" {
+                    name = fallback_name
+                }
+                out = from_colors(name, hex(av), hex(dv), hex(tv), hex(ov), hex(wv), hex(ev))
+            }
+            out
+        },
+        Err(e) -> invalid,
+    }
+}
+
+// Whether a string is a #rrggbb color.
+fun is_hex(s: String) -> Bool {
+    if s.length() != 7 || !s.starts_with("#") {
+        return false
+    }
+    let i = 1
+    while i < 7 {
+        if _hx(s.byte_at(i)) < 0 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+// The Color of a #rrggbb string; call is_hex first.
+fun hex(s: String) -> Color {
+    return Color.Rgb(_channel(s, 1), _channel(s, 3), _channel(s, 5))
+}
+
+fun _channel(s: String, at: Int) -> Int {
+    return _hx(s.byte_at(at)) * 16 + _hx(s.byte_at(at + 1))
+}
+
+// A hex digit's value, -1 for anything else.
+fun _hx(b: Int) -> Int {
+    if b >= 48 && b <= 57 {
+        return b - 48
+    }
+    if b >= 97 && b <= 102 {
+        return b - 87
+    }
+    if b >= 65 && b <= 70 {
+        return b - 55
+    }
+    return 0 - 1
+}
+
+fun _field(j: JsonValue, key: String) -> String {
+    return match j.get(key) {
+        Some(v) -> match v.as_string() {
+            Some(s) -> s,
+            None -> "",
+        },
+        None -> "",
+    }
+}

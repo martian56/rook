@@ -58,3 +58,37 @@ fun default_theme() -> Theme {
         error: Style.new().fg(Color.Red),
     }
 }
+
+// Build a Theme from a palette's six canonical colors: the signature accent,
+// the muted comment color, the body text, and green, yellow, red. Every
+// palette, built-in or user-defined, maps onto the roles the same way: the
+// accent is the assistant bullet, the modals, and the spinner; the muted
+// color is the chrome.
+fun from_colors(
+    name: String,
+    accent_c: Color,
+    muted_c: Color,
+    text_c: Color,
+    tool_c: Color,
+    warn_c: Color,
+    error_c: Color,
+) -> Theme {
+    let accent = Style.new().fg(accent_c)
+    let muted = Style.new().fg(muted_c)
+    return Theme {
+        name,
+        accent,
+        dim: muted,
+        text: Style.new().fg(text_c),
+        user: muted,
+        assistant: accent,
+        tool: Style.new().fg(tool_c),
+        result: muted,
+        border: muted,
+        modal: accent,
+        status: muted,
+        spinner: accent,
+        warn: Style.new().fg(warn_c),
+        error: Style.new().fg(error_c),
+    }
+}

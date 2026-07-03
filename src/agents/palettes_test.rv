@@ -1,0 +1,61 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./palettes" { load_custom_themes, parse_palette, is_hex }
+import "../ui/theme" { Theme }
+import "../ui/themes" { merge_custom, builtin_themes }
+
+const DOC: String = "{\"name\": \"Midnight\", \"accent\": \"#7aa2f7\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
+
+fun test_is_hex() {
+    assert_true(is_hex("#7aa2f7"))
+    assert_true(is_hex("#FFFFFF"))
+    assert_true(!is_hex("7aa2f7"))
+    assert_true(!is_hex("#fff"))
+    assert_true(!is_hex("#zzzzzz"))
+}
+
+fun test_parse_palette_reads_the_document() {
+    let t = parse_palette(DOC, "file-stem")
+    assert_eq_str(t.name, "Midnight")
+}
+
+fun test_parse_palette_name_falls_back_to_the_stem() {
+    let no_name = "{\"accent\": \"#7aa2f7\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
+    assert_eq_str(parse_palette(no_name, "midnight").name, "midnight")
+}
+
+fun test_parse_palette_rejects_bad_documents() {
+    assert_eq_str(parse_palette("not json", "n").name, "")
+    let bad_hex = "{\"accent\": \"blue\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
+    assert_eq_str(parse_palette(bad_hex, "n").name, "")
+    let missing = "{\"accent\": \"#7aa2f7\"}"
+    assert_eq_str(parse_palette(missing, "n").name, "")
+}
+
+fun test_load_custom_themes_skips_invalid_files() {
+    create_dir_all("_rook_pal/themes")
+    write("_rook_pal/themes/midnight.json", DOC)
+    write("_rook_pal/themes/broken.json", "not json")
+    write("_rook_pal/themes/notes.txt", "not a palette")
+
+    let themes = load_custom_themes(["_rook_pal"])
+    assert_true(themes.len() == 1)
+    assert_eq_str(themes[0].name, "Midnight")
+
+    remove_file("_rook_pal/themes/midnight.json")
+    remove_file("_rook_pal/themes/broken.json")
+    remove_file("_rook_pal/themes/notes.txt")
+    remove_dir("_rook_pal/themes")
+    remove_dir("_rook_pal")
+    return
+}
+
+fun test_merge_custom_appends_and_skips_collisions() {
+    let midnight = parse_palette(DOC, "x")
+    let nord_clash = "{\"name\": \"Nord\", \"accent\": \"#7aa2f7\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
+    let clash = parse_palette(nord_clash, "y")
+    let merged = merge_custom(builtin_themes(), [midnight, clash])
+    assert_true(merged.len() == builtin_themes().len() + 1)
+    assert_eq_str(merged[merged.len() - 1].name, "Midnight")
+}

@@ -7,11 +7,18 @@
 import std/string
 import std/env { get_env, has_env }
 import "github.com/martian56/plumage/style" { Style, Color }
-import "./theme" { Theme, default_theme }
+import "./theme" { Theme, default_theme, from_colors }
+import "../agents/dir" { roots }
+import "../agents/palettes" { load_custom_themes }
 
-// Every built-in, the two defaults first. The order here is the picker's
-// order.
+// Every theme the picker offers: the built-ins (the two defaults first),
+// then any user-defined palettes from .agents/themes.
 fun all_themes() -> List<Theme> {
+    return merge_custom(builtin_themes(), load_custom_themes(roots()))
+}
+
+// The curated built-ins. The order here is the picker's order.
+fun builtin_themes() -> List<Theme> {
     return [
         default_theme(),
         rook_light(),
@@ -25,6 +32,31 @@ fun all_themes() -> List<Theme> {
         catppuccin_latte(),
         tokyo_night(),
     ]
+}
+
+// Append the custom palettes, skipping any whose name collides with an
+// existing theme (built-ins keep their names).
+fun merge_custom(base: List<Theme>, customs: List<Theme>) -> List<Theme> {
+    let i = 0
+    while i < customs.len() {
+        if !_has_name(base, customs[i].name) {
+            base.push(customs[i])
+        }
+        i = i + 1
+    }
+    return base
+}
+
+fun _has_name(themes: List<Theme>, name: String) -> Bool {
+    let want = name.to_lower()
+    let i = 0
+    while i < themes.len() {
+        if themes[i].name.to_lower() == want {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
 
 // The theme to start with: the remembered choice when it names a built-in,
@@ -91,7 +123,7 @@ fun theme_index(name: String) -> Int {
 // The light counterpart of the default: the coral deepened to stay readable
 // on a white background, with darker chrome and inks to match.
 fun rook_light() -> Theme {
-    return _theme(
+    return from_colors(
         "Rook Light",
         Color.Rgb(180, 70, 38),
         Color.Rgb(115, 115, 115),
@@ -103,7 +135,7 @@ fun rook_light() -> Theme {
 }
 
 fun dracula() -> Theme {
-    return _theme(
+    return from_colors(
         "Dracula",
         Color.Rgb(189, 147, 249),
         Color.Rgb(98, 114, 164),
@@ -115,7 +147,7 @@ fun dracula() -> Theme {
 }
 
 fun gruvbox_dark() -> Theme {
-    return _theme(
+    return from_colors(
         "Gruvbox Dark",
         Color.Rgb(254, 128, 25),
         Color.Rgb(146, 131, 116),
@@ -127,7 +159,7 @@ fun gruvbox_dark() -> Theme {
 }
 
 fun gruvbox_light() -> Theme {
-    return _theme(
+    return from_colors(
         "Gruvbox Light",
         Color.Rgb(175, 58, 3),
         Color.Rgb(124, 111, 100),
@@ -139,7 +171,7 @@ fun gruvbox_light() -> Theme {
 }
 
 fun nord() -> Theme {
-    return _theme(
+    return from_colors(
         "Nord",
         Color.Rgb(136, 192, 208),
         Color.Rgb(76, 86, 106),
@@ -151,7 +183,7 @@ fun nord() -> Theme {
 }
 
 fun solarized_dark() -> Theme {
-    return _theme(
+    return from_colors(
         "Solarized Dark",
         Color.Rgb(38, 139, 210),
         Color.Rgb(88, 110, 117),
@@ -163,7 +195,7 @@ fun solarized_dark() -> Theme {
 }
 
 fun solarized_light() -> Theme {
-    return _theme(
+    return from_colors(
         "Solarized Light",
         Color.Rgb(38, 139, 210),
         Color.Rgb(147, 161, 161),
@@ -175,7 +207,7 @@ fun solarized_light() -> Theme {
 }
 
 fun catppuccin_mocha() -> Theme {
-    return _theme(
+    return from_colors(
         "Catppuccin Mocha",
         Color.Rgb(203, 166, 247),
         Color.Rgb(108, 112, 134),
@@ -187,7 +219,7 @@ fun catppuccin_mocha() -> Theme {
 }
 
 fun catppuccin_latte() -> Theme {
-    return _theme(
+    return from_colors(
         "Catppuccin Latte",
         Color.Rgb(136, 57, 239),
         Color.Rgb(156, 160, 176),
@@ -199,7 +231,7 @@ fun catppuccin_latte() -> Theme {
 }
 
 fun tokyo_night() -> Theme {
-    return _theme(
+    return from_colors(
         "Tokyo Night",
         Color.Rgb(122, 162, 247),
         Color.Rgb(86, 95, 137),
@@ -208,35 +240,4 @@ fun tokyo_night() -> Theme {
         Color.Rgb(224, 175, 104),
         Color.Rgb(247, 118, 142),
     )
-}
-
-// Build a Theme from a palette's six canonical colors: the signature accent,
-// the muted comment color, the body text, and green, yellow, red.
-fun _theme(
-    name: String,
-    accent_c: Color,
-    muted_c: Color,
-    text_c: Color,
-    tool_c: Color,
-    warn_c: Color,
-    error_c: Color,
-) -> Theme {
-    let accent = Style.new().fg(accent_c)
-    let muted = Style.new().fg(muted_c)
-    return Theme {
-        name,
-        accent,
-        dim: muted,
-        text: Style.new().fg(text_c),
-        user: muted,
-        assistant: accent,
-        tool: Style.new().fg(tool_c),
-        result: muted,
-        border: muted,
-        modal: accent,
-        status: muted,
-        spinner: accent,
-        warn: Style.new().fg(warn_c),
-        error: Style.new().fg(error_c),
-    }
 }
