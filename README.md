@@ -127,6 +127,13 @@ over the same root's settings, and project beats global). The object
 sections are reserved for the permission rules, tool config, and MCP
 servers that will read them.
 
+Custom slash commands live in `.agents/commands/<name>.md`: optional
+frontmatter with a `description` (shown by `/help`), then a prompt
+template. `/name args` sends the template with `$ARGUMENTS` replaced by
+`args` (or the args appended when the template has no placeholder). The
+transcript shows what you typed; the model gets the expansion. Built-in
+commands cannot be overridden.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

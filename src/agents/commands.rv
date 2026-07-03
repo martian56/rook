@@ -1,0 +1,147 @@
+// Custom slash commands: prompt templates under .agents/commands/, one
+// <name>.md per command, registered as /name. The file is optional
+// frontmatter (a one-line description shown in /help) over a markdown body,
+// the template. "$ARGUMENTS" in the template is replaced by whatever the
+// user typed after the command name; a template without the placeholder gets
+// the arguments appended instead.
+
+import std/string
+import std/fs { read, is_file }
+import "./dir" { merged_names, path_of }
+
+struct CustomCommand {
+    name: String,
+    description: String,
+    template: String,
+}
+
+// Load every command under the roots' commands/ folders, project shadowing
+// global by file name. Only .md files count; the file stem is the name.
+fun load_commands(rs: List<String>) -> List<CustomCommand> {
+    let out: List<CustomCommand> = []
+    let names = merged_names(rs, "commands")
+    let i = 0
+    while i < names.len() {
+        if names[i].ends_with(".md") {
+            let p = path_of(rs, "commands", names[i])
+            if p != "" && is_file(p) {
+                match read(p) {
+                    Ok(text) -> {
+                        out.push(parse_command_file(text, names[i].substring(0, names[i].length() - 3)))
+                    },
+                    Err(e) -> {},
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Parse one command file: frontmatter between "---" lines may set the
+// description; the rest is the template.
+fun parse_command_file(text: String, name: String) -> CustomCommand {
+    let description = ""
+    let template = text
+    let lines = text.lines()
+    if lines.len() > 0 && lines[0].trim() == "---" {
+        let i = 1
+        let closed = 0 - 1
+        while i < lines.len() {
+            if lines[i].trim() == "---" {
+                closed = i
+                break
+            }
+            let d = _value(lines[i], "description")
+            if d != "" {
+                description = d
+            }
+            i = i + 1
+        }
+        if closed >= 0 {
+            template = _join_from(lines, closed + 1)
+        }
+    }
+    return CustomCommand { name, description, template: template.trim() }
+}
+
+// Expand typed input like "/release 1.2" against the commands. "" when the
+// input is not a slash command or no command matches, so the caller falls
+// through to its unknown-command handling.
+fun find_expansion(cmds: List<CustomCommand>, text: String) -> String {
+    if !text.starts_with("/") {
+        return ""
+    }
+    let rest = text.substring(1, text.length())
+    let name = rest
+    let args = ""
+    let sp = rest.index_of(" ")
+    if sp >= 0 {
+        name = rest.substring(0, sp)
+        args = rest.substring(sp + 1, rest.length()).trim()
+    }
+    let want = name.to_lower()
+    let i = 0
+    while i < cmds.len() {
+        if cmds[i].name.to_lower() == want {
+            return expand(cmds[i].template, args)
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// Fill a template with the arguments: replace "$ARGUMENTS" where present,
+// else append non-empty arguments after a blank line.
+fun expand(template: String, args: String) -> String {
+    if template.contains("$ARGUMENTS") {
+        return template.replace("$ARGUMENTS", args)
+    }
+    if args == "" {
+        return template
+    }
+    return "${template}\n\n${args}"
+}
+
+// The /help addendum listing the loaded commands, "" when there are none.
+fun commands_help(cmds: List<CustomCommand>) -> String {
+    if cmds.len() == 0 {
+        return ""
+    }
+    let out = " Project commands:"
+    let i = 0
+    while i < cmds.len() {
+        let d = cmds[i].description
+        if d == "" {
+            d = "no description"
+        }
+        out = "${out}\n/${cmds[i].name} - ${d}"
+        i = i + 1
+    }
+    return out
+}
+
+fun _value(line: String, key: String) -> String {
+    let t = line.trim()
+    if !t.starts_with("${key}:") {
+        return ""
+    }
+    let v = t.substring(key.length() + 1, t.length()).trim()
+    if v.length() >= 2 && v.starts_with("\"") && v.ends_with("\"") {
+        v = v.substring(1, v.length() - 1)
+    }
+    return v
+}
+
+fun _join_from(lines: List<String>, start: Int) -> String {
+    let out = ""
+    let i = start
+    while i < lines.len() {
+        if i > start {
+            out = out.concat("\n")
+        }
+        out = out.concat(lines[i])
+        i = i + 1
+    }
+    return out
+}
