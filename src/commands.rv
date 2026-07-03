@@ -11,6 +11,8 @@ enum Command {
     Quit,
     ModelPicker,
     ModelSet(String),
+    ThemePicker,
+    ThemeSet(String),
     Login,
     Unknown(String),
 }
@@ -40,6 +42,16 @@ fun parse_command(text: String) -> Command {
             return Command.ModelPicker
         }
         return Command.ModelSet(arg)
+    }
+    if text == "/theme" {
+        return Command.ThemePicker
+    }
+    if text.starts_with("/theme ") {
+        let arg = text.substring(7, text.length()).trim()
+        if arg == "" {
+            return Command.ThemePicker
+        }
+        return Command.ThemeSet(arg)
     }
     return Command.Unknown(text)
 }

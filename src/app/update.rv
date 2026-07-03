@@ -13,9 +13,10 @@ import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../commands" { Command, parse_command }
 import "../config/catalog" { catalog, index_of }
-import "../config/config" { provider_of, key_needed, save_key }
+import "../config/config" { provider_of, key_needed, save_key, save_theme }
+import "../ui/themes" { all_themes, theme_by_name, theme_index }
 
-const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /key sets the current provider's API key, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
+const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /theme switches the color theme, /key sets the current provider's API key, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -116,6 +117,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     if m.picking {
         return _pick_key(m, k)
+    }
+    if m.theme_picking {
+        return _theme_pick_key(m, k)
     }
     if m.pending != "" {
         return _approval_key(m, k)
@@ -225,6 +229,40 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
+// Navigate the /theme picker. Moving the selection applies the palette
+// immediately so the whole UI previews it; enter keeps and persists the
+// choice, esc restores the theme that was active before.
+fun _theme_pick_key(m: Chat, k: Key) -> Step<Chat> {
+    let items = all_themes()
+    match k {
+        Up -> {
+            if m.theme_sel > 0 {
+                m.theme_sel = m.theme_sel - 1
+            }
+            m.theme = items[m.theme_sel]
+        },
+        Down -> {
+            if m.theme_sel < items.len() - 1 {
+                m.theme_sel = m.theme_sel + 1
+            }
+            m.theme = items[m.theme_sel]
+        },
+        Enter -> {
+            m.theme = items[m.theme_sel]
+            save_theme(m.theme.name)
+            m.theme_picking = false
+            m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+            m.scroll_up = 0
+        },
+        Esc -> {
+            m.theme = theme_by_name(m.theme_prev)
+            m.theme_picking = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
 // Enter the current provider's API key. Enter saves it (to ~/.rook/auth.json)
 // and applies it to the session; esc cancels.
 fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
@@ -299,6 +337,26 @@ fun _submit(m: Chat) -> Step<Chat> {
         ModelSet(id) -> {
             set_model(m, id)
             _after_model_set(m)
+            return next(m)
+        },
+        ThemePicker -> {
+            m.theme_prev = m.theme.name
+            m.theme_sel = theme_index(m.theme.name)
+            if m.theme_sel < 0 {
+                m.theme_sel = 0
+            }
+            m.theme_picking = true
+            return next(m)
+        },
+        ThemeSet(name) -> {
+            let idx = theme_index(name)
+            if idx < 0 {
+                m.entries.push(Entry.Notice("no theme named ${name}; /theme lists them"))
+            } else {
+                m.theme = all_themes()[idx]
+                save_theme(m.theme.name)
+                m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+            }
             return next(m)
         },
         Login -> {

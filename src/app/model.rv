@@ -5,8 +5,9 @@
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
 import "../ui/transcript" { Entry }
-import "../ui/theme" { Theme, default_theme }
-import "../config/config" { resolve_model, resolve_base, resolve_key, save_model }
+import "../ui/theme" { Theme }
+import "../ui/themes" { theme_by_name }
+import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model }
 
 struct Chat {
     entries: List<Entry>,
@@ -39,6 +40,11 @@ struct Chat {
     key_input: TextInput,
     // The active palette; every view reads its styles from here.
     theme: Theme,
+    // The /theme picker overlay: open, the highlighted row, and the name to
+    // restore on cancel (selection previews live).
+    theme_picking: Bool,
+    theme_sel: Int,
+    theme_prev: String,
 }
 
 fun chat_init() -> Chat {
@@ -65,7 +71,10 @@ fun chat_init() -> Chat {
         pick_sel: 0,
         entering_key: false,
         key_input: TextInput.new(),
-        theme: default_theme(),
+        theme: theme_by_name(resolve_theme()),
+        theme_picking: false,
+        theme_sel: 0,
+        theme_prev: "",
     }
 }
 

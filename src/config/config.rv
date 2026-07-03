@@ -1,4 +1,5 @@
-// Which model to use, its API key, and how both persist.
+// Which model and theme to use, the model's API key, and how all three
+// persist.
 //
 // Model resolution at startup (highest first): the --model flag, ROOK_MODEL,
 // a project ./rook.json "model", a global ~/.config/rook/rook.json "model",
@@ -60,6 +61,37 @@ fun resolve_base() -> String {
         }
     }
     return _json_str(_read_opt("rook.json"), "base_url")
+}
+
+// The theme to start with: a project ./rook.json "theme", a global
+// ~/.config/rook/rook.json "theme", the last theme picked in a previous
+// session, else "" (the caller falls back to the default palette).
+fun resolve_theme() -> String {
+    let proj = _json_str(_read_opt("rook.json"), "theme")
+    if proj != "" {
+        return proj
+    }
+    let h = _home()
+    if h != "" {
+        let glob = _json_str(_read_opt("${h}/.config/rook/rook.json"), "theme")
+        if glob != "" {
+            return glob
+        }
+        return _read_opt("${h}/.rook/last-theme").trim()
+    }
+    return ""
+}
+
+// Remember `name` as the theme for the next session.
+fun save_theme(name: String) {
+    let h = _home()
+    if h == "" {
+        return
+    }
+    let dir = "${h}/.rook"
+    create_dir_all(dir)
+    write("${dir}/last-theme", name)
+    return
 }
 
 // The last model picked in a previous session, or "" when none was saved.

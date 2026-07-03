@@ -12,6 +12,7 @@ import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
 import "./model" { Chat }
 import "../ui/transcript" { build_lines }
+import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
 import "../config/catalog" { catalog }
@@ -39,6 +40,9 @@ fun chat_view(m: Chat, f: Frame) {
     }
     if m.picking {
         _picker(m, f)
+    }
+    if m.theme_picking {
+        _theme_picker(m, f)
     }
     if m.entering_key {
         _key_modal(m, f)
@@ -142,6 +146,43 @@ fun _picker(m: Chat, f: Frame) {
     )
     box.render(area, f.buf)
     ListView.new(items).selected(m.pick_sel).highlight_style(m.theme.modal.reverse()).render(
+        box.inner(area),
+        f.buf,
+    )
+    return
+}
+
+// A centered modal listing the themes; the highlighted palette is applied
+// live, so the screen behind it is the preview.
+fun _theme_picker(m: Chat, f: Frame) {
+    let full = f.area()
+    let themes = all_themes()
+    let items: List<String> = []
+    let i = 0
+    while i < themes.len() {
+        items.push(themes[i].name)
+        i = i + 1
+    }
+    let h = items.len() + 2
+    if h > full.h {
+        h = full.h
+    }
+    let w = 46
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Select a theme  (enter, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
+    )
+    box.render(area, f.buf)
+    ListView.new(items).selected(m.theme_sel).highlight_style(m.theme.modal.reverse()).render(
         box.inner(area),
         f.buf,
     )

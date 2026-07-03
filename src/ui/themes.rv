@@ -26,15 +26,26 @@ fun all_themes() -> List<Theme> {
 
 // Look a theme up by name; unknown names fall back to the default.
 fun theme_by_name(name: String) -> Theme {
+    let idx = theme_index(name)
+    if idx < 0 {
+        return default_theme()
+    }
+    return all_themes()[idx]
+}
+
+// The position of a theme in all_themes, matched without regard to case so
+// "/theme dracula" finds Dracula. -1 when no built-in has that name.
+fun theme_index(name: String) -> Int {
+    let want = name.to_lower()
     let themes = all_themes()
     let i = 0
     while i < themes.len() {
-        if themes[i].name == name {
-            return themes[i]
+        if themes[i].name.to_lower() == want {
+            return i
         }
         i = i + 1
     }
-    return default_theme()
+    return 0 - 1
 }
 
 fun dracula() -> Theme {

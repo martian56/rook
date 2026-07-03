@@ -79,8 +79,13 @@ noisy command cannot bury the answer.
 
 ## Commands
 
-`/help`, `/clear` (wipe the conversation), `/model`, `/key` (set the current
-provider's API key), `/quit`.
+`/help`, `/clear` (wipe the conversation), `/model`, `/theme` (pick a color
+theme; arrow keys preview it live, and the choice is remembered), `/key`
+(set the current provider's API key), `/quit`.
+
+Built-in themes: Rook, Dracula, Gruvbox Dark and Light, Nord, Solarized
+Dark and Light, Catppuccin Mocha and Latte, Tokyo Night. `/theme nord`
+sets one directly.
 
 ## How it is built
 

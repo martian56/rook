@@ -1,5 +1,5 @@
 import std/test { assert_eq_str, assert_true }
-import "./themes" { all_themes, theme_by_name }
+import "./themes" { all_themes, theme_by_name, theme_index }
 
 fun test_the_default_leads_the_list() {
     let themes = all_themes()
@@ -14,6 +14,16 @@ fun test_lookup_by_name() {
 
 fun test_unknown_name_falls_back_to_the_default() {
     assert_eq_str(theme_by_name("no such palette").name, "Rook")
+}
+
+fun test_index_ignores_case() {
+    assert_true(theme_index("dracula") == 1)
+    assert_true(theme_index("TOKYO NIGHT") == 9)
+    assert_eq_str(theme_by_name("gruvbox dark").name, "Gruvbox Dark")
+}
+
+fun test_index_of_unknown_is_negative() {
+    assert_true(theme_index("no such palette") < 0)
 }
 
 fun test_names_are_unique() {

@@ -10,6 +10,8 @@ fun tag(c: Command) -> String {
         Quit -> "quit",
         ModelPicker -> "picker",
         ModelSet(id) -> "set:${id}",
+        ThemePicker -> "themes",
+        ThemeSet(name) -> "theme:${name}",
         Login -> "login",
         Unknown(t) -> "unknown:${t}",
     }
@@ -33,6 +35,15 @@ fun test_model_with_arg_sets_directly() {
 
 fun test_model_blank_arg_opens_picker() {
     assert_eq_str(tag(parse_command("/model    ")), "picker")
+}
+
+fun test_theme_opens_picker() {
+    assert_eq_str(tag(parse_command("/theme")), "themes")
+    assert_eq_str(tag(parse_command("/theme   ")), "themes")
+}
+
+fun test_theme_with_arg_sets_directly() {
+    assert_eq_str(tag(parse_command("/theme Nord")), "theme:Nord")
 }
 
 fun test_key_and_login_open_auth() {
