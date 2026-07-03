@@ -1,0 +1,80 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./commands" { CustomCommand, load_commands, parse_command_file, find_expansion, expand, commands_help }
+
+fun test_parse_reads_description_and_template() {
+    let c = parse_command_file(
+        "---\ndescription: cut a release\n---\nBump to $ARGUMENTS.",
+        "release",
+    )
+    assert_eq_str(c.name, "release")
+    assert_eq_str(c.description, "cut a release")
+    assert_eq_str(c.template, "Bump to $ARGUMENTS.")
+}
+
+fun test_parse_without_frontmatter_is_all_template() {
+    let c = parse_command_file("Review the diff.", "review")
+    assert_eq_str(c.description, "")
+    assert_eq_str(c.template, "Review the diff.")
+}
+
+fun test_expand_fills_or_appends_arguments() {
+    assert_eq_str(expand("Bump to $ARGUMENTS now", "1.2"), "Bump to 1.2 now")
+    assert_eq_str(
+        expand("Review the diff.", "focus on tests"),
+        "Review the diff.\n\nfocus on tests",
+    )
+    assert_eq_str(expand("Review the diff.", ""), "Review the diff.")
+}
+
+fun test_find_expansion_matches_by_name() {
+    let cmds = [CustomCommand { name: "release", description: "", template: "Bump to $ARGUMENTS." }]
+    assert_eq_str(find_expansion(cmds, "/release 1.2"), "Bump to 1.2.")
+    assert_eq_str(find_expansion(cmds, "/Release 1.2"), "Bump to 1.2.")
+    assert_eq_str(find_expansion(cmds, "/release"), "Bump to .")
+    assert_eq_str(find_expansion(cmds, "/nope"), "")
+    assert_eq_str(find_expansion(cmds, "plain text"), "")
+}
+
+fun test_load_commands_shadows_and_skips_non_md() {
+    create_dir_all("_rook_cm_p/commands")
+    create_dir_all("_rook_cm_g/commands")
+    write("_rook_cm_p/commands/release.md", "project template")
+    write("_rook_cm_g/commands/release.md", "global template")
+    write("_rook_cm_g/commands/review.md", "---\ndescription: review a diff\n---\nReview.")
+    write("_rook_cm_g/commands/notes.txt", "not a command")
+
+    let cmds = load_commands(["_rook_cm_p", "_rook_cm_g"])
+    assert_true(cmds.len() == 2)
+    assert_eq_str(_find(cmds, "release").template, "project template")
+    assert_eq_str(_find(cmds, "review").description, "review a diff")
+
+    remove_file("_rook_cm_p/commands/release.md")
+    remove_file("_rook_cm_g/commands/release.md")
+    remove_file("_rook_cm_g/commands/review.md")
+    remove_file("_rook_cm_g/commands/notes.txt")
+    remove_dir("_rook_cm_p/commands")
+    remove_dir("_rook_cm_g/commands")
+    remove_dir("_rook_cm_p")
+    remove_dir("_rook_cm_g")
+    return
+}
+
+fun test_help_lists_commands() {
+    let none: List<CustomCommand> = []
+    assert_eq_str(commands_help(none), "")
+    let one = [CustomCommand { name: "release", description: "cut a release", template: "t" }]
+    assert_true(commands_help(one).contains("/release - cut a release"))
+}
+
+fun _find(cmds: List<CustomCommand>, name: String) -> CustomCommand {
+    let i = 0
+    while i < cmds.len() {
+        if cmds[i].name == name {
+            return cmds[i]
+        }
+        i = i + 1
+    }
+    return CustomCommand { name: "", description: "", template: "" }
+}

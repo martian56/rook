@@ -16,6 +16,8 @@ import "../config/catalog" { catalog, index_of }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
+import "../agents/dir" { roots }
+import "../agents/commands" { load_commands, find_expansion, commands_help }
 
 const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /theme switches the color theme, /key sets the current provider's API key, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
 
@@ -327,7 +329,7 @@ fun _submit(m: Chat) -> Step<Chat> {
         },
         Help -> {
             m.entries.push(Entry.UserMsg(text))
-            m.entries.push(Entry.BotMsg(HELP_TEXT))
+            m.entries.push(Entry.BotMsg("${HELP_TEXT}${commands_help(load_commands(roots()))}"))
             return next(m)
         },
         ModelPicker -> {
@@ -365,6 +367,12 @@ fun _submit(m: Chat) -> Step<Chat> {
             return next(m)
         },
         Unknown(t) -> {
+            // A command from .agents/commands: show what was typed, send the
+            // expanded template.
+            let exp = find_expansion(load_commands(roots()), t)
+            if exp != "" {
+                return _send_prompt(m, t, exp)
+            }
             m.entries.push(Entry.UserMsg(t))
             m.entries.push(Entry.Notice("Unknown command: ${t}"))
             return next(m)
@@ -376,11 +384,17 @@ fun _submit(m: Chat) -> Step<Chat> {
     return next(m)
 }
 
-// Start a real turn: echo the prompt, record it in the conversation, and
-// spawn the agent goroutine to stream and run tools. With no key for the
-// provider, prompt for one instead of making a doomed request.
 fun _send(m: Chat, text: String) -> Step<Chat> {
-    m.entries.push(Entry.UserMsg(text))
+    return _send_prompt(m, text, text)
+}
+
+// Start a real turn: echo `display`, record `prompt` in the conversation,
+// and spawn the agent goroutine to stream and run tools. The two differ for
+// a custom command, where the transcript shows what was typed while the
+// model gets the expanded template. With no key for the provider, prompt for
+// one instead of making a doomed request.
+fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
+    m.entries.push(Entry.UserMsg(display))
     if key_needed(m.model) {
         m.entries.push(
             Entry.Notice("no API key for ${provider_of(m.model)}; enter one, then ask again"),
@@ -389,7 +403,7 @@ fun _send(m: Chat, text: String) -> Step<Chat> {
         m.scroll_up = 0
         return next(m)
     }
-    m.agent.push_user(text)
+    m.agent.push_user(prompt)
     m.agent.begin()
     m.word = thinking_word(m.turns)
     m.elapsed = 0
