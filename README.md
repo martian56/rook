@@ -91,6 +91,25 @@ from `COLORFGBG` where the terminal sets it). On terminals without
 truecolor, theme colors are downsampled to the 256-color cube or the
 basic 16, judged from `COLORTERM` and `TERM`.
 
+Your own palettes go in `.agents/themes/<name>.json` (project or
+global) and appear in the picker alongside the built-ins:
+
+```json
+{
+  "name": "Midnight",
+  "accent": "#7aa2f7",
+  "dim": "#565f89",
+  "text": "#c0caf5",
+  "tool": "#9ece6a",
+  "warn": "#e0af68",
+  "error": "#f7768e"
+}
+```
+
+Six colors define a palette; rook maps them onto every UI element the
+same way it does for the built-ins. A palette whose name collides with
+an existing theme is skipped.
+
 ## Skills and memory
 
 rook reads the cross-agent `.agents` layout: a project `./.agents` and a
