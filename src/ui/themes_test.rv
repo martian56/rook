@@ -1,0 +1,30 @@
+import std/test { assert_eq_str, assert_true }
+import "./themes" { all_themes, theme_by_name }
+
+fun test_the_default_leads_the_list() {
+    let themes = all_themes()
+    assert_true(themes.len() == 10)
+    assert_eq_str(themes[0].name, "Rook")
+}
+
+fun test_lookup_by_name() {
+    assert_eq_str(theme_by_name("Nord").name, "Nord")
+    assert_eq_str(theme_by_name("Catppuccin Latte").name, "Catppuccin Latte")
+}
+
+fun test_unknown_name_falls_back_to_the_default() {
+    assert_eq_str(theme_by_name("no such palette").name, "Rook")
+}
+
+fun test_names_are_unique() {
+    let themes = all_themes()
+    let i = 0
+    while i < themes.len() {
+        let j = i + 1
+        while j < themes.len() {
+            assert_true(themes[i].name != themes[j].name)
+            j = j + 1
+        }
+        i = i + 1
+    }
+}
