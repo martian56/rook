@@ -16,9 +16,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
+            name: linux-x86_64
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
+            name: windows-x86_64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -26,29 +26,33 @@ jobs:
       - name: Install Raven
         uses: martian56/setup-raven@v1
 
-      - name: Build
-        run: rvpm build
-
       - name: Package (Linux)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          mkdir -p release
-          tar -czf "release/rook-${version}-${{ matrix.target }}.tar.gz" -C target/raven-out rook
+          # dpkg-deb ships on the runner; rpm brings rpmbuild.
+          sudo apt-get update
+          sudo apt-get install -y rpm
+          rvpm dist --target tar,deb,rpm
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          $version = "$env:GITHUB_REF_NAME".TrimStart("v")
-          New-Item -ItemType Directory -Force release | Out-Null
-          Compress-Archive -Path target/raven-out/rook.exe -DestinationPath "release/rook-$version-${{ matrix.target }}.zip"
+          # WiX 3 (candle.exe, light.exe) builds the MSI.
+          choco install wixtoolset --version 3.14.0 --yes --no-progress
+          $env:PATH = "C:\Program Files (x86)\WiX Toolset v3.14\bin;$env:PATH"
+          rvpm dist --target zip,msi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: rook-${{ matrix.target }}
-          path: release/*
+          name: ${{ matrix.name }}
+          path: |
+            target/dist/*.tar.gz
+            target/dist/*.zip
+            target/dist/*.deb
+            target/dist/*.rpm
+            target/dist/*.msi
 
   release:
     needs: build

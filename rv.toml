@@ -8,3 +8,22 @@ edition = "v2"
 "github.com/martian56/perch" = "v0.1.0"
 "github.com/martian56/wingspan" = "v0.1.0"
 "github.com/martian56/aviary" = "v0.3.0"
+
+[dist]
+display_name = "rook"
+description = "A coding agent for the terminal, written in Raven"
+license = "MIT"
+homepage = "https://github.com/martian56/rook"
+maintainer = "martian56 <fuadelizade469@gmail.com>"
+vendor = "martian56"
+
+[[dist.assets]]
+source = "README.md"
+dest = "share/doc/rook/README.md"
+
+[[dist.assets]]
+source = "LICENSE"
+dest = "share/doc/rook/LICENSE"
+
+[dist.windows]
+upgrade_code = "b7e2f1a4-9c3d-4e6f-8a12-3d5e7f9b0c1d"
