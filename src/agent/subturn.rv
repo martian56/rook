@@ -1,0 +1,174 @@
+// A subagent run: an isolated nested turn executed inside the parent turn's
+// goroutine. The subagent gets its own message history, its own system
+// prompt (the definition body), its own tool allowlist and round cap, and
+// hands back only its final text, so nothing but the result enters the
+// parent conversation. Display and approvals still flow through the parent
+// AgentState: tool activity shows as "<agent> › tool(...)" rows, and a
+// mutating call blocks on the same approval prompt as the parent's own.
+
+import std/string
+import "github.com/martian56/aviary" { complete }
+import "github.com/martian56/aviary/request" { ChatRequest }
+import "github.com/martian56/aviary/message" { Message, ToolCall }
+import "./state" { AgentState, DisplayEvent }
+import "../tools/registry" { tools, needs_approval, dispatch, label }
+import "../agents/subagents" { Subagent }
+import "../config/config" { resolve_key }
+
+const SUB_ROUNDS: Int = 15
+
+// The system prompt when a definition body is empty.
+const DEFAULT_SUB_PROMPT: String = "You are a focused assistant working on one delegated task in the user's current directory. Use the available tools to complete it, then reply with a concise final answer; your reply is handed back to the agent that delegated to you."
+
+// Run `agent` against `task` to completion and return its final text, or an
+// "error: ..." string. Blocks the calling goroutine, which is the parent
+// turn; the UI stays live because it only ever reads the shared state.
+fun run_subagent(
+    st: AgentState,
+    agent: Subagent,
+    task: String,
+    model: String,
+    api_key: String,
+    base_url: String,
+) -> String {
+    let use_model = model
+    let use_key = api_key
+    if agent.model != "" {
+        use_model = agent.model
+        use_key = resolve_key(agent.model)
+    }
+    let prompt = agent.prompt
+    if prompt.trim() == "" {
+        prompt = DEFAULT_SUB_PROMPT
+    }
+
+    let history: List<Message> = [Message.user(task)]
+    let allowed: List<String> = []
+    let round = 0
+    while round < SUB_ROUNDS {
+        if st.interrupted() {
+            return "error: interrupted"
+        }
+        let req = _sub_request(use_model, prompt, history, use_key, base_url, agent.tools)
+
+        let reply_text = ""
+        let calls: List<ToolCall> = []
+        let err = ""
+        match complete(req) {
+            Ok(reply) -> {
+                reply_text = reply.content
+                calls = reply.tool_calls
+            },
+            Err(e) -> {
+                err = e.message
+            },
+        }
+        if err != "" {
+            return "error: ${err}"
+        }
+        if calls.len() == 0 {
+            return reply_text
+        }
+
+        history.push(Message.assistant_calls(reply_text, calls))
+        let i = 0
+        while i < calls.len() {
+            let call = calls[i]
+            let result = _sub_one(st, agent, call, allowed)
+            st.emit(DisplayEvent.ToolRan("${agent.name} › ${label(call)}", _short(result)))
+            history.push(Message.tool_result(call.id, call.name, result))
+            i = i + 1
+        }
+        round = round + 1
+    }
+    return "error: the ${agent.name} agent stopped after ${SUB_ROUNDS} tool rounds"
+}
+
+// Run one of the subagent's tool calls: enforce the allowlist, auto-run
+// read-only tools, and gate mutating ones through the parent's approval
+// prompt (labeled with the agent's name so the user knows who is asking).
+fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<String>) -> String {
+    if !_tool_allowed(agent.tools, call.name) {
+        return "error: the ${call.name} tool is not available to this agent"
+    }
+    if !needs_approval(call.name) {
+        return dispatch(call)
+    }
+    if _contains(allowed, call.name) {
+        return dispatch(call)
+    }
+    let decision = st.ask("${agent.name}: ${label(call)}")
+    if decision == 2 {
+        allowed.push(call.name)
+        return dispatch(call)
+    }
+    if decision == 1 {
+        return dispatch(call)
+    }
+    return "The user denied this action. Do not retry it; try another way or report back."
+}
+
+// The subagent's request: its own prompt and history, the session key and
+// endpoint, and only the tools its definition allows.
+fun _sub_request(
+    model: String,
+    prompt: String,
+    history: List<Message>,
+    api_key: String,
+    base_url: String,
+    allow: List<String>,
+) -> ChatRequest {
+    let req = ChatRequest.new(model).system(prompt)
+    let i = 0
+    while i < history.len() {
+        req = req.message(history[i])
+        i = i + 1
+    }
+    if api_key != "" {
+        req = req.key(api_key)
+    }
+    if base_url != "" {
+        req = req.base(base_url)
+    }
+    let ts = tools()
+    let t = 0
+    while t < ts.len() {
+        if _tool_allowed(allow, ts[t].name) {
+            req = req.tool(ts[t])
+        }
+        t = t + 1
+    }
+    return req
+}
+
+// An empty allowlist means every tool.
+fun _tool_allowed(allow: List<String>, name: String) -> Bool {
+    if allow.len() == 0 {
+        return true
+    }
+    return _contains(allow, name)
+}
+
+fun _contains(xs: List<String>, name: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+// A compact one-liner for the tool bullet: the first line, clipped.
+fun _short(result: String) -> String {
+    let first = result
+    let nl = result.index_of("\n")
+    if nl >= 0 {
+        first = result.substring(0, nl)
+    }
+    if first.length() > 60 {
+        first = "${first.substring(0, 60)}…"
+    }
+    return first
+}
