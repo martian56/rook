@@ -17,9 +17,7 @@ import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
-import "../agents/commands" { load_commands, find_expansion, commands_help }
-
-const HELP_TEXT: String = "Commands: /help shows this, /clear wipes the conversation, /model switches model, /theme switches the color theme, /key sets the current provider's API key, /quit exits. Anything else goes to the model, which can read, search, edit files and run commands (you approve the changes). Esc interrupts; ctrl+c twice quits."
+import "../agents/commands" { load_commands, find_expansion }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -123,6 +121,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     if m.theme_picking {
         return _theme_pick_key(m, k)
+    }
+    if m.help_open {
+        return _help_key(m, k)
     }
     if m.pending != "" {
         return _approval_key(m, k)
@@ -278,6 +279,35 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
+// Navigate the /help menu: arrows move over every command, enter runs the
+// highlighted one, esc closes.
+fun _help_key(m: Chat, k: Key) -> Step<Chat> {
+    match k {
+        Up -> {
+            if m.help_sel > 0 {
+                m.help_sel = m.help_sel - 1
+            }
+        },
+        Down -> {
+            if m.help_sel < m.cmd_infos.len() - 1 {
+                m.help_sel = m.help_sel + 1
+            }
+        },
+        Enter -> {
+            let sel = m.help_sel
+            m.help_open = false
+            if sel >= 0 && sel < m.cmd_infos.len() {
+                return _run(m, "/${m.cmd_infos[sel].name}")
+            }
+        },
+        Esc -> {
+            m.help_open = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
 // Navigate the /theme picker. Moving the selection applies the palette
 // immediately so the whole UI previews it; enter keeps and persists the
 // choice, esc restores the theme that was active before.
@@ -380,8 +410,8 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             return next(m)
         },
         Help -> {
-            m.entries.push(Entry.UserMsg(text))
-            m.entries.push(Entry.BotMsg("${HELP_TEXT}${commands_help(load_commands(roots()))}"))
+            m.help_open = true
+            m.help_sel = 0
             return next(m)
         },
         ModelPicker -> {

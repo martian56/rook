@@ -119,24 +119,6 @@ fun command_infos(cmds: List<CustomCommand>) -> List<CmdInfo> {
     return out
 }
 
-// The /help addendum listing the loaded commands, "" when there are none.
-fun commands_help(cmds: List<CustomCommand>) -> String {
-    if cmds.len() == 0 {
-        return ""
-    }
-    let out = " Project commands:"
-    let i = 0
-    while i < cmds.len() {
-        let d = cmds[i].description
-        if d == "" {
-            d = "no description"
-        }
-        out = "${out}\n/${cmds[i].name} - ${d}"
-        i = i + 1
-    }
-    return out
-}
-
 fun _value(line: String, key: String) -> String {
     let t = line.trim()
     if !t.starts_with("${key}:") {

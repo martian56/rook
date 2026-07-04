@@ -56,6 +56,9 @@ struct Chat {
     // the current input.
     slash_sel: Int,
     slash_dismissed: Bool,
+    // The /help overlay: open, and the highlighted command.
+    help_open: Bool,
+    help_sel: Int,
 }
 
 fun chat_init() -> Chat {
@@ -89,6 +92,8 @@ fun chat_init() -> Chat {
         cmd_infos: merge_infos(builtin_commands(), command_infos(load_commands(roots()))),
         slash_sel: 0,
         slash_dismissed: false,
+        help_open: false,
+        help_sel: 0,
     }
 }
 

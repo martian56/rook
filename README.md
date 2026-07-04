@@ -84,9 +84,12 @@ you keep typing: arrow keys move the highlight, **Tab** completes the
 name, **Enter** runs the selection, **Esc** dismisses. Custom commands
 from `.agents/commands/` appear right in the menu.
 
-`/help`, `/clear` (wipe the conversation), `/model`, `/theme` (pick a color
-theme; arrow keys preview it live, and the choice is remembered), `/key`
-(set the current provider's API key), `/quit`.
+`/help` opens the same list as a menu: arrows to browse every command
+(built-in and custom) with its description, Enter to run one, Esc to
+close. The other built-ins: `/clear` (wipe the conversation), `/model`,
+`/theme` (pick a color theme; arrow keys preview it live, and the
+choice is remembered), `/key` (set the current provider's API key),
+`/quit`.
 
 Built-in themes: Rook and Rook Light, Dracula, Gruvbox Dark and Light,
 Nord, Solarized Dark and Light, Catppuccin Mocha and Latte, Tokyo Night.

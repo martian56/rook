@@ -36,7 +36,7 @@ fun chat_view(m: Chat, f: Frame) {
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[3], f)
-    if !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.slash_dismissed {
+    if !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.slash_dismissed {
         _slash_menu(m, rows[2], f)
     }
     if m.pending != "" {
@@ -47,6 +47,9 @@ fun chat_view(m: Chat, f: Frame) {
     }
     if m.theme_picking {
         _theme_picker(m, f)
+    }
+    if m.help_open {
+        _help_menu(m, f)
     }
     if m.entering_key {
         _key_modal(m, f)
@@ -122,6 +125,82 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
         }
         r = r + 1
     }
+    return
+}
+
+// The /help overlay: every command with its description, arrow-navigable.
+// Enter runs the highlighted command, esc closes. The footer carries the key
+// hints that used to live in the /help text.
+fun _help_menu(m: Chat, f: Frame) {
+    let full = f.area()
+    let cmds = m.cmd_infos
+    let count = cmds.len()
+    if count > full.h - 6 {
+        count = full.h - 6
+    }
+    if count < 1 {
+        return
+    }
+    let h = count + 4
+    let w = 64
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Commands  (enter to run, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+
+    let sel = m.help_sel
+    if sel >= cmds.len() {
+        sel = cmds.len() - 1
+    }
+    let top = 0
+    if sel >= count {
+        top = sel - count + 1
+    }
+    let r = 0
+    while r < count {
+        let it = cmds[top + r]
+        let name = "/${it.name}"
+        while name.length() < 12 {
+            name = name.concat(" ")
+        }
+        let avail = inner.w - name.length() - 3
+        let desc = it.desc
+        if avail <= 0 {
+            desc = ""
+        } else {
+            if desc.length() > avail {
+                desc = desc.substring(0, avail)
+            }
+        }
+        if top + r == sel {
+            let row = "${name}  ${desc}"
+            while row.length() < inner.w - 1 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+        } else {
+            let cx = f.buf.set_string(inner.x + 1, inner.y + r, name, m.theme.accent)
+            f.buf.set_string(cx + 2, inner.y + r, desc, m.theme.dim)
+        }
+        r = r + 1
+    }
+    f.buf.set_string(
+        inner.x + 1,
+        inner.y + count + 1,
+        "esc interrupts a turn · ctrl+c twice quits · pageup/pagedown scroll",
+        m.theme.dim,
+    )
     return
 }
 
