@@ -10,6 +10,7 @@ import "./files" { read_file, list_dir, write_file, edit_file }
 import "./search" { grep }
 import "./shell" { run_command }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
+import "./tree" { file_tree }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
 
@@ -34,6 +35,16 @@ fun tools() -> List<ToolDef> {
             "list_dir",
             "List the entries of a directory (defaults to the working directory).",
             _schema([Prop { name: "path", desc: "directory path; defaults to '.'" }]),
+        ),
+        ToolDef.new(
+            "file_tree",
+            "An indented tree of the project structure, depth-limited, with build and dependency noise skipped. The fast way to orient in a repository.",
+            _schema(
+                [
+                    Prop { name: "path", desc: "directory to show; defaults to '.'" },
+                    Prop { name: "depth", desc: "levels to descend; defaults to 3" },
+                ],
+            ),
         ),
         ToolDef.new(
             "grep",
@@ -191,6 +202,9 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "grep" {
         return "grep(${arg(a, "pattern")})"
+    }
+    if call.name == "file_tree" {
+        return "file_tree(${arg(a, "path")})"
     }
     if call.name == "write_file" || call.name == "edit_file" {
         return "${call.name}(${arg(a, "path")})"

@@ -76,7 +76,8 @@ model whose provider has no key opens the key prompt automatically.
 
 The model can call:
 
-- `read_file`, `list_dir`, `grep` (read-only, run automatically)
+- `read_file`, `list_dir`, `file_tree`, `grep` (read-only, run
+  automatically)
 - `write_file`, `edit_file`, `run_command`, `run_background` (mutating,
   approved by you)
 

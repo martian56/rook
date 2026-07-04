@@ -1,0 +1,91 @@
+// The file_tree tool: one indented view of the project structure, so the
+// model orients in an unfamiliar repo without a chain of list_dir calls.
+// Depth-limited, noise directories skipped, entry count capped.
+
+import std/string
+import std/fs { list_dir, is_dir }
+
+// Directories that are dependency or build noise, never part of the shape
+// a reader needs.
+fun _ignored(name: String) -> Bool {
+    if name == "node_modules" || name == "target" || name == "dist" || name == "__pycache__" {
+        return true
+    }
+    // Hidden entries stay hidden, except the two that describe the project.
+    if name.starts_with(".") {
+        return name != ".agents" && name != ".github"
+    }
+    return false
+}
+
+const MAX_ENTRIES: Int = 200
+const DEFAULT_DEPTH: Int = 3
+
+// Render the tree under `path` (default "."), `depth_text` levels deep
+// (default 3). Directories end with "/".
+fun file_tree(path: String, depth_text: String) -> String {
+    let root = path
+    if root.trim() == "" {
+        root = "."
+    }
+    let depth = DEFAULT_DEPTH
+    match depth_text.trim().parse_int() {
+        Some(n) -> {
+            if n > 0 {
+                depth = n
+            }
+        },
+        None -> {},
+    }
+    if !is_dir(root) {
+        return "error: ${root} is not a directory"
+    }
+    let out: List<String> = []
+    _walk(root, "", depth, out)
+    if out.len() == 0 {
+        return "(empty)"
+    }
+    let text = ""
+    let i = 0
+    while i < out.len() {
+        if i > 0 {
+            text = text.concat("\n")
+        }
+        text = text.concat(out[i])
+        i = i + 1
+    }
+    if out.len() >= MAX_ENTRIES {
+        text = "${text}\n… truncated at ${MAX_ENTRIES} entries; ask for a subdirectory"
+    }
+    return text
+}
+
+fun _walk(dir: String, indent: String, depth: Int, out: List<String>) {
+    if depth <= 0 || out.len() >= MAX_ENTRIES {
+        return
+    }
+    let names: List<String> = []
+    match list_dir(dir) {
+        Ok(ns) -> {
+            names = ns
+        },
+        Err(e) -> {
+            return
+        },
+    }
+    let i = 0
+    while i < names.len() && out.len() < MAX_ENTRIES {
+        let name = names[i]
+        if !_ignored(name) {
+            let full = "${dir}/${name}"
+            if is_dir(full) {
+                out.push("${indent}${name}/")
+                _walk(full, "${indent}  ", depth - 1, out)
+            } else {
+                out.push("${indent}${name}")
+            }
+        }
+        i = i + 1
+    }
+    return
+}

@@ -1,0 +1,58 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./tree" { file_tree }
+
+fun setup() {
+    create_dir_all("_rook_tree/src/app")
+    create_dir_all("_rook_tree/.git")
+    create_dir_all("_rook_tree/node_modules/pkg")
+    write("_rook_tree/rv.toml", "x")
+    write("_rook_tree/src/main.rv", "x")
+    write("_rook_tree/src/app/model.rv", "x")
+    write("_rook_tree/.git/config", "x")
+    write("_rook_tree/node_modules/pkg/index.js", "x")
+    return
+}
+
+fun teardown() {
+    remove_file("_rook_tree/rv.toml")
+    remove_file("_rook_tree/src/main.rv")
+    remove_file("_rook_tree/src/app/model.rv")
+    remove_file("_rook_tree/.git/config")
+    remove_file("_rook_tree/node_modules/pkg/index.js")
+    remove_dir("_rook_tree/node_modules/pkg")
+    remove_dir("_rook_tree/node_modules")
+    remove_dir("_rook_tree/.git")
+    remove_dir("_rook_tree/src/app")
+    remove_dir("_rook_tree/src")
+    remove_dir("_rook_tree")
+    return
+}
+
+fun test_tree_shows_structure_and_skips_noise() {
+    setup()
+    let t = file_tree("_rook_tree", "")
+    assert_true(t.contains("src/"))
+    assert_true(t.contains("  main.rv"))
+    assert_true(t.contains("  app/"))
+    assert_true(t.contains("    model.rv"))
+    assert_true(t.contains("rv.toml"))
+    assert_true(!t.contains(".git"))
+    assert_true(!t.contains("node_modules"))
+    teardown()
+    return
+}
+
+fun test_depth_limits_the_descent() {
+    setup()
+    let t = file_tree("_rook_tree", "1")
+    assert_true(t.contains("src/"))
+    assert_true(!t.contains("main.rv"))
+    teardown()
+    return
+}
+
+fun test_not_a_directory_is_an_error() {
+    assert_true(file_tree("_rook_no_such_dir", "").starts_with("error:"))
+}
