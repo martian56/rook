@@ -94,7 +94,11 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 if call.name == "dispatch" {
                     result = _dispatch(st, call, model, api_key, base_url)
                 } else {
-                    result = _run_one(st, call, allowed)
+                    if call.name == "ask_user" {
+                        result = _ask_user(st, call)
+                    } else {
+                        result = _run_one(st, call, allowed)
+                    }
                 }
                 st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
                 st.push_tool_result(call.id, call.name, result)
@@ -184,6 +188,36 @@ fun _dispatch(
         return "error: no subagent named '${name}'; available: ${names}"
     }
     return run_subagent(st, agents[idx], task, model, api_key, base_url)
+}
+
+// An ask_user call: publish the question and options and block until the
+// user picks. The chosen option (not its index) goes back to the model, so
+// the answer reads naturally in the conversation.
+fun _ask_user(st: AgentState, call: ToolCall) -> String {
+    let question = arg(call.arguments, "question").trim()
+    let raw = arg(call.arguments, "options")
+    if question == "" {
+        return "error: ask_user needs a question"
+    }
+    let options: List<String> = []
+    let parts = raw.split(",")
+    let i = 0
+    while i < parts.len() {
+        let o = parts[i].trim()
+        if o != "" {
+            options.push(o)
+        }
+        i = i + 1
+    }
+    if options.len() < 2 {
+        return "error: ask_user needs at least two comma-separated options"
+    }
+    let idx = st.ask_question(question, options)
+    if idx < 0 || idx >= options.len() {
+        return "The user declined to pick an option; ask them in plain chat instead."
+    }
+    st.emit(DisplayEvent.Info("you chose: ${options[idx]}"))
+    return "The user chose: ${options[idx]}"
 }
 
 // Run one tool call, gating a mutating one through approval unless its kind

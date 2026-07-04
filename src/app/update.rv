@@ -59,11 +59,17 @@ fun _tick(m: Chat) -> Step<Chat> {
         let snap = m.agent.drain()
         apply_events(m, snap.events)
         m.pending = snap.pending
+        if m.question != snap.question {
+            m.choice_sel = 0
+        }
+        m.question = snap.question
+        m.choices = snap.choices
         if snap.done {
             m.active = false
             m.turns = m.turns + 1
             m.cur_bubble = 0 - 1
             m.pending = ""
+            m.question = ""
         }
         m.scroll_up = 0
     }
@@ -235,6 +241,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     if m.shells_open {
         return _shells_key(m, k)
     }
+    if m.question != "" {
+        return _question_key(m, k)
+    }
     if m.pending != "" {
         return _approval_key(m, k)
     }
@@ -325,6 +334,32 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     if m.entry.value != before {
         m.slash_dismissed = false
         m.slash_sel = 0
+    }
+    return next(m)
+}
+
+// Answer the model's question: arrows move, enter picks, esc declines.
+fun _question_key(m: Chat, k: Key) -> Step<Chat> {
+    match k {
+        Up -> {
+            if m.choice_sel > 0 {
+                m.choice_sel = m.choice_sel - 1
+            }
+        },
+        Down -> {
+            if m.choice_sel < m.choices.len() - 1 {
+                m.choice_sel = m.choice_sel + 1
+            }
+        },
+        Enter -> {
+            m.agent.decide(m.choice_sel)
+            m.question = ""
+        },
+        Esc -> {
+            m.agent.decide(0 - 1)
+            m.question = ""
+        },
+        _ -> {},
     }
     return next(m)
 }

@@ -106,6 +106,16 @@ fun tools() -> List<ToolDef> {
             _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
         ),
         ToolDef.new(
+            "ask_user",
+            "Ask the user one multiple-choice question when a decision is theirs to make and guessing would be wrong. They pick one option in the UI.",
+            _schema(
+                [
+                    Prop { name: "question", desc: "the question, one sentence" },
+                    Prop { name: "options", desc: "two to five short options, comma-separated" },
+                ],
+            ),
+        ),
+        ToolDef.new(
             "dispatch",
             "Delegate one scoped task to a subagent listed in the system prompt and get its final answer back. The subagent works in isolation with its own tools; give it a complete, self-contained task.",
             _schema(
@@ -164,6 +174,11 @@ fun dispatch(call: ToolCall) -> String {
         // subagent asking to dispatch lands on this instead.
         return "error: only the main agent can dispatch subagents"
     }
+    if call.name == "ask_user" {
+        // Same shape: the turn loop intercepts ask_user; only a subagent
+        // ends up here.
+        return "error: only the main agent can ask the user"
+    }
     return "error: unknown tool '${call.name}'"
 }
 
@@ -197,6 +212,9 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "dispatch" {
         return "dispatch(${arg(a, "agent")})"
+    }
+    if call.name == "ask_user" {
+        return "ask_user(${arg(a, "question")})"
     }
     return call.name
 }

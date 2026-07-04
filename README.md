@@ -88,6 +88,11 @@ output is capped so a chatty process cannot grow memory without bound,
 old finished shells fall off the list, and quitting rook kills
 everything still running so no child is orphaned.
 
+When a decision is yours to make (which approach, which of several
+fixes), the model asks with `ask_user`: a modal shows the question and
+its options, arrows pick, Enter answers, Esc declines. The pick goes
+back to the model as text.
+
 `run_command` runs through the platform shell in the working directory and
 returns stdout, stderr, and the exit code. Tool output is truncated so a
 noisy command cannot bury the answer.

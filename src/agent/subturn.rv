@@ -98,6 +98,9 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
     if call.name == "dispatch" {
         return "error: subagents cannot dispatch further agents; do the work yourself"
     }
+    if call.name == "ask_user" {
+        return "error: subagents cannot ask the user; make a reasonable choice or report back"
+    }
     if !_tool_allowed(agent.tools, call.name) {
         return "error: the ${call.name} tool is not available to this agent"
     }
@@ -143,8 +146,9 @@ fun _sub_request(
     let ts = tools()
     let t = 0
     while t < ts.len() {
-        // Nesting stops at one level: a subagent never sees dispatch.
-        if ts[t].name != "dispatch" && _tool_allowed(allow, ts[t].name) {
+        // Nesting stops at one level, and questions belong to the main
+        // agent: a subagent never sees dispatch or ask_user.
+        if ts[t].name != "dispatch" && ts[t].name != "ask_user" && _tool_allowed(allow, ts[t].name) {
             req = req.tool(ts[t])
         }
         t = t + 1

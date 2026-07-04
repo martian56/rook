@@ -36,6 +36,10 @@ struct Snapshot {
     events: List<DisplayEvent>,
     done: Bool,
     pending: String,
+    // A question awaiting the user's pick, "" when none; the options ride
+    // alongside.
+    question: String,
+    choices: List<String>,
 }
 
 struct AgentState {
@@ -46,6 +50,9 @@ struct AgentState {
     interrupt: Bool,
     // The tool label awaiting approval, "" when none is pending.
     pending: String,
+    // The question awaiting an answer, "" when none, and its options.
+    question: String,
+    choices: List<String>,
     // One-slot decision channel: 0 deny, 1 allow, 2 allow all of this kind.
     decisions: Channel,
     // Serializes ask() so parallel subagents queue for the one approval
@@ -61,6 +68,7 @@ impl AgentState {
     fun new() -> AgentState {
         let convo: List<Message> = []
         let events: List<DisplayEvent> = []
+        let choices: List<String> = []
         return AgentState {
             lock: mutex(),
             convo,
@@ -68,6 +76,8 @@ impl AgentState {
             done: false,
             interrupt: false,
             pending: "",
+            question: "",
+            choices,
             decisions: channel_buffered(1),
             ask_lock: mutex(),
             cancel: CancelToken.new(),
@@ -80,6 +90,9 @@ impl AgentState {
         self.done = false
         self.interrupt = false
         self.pending = ""
+        self.question = ""
+        let none: List<String> = []
+        self.choices = none
         let e: List<DisplayEvent> = []
         self.events = e
         self.cancel = CancelToken.new()
@@ -156,7 +169,13 @@ impl AgentState {
         let evs = self.events
         let empty: List<DisplayEvent> = []
         self.events = empty
-        let s = Snapshot { events: evs, done: self.done, pending: self.pending }
+        let s = Snapshot {
+            events: evs,
+            done: self.done,
+            pending: self.pending,
+            question: self.question,
+            choices: self.choices,
+        }
         self.lock.unlock()
         return s
     }
@@ -212,5 +231,33 @@ impl AgentState {
     // UI side: answer the pending approval.
     fun decide(self, d: Int) {
         self.decisions.send(d)
+    }
+
+    // Goroutine side: publish a question with options and block until the
+    // UI answers with the chosen index (or -1 for declined). Shares the
+    // ask_lock and decision channel with approvals, so only one prompt is
+    // in front of the user at a time.
+    fun ask_question(self, q: String, options: List<String>) -> Int {
+        self.ask_lock.lock()
+        self.lock.lock()
+        self.question = q
+        self.choices = options
+        self.lock.unlock()
+        let d = self.decisions.recv()
+        self.lock.lock()
+        self.question = ""
+        let none: List<String> = []
+        self.choices = none
+        self.lock.unlock()
+        self.ask_lock.unlock()
+        return d
+    }
+
+    // Read the pending question without draining events (for tests).
+    fun question_now(self) -> String {
+        self.lock.lock()
+        let q = self.question
+        self.lock.unlock()
+        return q
     }
 }

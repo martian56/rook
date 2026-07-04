@@ -40,6 +40,9 @@ fun chat_view(m: Chat, f: Frame) {
     if !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.shells_open && !m.slash_dismissed {
         _slash_menu(m, rows[2], f)
     }
+    if m.question != "" {
+        _question(m, f)
+    }
     if m.pending != "" {
         _approval(m, f)
     }
@@ -392,6 +395,54 @@ fun _mask(value: String, w: Int) -> String {
         count = w
     }
     return "•".repeat(count)
+}
+
+// A centered modal for the model's multiple-choice question: the question
+// on top, the options below, arrow-select and enter (esc declines).
+fun _question(m: Chat, f: Frame) {
+    let full = f.area()
+    let w = 62
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let h = m.choices.len() + 4
+    if h > full.h {
+        h = full.h
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("rook asks  (enter, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    let q = m.question
+    if q.length() > inner.w - 2 {
+        q = "${q.substring(0, inner.w - 3)}…"
+    }
+    f.buf.set_string(inner.x + 1, inner.y, q, Style.new().bold())
+    let i = 0
+    while i < m.choices.len() && inner.y + 2 + i < inner.y + inner.h {
+        let row = m.choices[i]
+        if row.length() > inner.w - 4 {
+            row = row.substring(0, inner.w - 4)
+        }
+        if i == m.choice_sel {
+            while row.length() < inner.w - 3 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 2, inner.y + 2 + i, row, m.theme.accent.reverse())
+        } else {
+            f.buf.set_string(inner.x + 2, inner.y + 2 + i, row, m.theme.text)
+        }
+        i = i + 1
+    }
+    return
 }
 
 // A centered modal asking to approve one mutating tool call.
