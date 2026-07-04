@@ -36,9 +36,11 @@ struct Chat {
     api_key: String,
     // A custom endpoint, "" for the provider default.
     base_url: String,
-    // The /model picker overlay.
+    // The /model picker overlay: open, the highlighted row (within the
+    // filtered list), and the search bar.
     picking: Bool,
     pick_sel: Int,
+    pick_input: TextInput,
     // The API-key entry overlay.
     entering_key: Bool,
     key_input: TextInput,
@@ -83,6 +85,7 @@ fun chat_init() -> Chat {
         base_url: resolve_base(),
         picking: false,
         pick_sel: 0,
+        pick_input: TextInput.new(),
         entering_key: false,
         key_input: TextInput.new(),
         theme: themed(startup_theme(resolve_theme())),

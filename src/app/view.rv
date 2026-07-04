@@ -15,7 +15,7 @@ import "../ui/transcript" { build_lines }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
-import "../config/catalog" { catalog }
+import "../config/catalog" { catalog, filter_catalog }
 import "../commands" { CmdInfo, menu_matches }
 
 fun chat_view(m: Chat, f: Frame) {
@@ -278,14 +278,19 @@ fun _approval(m: Chat, f: Frame) {
 }
 
 // A centered modal listing the model catalog, drawn over everything else.
+// The first row is a search bar; typing narrows the list underneath.
 fun _picker(m: Chat, f: Frame) {
     let full = f.area()
-    let items = catalog()
-    let h = items.len() + 2
+    let items = filter_catalog(catalog(), m.pick_input.value)
+    let count = items.len()
+    if count < 1 {
+        count = 1
+    }
+    let h = count + 4
     if h > full.h {
         h = full.h
     }
-    let w = 46
+    let w = 52
     if w > full.w - 2 {
         w = full.w - 2
     }
@@ -296,12 +301,20 @@ fun _picker(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let box = Block.new().rounded().title("Select a model  (enter, esc)").style(m.theme.modal).title_style(
-        m.theme.modal.bold(),
-    )
+    let box = Block.new().rounded().title("Select a model  (type to search, enter, esc)").style(
+        m.theme.modal,
+    ).title_style(m.theme.modal.bold())
     box.render(area, f.buf)
+    let inner = box.inner(area)
+    let sx = f.buf.set_string(inner.x + 1, inner.y, "search: ", m.theme.dim)
+    m.pick_input.render(Rect.new(sx, inner.y, inner.x + inner.w - sx - 1, 1), f.buf)
+    let list_area = Rect.new(inner.x, inner.y + 2, inner.w, inner.h - 2)
+    if items.len() == 0 {
+        f.buf.set_string(list_area.x + 1, list_area.y, "(no model matches)", m.theme.dim)
+        return
+    }
     ListView.new(items).selected(m.pick_sel).highlight_style(m.theme.modal.reverse()).render(
-        box.inner(area),
+        list_area,
         f.buf,
     )
     return
