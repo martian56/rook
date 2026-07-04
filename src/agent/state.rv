@@ -41,6 +41,9 @@ struct AgentState {
     pending: String,
     // One-slot decision channel: 0 deny, 1 allow, 2 allow all of this kind.
     decisions: Channel,
+    // Serializes ask() so parallel subagents queue for the one approval
+    // prompt instead of overwriting each other's pending label.
+    ask_lock: Mutex,
 }
 
 impl AgentState {
@@ -55,6 +58,7 @@ impl AgentState {
             interrupt: false,
             pending: "",
             decisions: channel_buffered(1),
+            ask_lock: mutex(),
         }
     }
 
@@ -165,8 +169,10 @@ impl AgentState {
     }
 
     // Goroutine side: publish a pending approval and block until the UI
-    // answers. Returns 0 deny, 1 allow, 2 allow all of this kind.
+    // answers. Returns 0 deny, 1 allow, 2 allow all of this kind. Callers
+    // queue: with agents running in parallel, one approval shows at a time.
     fun ask(self, desc: String) -> Int {
+        self.ask_lock.lock()
         self.lock.lock()
         self.pending = desc
         self.lock.unlock()
@@ -174,6 +180,7 @@ impl AgentState {
         self.lock.lock()
         self.pending = ""
         self.lock.unlock()
+        self.ask_lock.unlock()
         return d
     }
 

@@ -14,6 +14,7 @@ import "./turn" { run_turn }
 let read_hits = 0
 let write_hits = 0
 let dispatch_hits = 0
+let fanout_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun read_handler(req: Request) -> Response {
@@ -72,6 +73,37 @@ fun serve_dispatch() {
     let app = Server.new()
     app.post("/v1/chat/completions", dispatch_handler)
     app.listen("127.0.0.1:8465")
+}
+
+// The fan-out server: the parent's first streaming request gets TWO
+// dispatch calls in one batch; each subagent (told apart by its own system
+// prompt) answers non-streaming; the parent's second request closes.
+fun fanout_handler(req: Request) -> Response {
+    if req.body.contains("echo agent") {
+        return Response.text(
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"echo done\"},\"finish_reason\":\"stop\"}]}",
+        )
+    }
+    if req.body.contains("shout agent") {
+        return Response.text(
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"SHOUT DONE\"},\"finish_reason\":\"stop\"}]}",
+        )
+    }
+    fanout_hits = fanout_hits + 1
+    if fanout_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"f1\",\"function\":{\"name\":\"dispatch\",\"arguments\":\"{\\\"agent\\\":\\\"echoer\\\",\\\"task\\\":\\\"say it\\\"}\"}},{\"index\":1,\"id\":\"f2\",\"function\":{\"name\":\"dispatch\",\"arguments\":\"{\\\"agent\\\":\\\"shouter\\\",\\\"task\\\":\\\"shout it\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Both agents reported.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_fanout() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", fanout_handler)
+    app.listen("127.0.0.1:8466")
 }
 
 fun serve_write() {
@@ -188,6 +220,40 @@ fun test_dispatch_runs_a_subagent_and_feeds_its_answer_back() {
     // assistant(final). The subagent's inner rounds never enter it.
     assert_eq_int(st.messages().len(), 4)
     remove_file(".agents/subagents/echoer.md")
+    remove_dir(".agents/subagents")
+    remove_dir(".agents")
+    return
+}
+
+fun test_two_dispatches_fan_out_and_both_results_return() {
+    create_dir_all(".agents/subagents")
+    fs_write(
+        ".agents/subagents/echoer.md",
+        "---\ndescription: echoes things\n---\nYou are the echo agent.",
+    )
+    fs_write(
+        ".agents/subagents/shouter.md",
+        "---\ndescription: shouts things\n---\nYou are the shout agent.",
+    )
+    spawn(fun() -> Unit {
+        serve_fanout()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("ask both agents")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8466/v1")
+    })
+    let got = e2e_drain(st)
+    assert_true(got.contains("[info running 2 agents in parallel…]"))
+    assert_true(got.contains("[dispatch(echoer) => echo done]"))
+    assert_true(got.contains("[dispatch(shouter) => SHOUT DONE]"))
+    assert_true(got.contains("Both agents reported."))
+    // user, assistant(two tool_calls), two tool_results, assistant(final).
+    assert_eq_int(st.messages().len(), 5)
+    remove_file(".agents/subagents/echoer.md")
+    remove_file(".agents/subagents/shouter.md")
     remove_dir(".agents/subagents")
     remove_dir(".agents")
     return

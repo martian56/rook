@@ -4,6 +4,7 @@
 // cap is hit.
 
 import std/string
+import std/sync { Mutex, mutex, sleep_millis }
 import "github.com/martian56/aviary" { complete_stream }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { ToolCall }
@@ -55,26 +56,87 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         }
 
         // The model wants tools: record the request, run each call, feed the
-        // results back, and loop for another round.
+        // results back, and loop for another round. Two or more dispatches
+        // in one batch fan out to concurrent goroutines; everything else
+        // runs in order on this one.
         st.push_assistant_calls(reply_text, calls)
+        let fanout = _count_dispatch(calls) >= 2
+        let done = Counter.new()
+        if fanout {
+            st.emit(DisplayEvent.Info("running ${_count_dispatch(calls)} agents in parallel…"))
+        }
         let i = 0
         while i < calls.len() {
             let call = calls[i]
-            let result = ""
-            if call.name == "dispatch" {
-                result = _dispatch(st, call, model, api_key, base_url)
+            if fanout && call.name == "dispatch" {
+                spawn(fun() -> Unit {
+                    let result = _dispatch(st, call, model, api_key, base_url)
+                    st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
+                    st.push_tool_result(call.id, call.name, result)
+                    done.bump()
+                })
             } else {
-                result = _run_one(st, call, allowed)
+                let result = ""
+                if call.name == "dispatch" {
+                    result = _dispatch(st, call, model, api_key, base_url)
+                } else {
+                    result = _run_one(st, call, allowed)
+                }
+                st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
+                st.push_tool_result(call.id, call.name, result)
             }
-            st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
-            st.push_tool_result(call.id, call.name, result)
             i = i + 1
+        }
+        // Every agent's result must be in the conversation before the next
+        // round's request is built.
+        if fanout {
+            while done.count() < _count_dispatch(calls) {
+                sleep_millis(20)
+            }
         }
         round = round + 1
     }
     st.emit(DisplayEvent.Info("stopped after ${MAX_ROUNDS} tool rounds"))
     st.finish()
     return
+}
+
+// A shared completion counter for the fan-out: each agent goroutine bumps
+// it after its result is in the conversation.
+struct Counter {
+    lock: Mutex,
+    n: Int,
+}
+
+impl Counter {
+    fun new() -> Counter {
+        return Counter { lock: mutex(), n: 0 }
+    }
+
+    fun bump(self) {
+        self.lock.lock()
+        self.n = self.n + 1
+        self.lock.unlock()
+    }
+
+    fun count(self) -> Int {
+        self.lock.lock()
+        let c = self.n
+        self.lock.unlock()
+        return c
+    }
+}
+
+fun _count_dispatch(calls: List<ToolCall>) -> Int {
+    let c = 0
+    let i = 0
+    while i < calls.len() {
+        if calls[i].name == "dispatch" {
+            c = c + 1
+        }
+        i = i + 1
+    }
+    return c
 }
 
 // A dispatch call: look the subagent up and run it to completion inside

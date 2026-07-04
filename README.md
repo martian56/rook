@@ -179,9 +179,14 @@ prompt and delegates with the `dispatch` tool; the subagent runs an
 isolated conversation (its own prompt, tools, and rounds) and only its
 final answer returns to the main conversation. Its tool calls show in
 the transcript as `name › tool(...)`, and anything mutating still stops
-for your approval, labeled with the agent's name. Subagents cannot
-dispatch further agents. A definition named after a built-in replaces
-it.
+for your approval, labeled with the agent's name (parallel agents queue
+for the prompt one at a time). Subagents cannot dispatch further
+agents. A definition named after a built-in replaces it.
+
+When the model dispatches several agents in one step they run in
+parallel, each on its own goroutine with its own conversation, and the
+main agent continues once every result is back, wide read-only work
+like searching three areas at once finishes in one round.
 
 ## How it is built
 
