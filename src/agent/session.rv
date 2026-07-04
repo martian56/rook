@@ -8,6 +8,7 @@ import "../agents/dir" { roots }
 import "../agents/skills" { load_skills, skills_prompt }
 import "../agents/subagents" { all_subagents, subagents_prompt }
 import "../agents/memory" { memory_prompt }
+import "../tools/shells" { shells_note }
 
 const SYSTEM_PROMPT: String = "You are rook, a coding assistant working in the user's current directory. You have tools: read_file, list_dir, grep, write_file, edit_file, run_command, run_background, read_shell, list_shells, and kill_shell. Inspect the project with the read-only tools before answering, and use write_file, edit_file, and run_command to make changes and run builds or tests. Prefer edit_file for small changes. Use run_background for anything long-running (a dev server, a watcher): it returns a shell id immediately instead of blocking; read_shell shows what it printed since your last look, list_shells shows what is running, and kill_shell stops one. Writes and commands need the user's approval, so say what you intend before doing it. Keep replies concise and in plain prose."
 
@@ -24,7 +25,7 @@ fun build_request(
     timeout_ms: Int,
 ) -> ChatRequest {
     let req = ChatRequest.new(model).system(
-        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}",
+        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}",
     )
     let i = 0
     while i < history.len() {

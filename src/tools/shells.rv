@@ -258,6 +258,36 @@ fun shell_tail(id: Int, max_chars: Int) -> String {
     return out
 }
 
+// A note for the system prompt when background shells hold output the
+// model has not read: names each shell with its unread size, so the model
+// knows to call read_shell without polling. "" when nothing is waiting.
+fun shells_note() -> String {
+    refresh()
+    STORE.lock.lock()
+    let out = ""
+    let i = 0
+    while i < STORE.shells.len() {
+        let s = STORE.shells[i]
+        let unread = s.output.length() - s.read_pos
+        if unread > 0 {
+            let state = "exited ${s.code}"
+            if !s.done {
+                state = "running"
+            }
+            if out != "" {
+                out = out.concat("; ")
+            }
+            out = out.concat("shell ${s.id} (${state}, ${unread} bytes unread): ${s.command}")
+        }
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    if out == "" {
+        return ""
+    }
+    return " Background shells have output you have not read yet: ${out}. Call read_shell when it matters to the task."
+}
+
 // How many background shells the store holds.
 fun shell_count() -> Int {
     STORE.lock.lock()

@@ -2,7 +2,7 @@ import std/string
 import std/test { assert_true, assert_eq_int, assert_eq_str }
 import std/time { sleep_millis }
 import std/env { os_name }
-import "./shells" { ShellInfo, run_background, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail }
+import "./shells" { ShellInfo, run_background, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note }
 
 fun test_background_command_returns_an_id_immediately() {
     let before = shell_count()
@@ -118,6 +118,17 @@ fun test_tail_returns_the_newest_output_without_moving_the_read_marker() {
     let got = read_shell("${id}")
     assert_true(got.contains("tail-probe"))
     assert_true(shell_tail(99999, 100) == "")
+}
+
+fun test_note_names_unread_shells_and_clears_after_reading() {
+    let id = _id_of(run_background("echo note-probe"))
+    _wait_exit(id)
+    let note = shells_note()
+    assert_true(note.contains("shell ${id}"))
+    assert_true(note.contains("bytes unread"))
+    read_shell("${id}")
+    // Everything read: this shell no longer appears in the note.
+    assert_true(!shells_note().contains("shell ${id} ("))
 }
 
 fun test_kill_rejects_unknown_shells() {
