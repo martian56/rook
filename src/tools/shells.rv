@@ -1,24 +1,44 @@
 // Background shells: commands started without blocking the turn, the way
 // rook runs the apps it builds. run_background hands the command to the
-// platform shell via std/process.start and returns a shell id immediately;
-// the child's output accumulates in the runtime and is drained on demand.
-// The store here is the single shared record of every background shell,
-// guarded by a mutex since tool calls run on the turn goroutine while the
-// UI reads from the main loop.
+// platform shell via std/process.start and returns a shell id immediately.
+// The store here is the single source of truth for every background shell:
+// its command, status (running or exited with a code), start time, and
+// accumulated output. refresh() advances the lifecycle by draining the
+// runtime buffers and polling for exits; the tools and the UI both read
+// through it, under a mutex since tool calls run on the turn goroutine
+// while the UI reads from the main loop.
 
 import std/string
 import std/sync { Mutex, mutex }
 import std/env { os_name }
+import std/time { now_millis }
 import std/process { Child, start }
 
-// One background shell. `code` is the exit code once observed, and `done`
-// says whether `code` is meaningful (-1 alone could be a signal death).
+// One background shell. `done` says the child exited and `code` is its
+// exit code; while running, `code` is meaningless. `output` accumulates
+// everything drained so far (stdout and stderr interleaved in arrival
+// order); `read_pos` marks how much of it the agent has already been
+// shown, for the incremental read tool.
 struct BgShell {
     id: Int,
     command: String,
     child: Child,
+    started_ms: Int,
     done: Bool,
     code: Int,
+    output: String,
+    read_pos: Int,
+}
+
+// A lock-free snapshot of one shell for display and tools.
+struct ShellInfo {
+    id: Int,
+    command: String,
+    running: Bool,
+    code: Int,
+    // Milliseconds since the shell started (up to now while running).
+    runtime_ms: Int,
+    output_len: Int,
 }
 
 struct ShellStore {
@@ -55,6 +75,59 @@ fun run_background(command: String) -> String {
     }
 }
 
+// Advance every shell: drain new output from the runtime buffers, and move
+// a child whose exit turned up from running to exited (freeing its runtime
+// handle after the final drain).
+fun refresh() {
+    STORE.lock.lock()
+    let i = 0
+    while i < STORE.shells.len() {
+        let s = STORE.shells[i]
+        if !s.done {
+            s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
+            match s.child.poll() {
+                Some(code) -> {
+                    // One more drain catches what arrived between the read
+                    // above and the exit.
+                    s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
+                    s.child.free()
+                    s.done = true
+                    s.code = code
+                },
+                None -> {},
+            }
+        }
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    return
+}
+
+// A snapshot of every shell, oldest first, after a refresh.
+fun list_shells() -> List<ShellInfo> {
+    refresh()
+    let out: List<ShellInfo> = []
+    let now = now_millis()
+    STORE.lock.lock()
+    let i = 0
+    while i < STORE.shells.len() {
+        let s = STORE.shells[i]
+        out.push(
+            ShellInfo {
+                id: s.id,
+                command: s.command,
+                running: !s.done,
+                code: s.code,
+                runtime_ms: now - s.started_ms,
+                output_len: s.output.length(),
+            },
+        )
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    return out
+}
+
 // How many background shells the store holds.
 fun shell_count() -> Int {
     STORE.lock.lock()
@@ -67,7 +140,18 @@ fun _add(command: String, child: Child) -> Int {
     STORE.lock.lock()
     let id = STORE.next
     STORE.next = STORE.next + 1
-    STORE.shells.push(BgShell { id, command, child, done: false, code: 0 })
+    STORE.shells.push(
+        BgShell {
+            id,
+            command,
+            child,
+            started_ms: now_millis(),
+            done: false,
+            code: 0,
+            output: "",
+            read_pos: 0,
+        },
+    )
     STORE.lock.unlock()
     return id
 }
