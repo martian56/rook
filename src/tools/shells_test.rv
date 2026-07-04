@@ -44,19 +44,34 @@ fun _id_of(started: String) -> Int {
     }
 }
 
-fun test_read_shell_is_incremental() {
-    let id = _id_of(run_background("echo incremental-probe"))
-    assert_true(id > 0)
-    // Wait for the output to land, then read it.
+// Wait until shell `id` shows exited in the registry.
+fun _wait_exit(id: Int) {
     let tries = 0
-    let got = ""
-    while tries < 400 && !got.contains("incremental-probe") {
-        got = read_shell("${id}")
+    while tries < 400 {
+        let infos = list_shells()
+        let at = _index_of(infos, id)
+        if at >= 0 && !infos[at].running {
+            return
+        }
         sleep_millis(10)
         tries = tries + 1
     }
-    assert_true(got.contains("shell ${id}"))
-    assert_true(got.contains("incremental-probe"))
+    return
+}
+
+fun test_read_shell_is_incremental() {
+    let id = _id_of(run_background("echo incremental-probe"))
+    assert_true(id > 0)
+    // Wait for the exit first: the final drain has then run, so the one
+    // read below deterministically carries the whole output. The probe is
+    // asserted on the body, not the header, since the header repeats the
+    // command text.
+    _wait_exit(id)
+    let got = read_shell("${id}")
+    assert_true(got.starts_with("shell ${id} (exited 0)"))
+    let nl = got.index_of("\n")
+    assert_true(nl > 0)
+    assert_true(got.substring(nl + 1, got.length()).contains("incremental-probe"))
     // Nothing new arrives after exit; the second read says so.
     let again = read_shell("${id}")
     assert_true(again.contains("(no new output)"))
