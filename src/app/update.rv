@@ -20,6 +20,7 @@ import "../ui/depth" { themed }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
 import "../tools/shells" { list_shells, kill_all_shells }
+import "../tools/todos" { clear_todos }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -615,6 +616,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.entries = e
             let blocks: List<AgentBlock> = []
             m.open_agents = blocks
+            clear_todos()
             m.agent.clear_convo()
             return next(m)
         },

@@ -11,6 +11,7 @@ import "./search" { grep }
 import "./shell" { run_command }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
 import "./tree" { file_tree }
+import "./todos" { set_todos }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
 
@@ -117,6 +118,11 @@ fun tools() -> List<ToolDef> {
             _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
         ),
         ToolDef.new(
+            "set_todos",
+            "Replace your visible checklist for the current work, one item per line: prefix [x] for done, [>] for the one in progress, nothing for pending. Keep it updated as steps finish.",
+            _schema([Prop { name: "todos", desc: "the full checklist, one item per line" }]),
+        ),
+        ToolDef.new(
             "ask_user",
             "Ask the user one multiple-choice question when a decision is theirs to make and guessing would be wrong. They pick one option in the UI.",
             _schema(
@@ -180,6 +186,9 @@ fun dispatch(call: ToolCall) -> String {
     if call.name == "use_skill" {
         return skill_body(roots(), arg(a, "name"))
     }
+    if call.name == "set_todos" {
+        return set_todos(arg(a, "todos"))
+    }
     if call.name == "dispatch" {
         // The turn loop intercepts dispatch before it reaches here; a
         // subagent asking to dispatch lands on this instead.
@@ -223,6 +232,9 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "use_skill" {
         return "use_skill(${arg(a, "name")})"
+    }
+    if call.name == "set_todos" {
+        return "set_todos"
     }
     if call.name == "dispatch" {
         return "dispatch(${arg(a, "agent")})"

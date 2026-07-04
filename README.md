@@ -92,6 +92,10 @@ output is capped so a chatty process cannot grow memory without bound,
 old finished shells fall off the list, and quitting rook kills
 everything still running so no child is orphaned.
 
+During multi-step work the model keeps a checklist with `set_todos`,
+shown live above the input: done steps check off dim, the current one
+is highlighted, pending ones wait. `/clear` empties it.
+
 When a decision is yours to make (which approach, which of several
 fixes), the model asks with `ask_user`: a modal shows the question and
 its options, arrows pick, Enter answers, Esc declines. The pick goes
