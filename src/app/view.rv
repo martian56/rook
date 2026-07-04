@@ -18,27 +18,48 @@ import "../config/config" { provider_of, key_env }
 import "../config/catalog" { catalog, filter_catalog }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
+import "../tools/todos" { Todo, current_todos }
 
 fun chat_view(m: Chat, f: Frame) {
-    let rows = split_v(
-        f.area(),
-        [Constraint.Fill(1), Constraint.Len(1), Constraint.Len(3), Constraint.Len(1)],
-    )
+    // The model's checklist takes a strip above the thinking line while it
+    // has items.
+    let todos = current_todos()
+    let strip = todos.len()
+    if strip > 6 {
+        strip = 6
+    }
+    let cs: List<Constraint> = [Constraint.Fill(1)]
+    if strip > 0 {
+        cs.push(Constraint.Len(strip))
+    }
+    cs.push(Constraint.Len(1))
+    cs.push(Constraint.Len(3))
+    cs.push(Constraint.Len(1))
+    let rows = split_v(f.area(), cs)
+    let off = 0
+    if strip > 0 {
+        off = 1
+    }
+    let input_area = rows[2 + off]
+
     let body = Rect.new(rows[0].x + 1, rows[0].y, rows[0].w - 2, rows[0].h)
     if m.entries.len() == 0 {
         _welcome(m, body, f)
     } else {
         _transcript(m, body, f)
     }
-    _thinking_line(m, rows[1], f)
+    if strip > 0 {
+        _todo_strip(m, todos, rows[1], f)
+    }
+    _thinking_line(m, rows[1 + off], f)
     let box = Block.new().rounded().style(m.theme.border)
-    box.render(rows[2], f.buf)
-    let ia = box.inner(rows[2])
+    box.render(input_area, f.buf)
+    let ia = box.inner(input_area)
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
-    _status(m, rows[3], f)
+    _status(m, rows[3 + off], f)
     if !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.shells_open && !m.slash_dismissed {
-        _slash_menu(m, rows[2], f)
+        _slash_menu(m, input_area, f)
     }
     if m.question != "" {
         _question(m, f)
@@ -395,6 +416,36 @@ fun _mask(value: String, w: Int) -> String {
         count = w
     }
     return "•".repeat(count)
+}
+
+// The checklist strip: one line per item, done checked off dim, the one in
+// progress in the accent, pending plain. Shows the newest six.
+fun _todo_strip(m: Chat, todos: List<Todo>, area: Rect, f: Frame) {
+    let top = todos.len() - area.h
+    if top < 0 {
+        top = 0
+    }
+    let r = 0
+    while r < area.h && top + r < todos.len() {
+        let t = todos[top + r]
+        let mark = "· "
+        let sty = m.theme.text
+        if t.state == 2 {
+            mark = "✓ "
+            sty = m.theme.dim
+        }
+        if t.state == 1 {
+            mark = "▸ "
+            sty = m.theme.accent
+        }
+        let line = "${mark}${t.text}"
+        if line.length() > area.w - 2 {
+            line = line.substring(0, area.w - 2)
+        }
+        f.buf.set_string(area.x + 1, area.y + r, line, sty)
+        r = r + 1
+    }
+    return
 }
 
 // A centered modal for the model's multiple-choice question: the question

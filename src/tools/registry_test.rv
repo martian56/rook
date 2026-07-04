@@ -8,7 +8,7 @@ fun call(name: String, args: String) -> ToolCall {
 }
 
 fun test_all_tools_are_defined() {
-    assert_eq_int(tools().len(), 14)
+    assert_eq_int(tools().len(), 15)
 }
 
 fun test_approval_policy() {
@@ -21,6 +21,7 @@ fun test_approval_policy() {
     assert_false(needs_approval("list_shells"))
     assert_false(needs_approval("ask_user"))
     assert_false(needs_approval("file_tree"))
+    assert_false(needs_approval("set_todos"))
     assert_false(needs_approval("read_file"))
     assert_false(needs_approval("list_dir"))
     assert_false(needs_approval("grep"))

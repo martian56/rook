@@ -1,0 +1,101 @@
+// The model's live checklist. set_todos replaces the whole list each call
+// (the simplest protocol that cannot drift), one item per line, with a
+// leading marker for state: "[x]" done, "[>]" in progress, anything else
+// pending. The UI renders the current list as a strip above the input while
+// it is non-empty; /clear empties it. A mutex guards the store since the
+// tool writes from the turn goroutine and the view reads every frame.
+
+import std/string
+import std/sync { Mutex, mutex }
+
+// One checklist item: state 0 pending, 1 in progress, 2 done.
+struct Todo {
+    text: String,
+    state: Int,
+}
+
+struct TodoStore {
+    lock: Mutex,
+    items: List<Todo>,
+}
+
+fun _new_store() -> TodoStore {
+    let items: List<Todo> = []
+    return TodoStore { lock: mutex(), items }
+}
+
+let STORE: TodoStore = _new_store()
+
+// The tool: replace the checklist with `text`, one item per line. Returns a
+// short confirmation with the counts.
+fun set_todos(text: String) -> String {
+    let items = parse_todos(text)
+    STORE.lock.lock()
+    STORE.items = items
+    STORE.lock.unlock()
+    if items.len() == 0 {
+        return "todo list cleared"
+    }
+    let done = 0
+    let i = 0
+    while i < items.len() {
+        if items[i].state == 2 {
+            done = done + 1
+        }
+        i = i + 1
+    }
+    return "todo list updated: ${done} of ${items.len()} done"
+}
+
+// Parse the line format. Blank lines are skipped; markers are forgiving
+// about case and surrounding whitespace.
+fun parse_todos(text: String) -> List<Todo> {
+    let out: List<Todo> = []
+    let lines = text.lines()
+    let i = 0
+    while i < lines.len() {
+        let line = lines[i].trim()
+        if line != "" {
+            let state = 0
+            if line.starts_with("[x]") || line.starts_with("[X]") {
+                state = 2
+                line = line.substring(3, line.length()).trim()
+            } else {
+                if line.starts_with("[>]") {
+                    state = 1
+                    line = line.substring(3, line.length()).trim()
+                } else {
+                    if line.starts_with("[ ]") {
+                        line = line.substring(3, line.length()).trim()
+                    }
+                }
+            }
+            if line != "" {
+                out.push(Todo { text: line, state })
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// A snapshot for the view.
+fun current_todos() -> List<Todo> {
+    STORE.lock.lock()
+    let out: List<Todo> = []
+    let i = 0
+    while i < STORE.items.len() {
+        out.push(STORE.items[i])
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    return out
+}
+
+fun clear_todos() {
+    STORE.lock.lock()
+    let none: List<Todo> = []
+    STORE.items = none
+    STORE.lock.unlock()
+    return
+}
