@@ -80,6 +80,25 @@ fun split_tools(v: String) -> List<String> {
     return out
 }
 
+// The index the model sees in its system prompt, so it knows what it can
+// delegate to. "" when no subagents are defined.
+fun subagents_prompt(agents: List<Subagent>) -> String {
+    if agents.len() == 0 {
+        return ""
+    }
+    let out = " The project defines subagents you can delegate a scoped task to with the dispatch tool. Available subagents:"
+    let i = 0
+    while i < agents.len() {
+        let d = agents[i].description
+        if d == "" {
+            d = "no description"
+        }
+        out = "${out}\n- ${agents[i].name}: ${d}"
+        i = i + 1
+    }
+    return "${out}\nDispatch when a self-contained piece of work (a broad search, a review, a plan) can run on its own; give the agent the full context in the task."
+}
+
 // The position of `name` in the registry, ignoring case; -1 when unknown.
 fun subagent_index(agents: List<Subagent>, name: String) -> Int {
     let want = name.to_lower()

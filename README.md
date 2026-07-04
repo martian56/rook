@@ -164,6 +164,19 @@ template. `/name args` sends the template with `$ARGUMENTS` replaced by
 transcript shows what you typed; the model gets the expansion. Built-in
 commands cannot be overridden.
 
+## Subagents
+
+Define helpers in `.agents/subagents/<name>.md`: frontmatter with a
+`description`, an optional `tools` allowlist (comma-separated; omitted
+means every tool), and an optional `model` override, then the agent's
+system prompt as the body. The model sees the roster in its system
+prompt and delegates with the `dispatch` tool; the subagent runs an
+isolated conversation (its own prompt, tools, and rounds) and only its
+final answer returns to the main conversation. Its tool calls show in
+the transcript as `name › tool(...)`, and anything mutating still stops
+for your approval, labeled with the agent's name. Subagents cannot
+dispatch further agents.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

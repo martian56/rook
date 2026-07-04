@@ -74,6 +74,16 @@ fun tools() -> List<ToolDef> {
             "Load the full instructions of a skill listed in the system prompt. Call it when a skill matches the task, before doing that work.",
             _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
         ),
+        ToolDef.new(
+            "dispatch",
+            "Delegate one scoped task to a subagent listed in the system prompt and get its final answer back. The subagent works in isolation with its own tools; give it a complete, self-contained task.",
+            _schema(
+                [
+                    Prop { name: "agent", desc: "the subagent's name, as listed" },
+                    Prop { name: "task", desc: "the full task, with all the context it needs" },
+                ],
+            ),
+        ),
     ]
 }
 
@@ -106,6 +116,11 @@ fun dispatch(call: ToolCall) -> String {
     if call.name == "use_skill" {
         return skill_body(roots(), arg(a, "name"))
     }
+    if call.name == "dispatch" {
+        // The turn loop intercepts dispatch before it reaches here; a
+        // subagent asking to dispatch lands on this instead.
+        return "error: only the main agent can dispatch subagents"
+    }
     return "error: unknown tool '${call.name}'"
 }
 
@@ -127,6 +142,9 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "use_skill" {
         return "use_skill(${arg(a, "name")})"
+    }
+    if call.name == "dispatch" {
+        return "dispatch(${arg(a, "agent")})"
     }
     return call.name
 }
