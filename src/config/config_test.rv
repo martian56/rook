@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
 import "./config" { provider_of, key_env, key_present }
-import "./catalog" { catalog, index_of }
+import "./catalog" { catalog, filter_catalog, index_of }
 
 fun test_provider_of() {
     assert_eq_str(provider_of("openai/gpt-4o"), "openai")
@@ -27,11 +27,40 @@ fun test_unknown_provider_has_no_key() {
 
 fun test_catalog_index_round_trips() {
     let items = catalog()
-    assert_true(items.len() > 3)
-    let pick = "openai/gpt-4o-mini"
+    assert_true(items.len() > 30)
+    let pick = "openrouter/deepseek/deepseek-v4-flash"
     assert_eq_str(items[index_of(pick)], pick)
 }
 
 fun test_catalog_index_of_unlisted_is_zero() {
     assert_true(index_of("not/in/the/list") == 0)
+}
+
+fun test_catalog_carries_the_2026_flagships() {
+    let all = ""
+    let items = catalog()
+    let i = 0
+    while i < items.len() {
+        all = "${all} ${items[i]}"
+        i = i + 1
+    }
+    assert_true(all.contains("claude-sonnet-5"))
+    assert_true(all.contains("claude-fable-5"))
+    assert_true(all.contains("gpt-5.5"))
+    assert_true(all.contains("gemini-3.1-pro"))
+    assert_true(all.contains("kimi-k2.7"))
+    assert_true(all.contains("llama-5"))
+    assert_true(all.contains("glm-5.2"))
+    assert_true(all.contains("grok-4.1"))
+}
+
+fun test_filter_narrows_by_substring_ignoring_case() {
+    let items = catalog()
+    assert_true(filter_catalog(items, "").len() == items.len())
+    let hits = filter_catalog(items, "DeepSeek")
+    assert_true(hits.len() >= 3)
+    assert_true(hits[0].contains("deepseek"))
+    assert_true(filter_catalog(items, "no such model").len() == 0)
+    let fable = filter_catalog(items, "fable")
+    assert_true(fable.len() == 2)
 }

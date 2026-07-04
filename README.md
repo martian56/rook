@@ -44,9 +44,12 @@ OpenRouter is the default provider, since one key there reaches most models.
 
 Models are `provider/model` strings (aviary's format).
 
-- `/model` opens a picker; arrow-select and Enter. Your choice is
-  remembered for next time.
-- `/model anthropic/claude-3-5-sonnet-latest` sets one directly.
+- `/model` opens a picker with a search bar: type to filter the
+  catalog (the mid-2026 flagships and the models topping the OpenRouter
+  usage charts), arrow-select and Enter. Your choice is remembered for
+  next time.
+- `/model anthropic/claude-sonnet-5` sets one directly; any
+  `provider/model` string aviary can route works, listed or not.
 - The startup model is resolved in order: the `--model` flag
   (`rvpm run -- --model openai/gpt-4o`), `ROOK_MODEL`, a project
   `rook.json`, a global `~/.config/rook/rook.json`, the last model you

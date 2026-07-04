@@ -12,7 +12,7 @@ import "../agent/turn" { run_turn }
 import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
-import "../config/catalog" { catalog, index_of }
+import "../config/catalog" { catalog, filter_catalog, index_of }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
@@ -251,9 +251,13 @@ fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
-// Navigate the /model picker overlay.
+// Navigate the /model picker overlay. Printable keys edit the search bar,
+// which narrows the list; arrows move within the matches.
 fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
-    let items = catalog()
+    let items = filter_catalog(catalog(), m.pick_input.value)
+    if m.pick_sel >= items.len() && items.len() > 0 {
+        m.pick_sel = items.len() - 1
+    }
     match k {
         Up -> {
             if m.pick_sel > 0 {
@@ -266,15 +270,23 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
             }
         },
         Enter -> {
-            set_model(m, items[m.pick_sel])
-            m.picking = false
-            _after_model_set(m)
-            m.scroll_up = 0
+            if items.len() > 0 {
+                set_model(m, items[m.pick_sel])
+                m.picking = false
+                _after_model_set(m)
+                m.scroll_up = 0
+            }
         },
         Esc -> {
             m.picking = false
         },
-        _ -> {},
+        _ -> {
+            let before = m.pick_input.value
+            m.pick_input.handle_key(k)
+            if m.pick_input.value != before {
+                m.pick_sel = 0
+            }
+        },
     }
     return next(m)
 }
@@ -417,6 +429,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         ModelPicker -> {
             m.picking = true
             m.pick_sel = index_of(m.model)
+            m.pick_input = TextInput.new()
             return next(m)
         },
         ModelSet(id) -> {

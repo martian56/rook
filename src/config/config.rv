@@ -20,7 +20,7 @@ import "../agents/dir" { project_root, global_root }
 import "../agents/settings" { setting_str }
 
 // The model used when nothing else selects one. A "provider/model" string.
-const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-4.5"
+const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-5"
 
 fun resolve_model() -> String {
     let a = args()
