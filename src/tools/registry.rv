@@ -35,11 +35,20 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "grep",
-            "Search files under a directory for a literal substring; returns matching lines as path:line: text.",
-            _schema(
+            "Search files under a directory with a regex (RE2 syntax: no backreferences or lookaround); returns matching lines as path:line: text. Prefix the pattern with (?i) for case-insensitive matching, e.g. (?i)error.",
+            _schema2(
                 [
-                    Prop { name: "pattern", desc: "the substring to search for" },
+                    Prop {
+                        name: "pattern",
+                        desc: "the regex pattern to search for; prefix with (?i) for case-insensitive matching",
+                    },
                     Prop { name: "path", desc: "directory to search; defaults to '.'" },
+                ],
+                [
+                    Prop {
+                        name: "glob",
+                        desc: "only search files whose name matches this glob, e.g. '*.rv'",
+                    },
                 ],
             ),
         ),
@@ -102,7 +111,7 @@ fun dispatch(call: ToolCall) -> String {
         return list_dir(arg(a, "path"))
     }
     if call.name == "grep" {
-        return grep(arg(a, "pattern"), arg(a, "path"))
+        return grep(arg(a, "pattern"), arg(a, "path"), arg(a, "glob"))
     }
     if call.name == "write_file" {
         return write_file(arg(a, "path"), arg(a, "content"))
@@ -150,20 +159,36 @@ fun label(call: ToolCall) -> String {
 }
 
 fun _schema(props: List<Prop>) -> JsonValue {
+    let no_optional: List<Prop> = []
+    return _schema2(props, no_optional)
+}
+
+// Like _schema, but props in `optional` are added to the schema without
+// being listed as required (a missing one just reads back as "" via arg()).
+fun _schema2(required: List<Prop>, optional: List<Prop>) -> JsonValue {
     let properties = Obj.new()
-    let required: List<JsonValue> = []
+    let required_names: List<JsonValue> = []
     let i = 0
-    while i < props.len() {
-        let p = props[i]
+    while i < required.len() {
+        let p = required[i]
         properties = properties.set(
             p.name,
             Obj.new().str("type", "string").str("description", p.desc).build(),
         )
-        required.push(JsonValue.Str(p.name))
+        required_names.push(JsonValue.Str(p.name))
         i = i + 1
+    }
+    let j = 0
+    while j < optional.len() {
+        let p = optional[j]
+        properties = properties.set(
+            p.name,
+            Obj.new().str("type", "string").str("description", p.desc).build(),
+        )
+        j = j + 1
     }
     return Obj.new().str("type", "object").set("properties", properties.build()).set(
         "required",
-        JsonValue.Array(required),
+        JsonValue.Array(required_names),
     ).build()
 }
