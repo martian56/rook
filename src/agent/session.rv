@@ -6,7 +6,7 @@ import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message }
 import "../agents/dir" { roots }
 import "../agents/skills" { load_skills, skills_prompt }
-import "../agents/subagents" { load_subagents, subagents_prompt }
+import "../agents/subagents" { all_subagents, subagents_prompt }
 import "../agents/memory" { memory_prompt }
 
 const SYSTEM_PROMPT: String = "You are rook, a coding assistant working in the user's current directory. You have tools: read_file, list_dir, grep, write_file, edit_file, and run_command. Inspect the project with the read-only tools before answering, and use write_file, edit_file, and run_command to make changes and run builds or tests. Prefer edit_file for small changes. Writes and commands need the user's approval, so say what you intend before doing it. Keep replies concise and in plain prose."
@@ -24,7 +24,7 @@ fun build_request(
     timeout_ms: Int,
 ) -> ChatRequest {
     let req = ChatRequest.new(model).system(
-        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(load_subagents(roots()))}",
+        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}",
     )
     let i = 0
     while i < history.len() {

@@ -166,7 +166,12 @@ commands cannot be overridden.
 
 ## Subagents
 
-Define helpers in `.agents/subagents/<name>.md`: frontmatter with a
+Three come built in, all read-only: **explorer** (scout the codebase
+and report), **reviewer** (critique code and list real defects), and
+**planner** (produce a step-by-step plan). Ask rook to "have the
+explorer find where X happens" and it delegates.
+
+Define your own in `.agents/subagents/<name>.md`: frontmatter with a
 `description`, an optional `tools` allowlist (comma-separated; omitted
 means every tool), and an optional `model` override, then the agent's
 system prompt as the body. The model sees the roster in its system
@@ -175,7 +180,8 @@ isolated conversation (its own prompt, tools, and rounds) and only its
 final answer returns to the main conversation. Its tool calls show in
 the transcript as `name › tool(...)`, and anything mutating still stops
 for your approval, labeled with the agent's name. Subagents cannot
-dispatch further agents.
+dispatch further agents. A definition named after a built-in replaces
+it.
 
 ## How it is built
 

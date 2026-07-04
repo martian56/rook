@@ -13,7 +13,7 @@ import "./subturn" { run_subagent }
 import "../tools/registry" { tools, needs_approval, dispatch, label }
 import "../tools/args" { arg }
 import "../agents/dir" { roots }
-import "../agents/subagents" { Subagent, load_subagents, subagent_index }
+import "../agents/subagents" { Subagent, all_subagents, subagent_index }
 
 const MAX_ROUNDS: Int = 25
 
@@ -93,10 +93,7 @@ fun _dispatch(
     if task.trim() == "" {
         return "error: dispatch needs a task"
     }
-    let agents = load_subagents(roots())
-    if agents.len() == 0 {
-        return "error: no subagents are defined; add .agents/subagents/<name>.md"
-    }
+    let agents = all_subagents(roots())
     let idx = subagent_index(agents, name)
     if idx < 0 {
         let names = ""
