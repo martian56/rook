@@ -1,0 +1,102 @@
+import std/string
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import std/fs { remove_file }
+import std/env { get_env, has_env }
+import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, list_sessions, load_session }
+import "../ui/transcript" { Entry }
+
+fun _entry_tag(e: Entry) -> String {
+    return match e {
+        UserMsg(t) -> "u:${t}",
+        BotMsg(t) -> "b:${t}",
+        ToolMsg(n, r) -> "t:${n}:${r}",
+        Notice(t) -> "n:${t}",
+        AgentHeader(n, s) -> "h:${n}:${s}",
+        AgentTool(a, n, r) -> "a:${a}:${n}:${r}",
+    }
+}
+
+fun test_save_list_load_round_trip() {
+    let id = new_session_id()
+    let entries = [
+        Entry.UserMsg("fix the parser"),
+        Entry.BotMsg("looking now"),
+        Entry.ToolMsg("read_file(x)", "ok"),
+        Entry.AgentHeader("explorer", "done"),
+    ]
+    save_session(id, "openai/gpt-5.5", entries)
+
+    // The session appears in the list with its title and model.
+    let all = list_sessions()
+    let found = _find(all, id)
+    assert_true(found.id == id)
+    assert_eq_str(found.title, "fix the parser")
+    assert_eq_str(found.model, "openai/gpt-5.5")
+    assert_true(found.created > 0)
+
+    // Loading restores the model and every entry, in order.
+    let loaded = load_session(id)
+    assert_eq_str(loaded.model, "openai/gpt-5.5")
+    assert_eq_int(loaded.entries.len(), 4)
+    assert_eq_str(_entry_tag(loaded.entries[0]), "u:fix the parser")
+    assert_eq_str(_entry_tag(loaded.entries[1]), "b:looking now")
+    assert_eq_str(_entry_tag(loaded.entries[2]), "t:read_file(x):ok")
+    assert_eq_str(_entry_tag(loaded.entries[3]), "h:explorer:done")
+
+    _cleanup(id)
+    return
+}
+
+fun test_title_uses_the_first_user_message() {
+    let id = new_session_id()
+    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")])
+    assert_eq_str(_find(list_sessions(), id).title, "second line here")
+    _cleanup(id)
+    return
+}
+
+fun test_empty_session_is_not_saved() {
+    let id = new_session_id()
+    let none: List<Entry> = []
+    save_session(id, "m", none)
+    assert_true(_find(list_sessions(), id).id != id)
+}
+
+fun test_unknown_id_loads_empty() {
+    let loaded = load_session("no-such-session-id")
+    assert_eq_int(loaded.entries.len(), 0)
+    assert_eq_str(loaded.model, "")
+}
+
+fun _find(xs: List<SessionMeta>, id: String) -> SessionMeta {
+    let i = 0
+    while i < xs.len() {
+        if xs[i].id == id {
+            return xs[i]
+        }
+        i = i + 1
+    }
+    return SessionMeta { id: "", created: 0, model: "", title: "" }
+}
+
+fun _cleanup(id: String) {
+    let home = _home()
+    if home == "" {
+        return
+    }
+    remove_file("${home}/.rook/sessions/${id}.json")
+    return
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}

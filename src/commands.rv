@@ -18,6 +18,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "theme", desc: "switch the color theme" },
         CmdInfo { name: "plan", desc: "toggle plan mode (research and propose, no changes)" },
         CmdInfo { name: "shells", desc: "list background shells" },
+        CmdInfo { name: "sessions", desc: "resume a past conversation" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "clear", desc: "wipe the conversation" },
         CmdInfo { name: "quit", desc: "exit rook" },
@@ -84,6 +85,7 @@ enum Command {
     ThemeSet(String),
     Shells,
     Plan,
+    Sessions,
     Login,
     Unknown(String),
 }
@@ -119,6 +121,9 @@ fun parse_command(text: String) -> Command {
     }
     if text == "/plan" {
         return Command.Plan
+    }
+    if text == "/sessions" {
+        return Command.Sessions
     }
     if text == "/theme" {
         return Command.ThemePicker

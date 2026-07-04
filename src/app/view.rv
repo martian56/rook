@@ -21,6 +21,7 @@ import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
+import "../config/sessions" { SessionMeta }
 
 fun chat_view(m: Chat, f: Frame) {
     // The model's checklist takes a strip above the thinking line while it
@@ -60,7 +61,7 @@ fun chat_view(m: Chat, f: Frame) {
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[3 + off], f)
-    let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.shells_open
+    let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.shells_open && !m.sessions_open
     if idle && !m.mention_dismissed && m.mention_matches.len() > 0 && current_mention(m.entry.value).active {
         _mention_menu(m, input_area, f)
     } else {
@@ -89,6 +90,9 @@ fun chat_view(m: Chat, f: Frame) {
         } else {
             _shells_panel(m, f)
         }
+    }
+    if m.sessions_open {
+        _sessions_panel(m, f)
     }
     if m.entering_key {
         _key_modal(m, f)
@@ -355,6 +359,71 @@ fun _shells_panel(m: Chat, f: Frame) {
                 sty = m.theme.dim
             }
             f.buf.set_string(inner.x + 1, inner.y + r, row, sty)
+        }
+        r = r + 1
+    }
+    return
+}
+
+// The /sessions picker: past conversations newest first, one row each with
+// its title and model. Enter resumes, esc closes.
+fun _sessions_panel(m: Chat, f: Frame) {
+    let full = f.area()
+    let list = m.sessions_list
+    let count = list.len()
+    if count < 1 {
+        count = 1
+    }
+    if count > full.h - 6 {
+        count = full.h - 6
+    }
+    let h = count + 2
+    let w = 72
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Resume a session  (enter, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    if list.len() == 0 {
+        f.buf.set_string(inner.x + 1, inner.y, "(no saved sessions)", m.theme.dim)
+        return
+    }
+    let sel = m.sessions_sel
+    if sel >= list.len() {
+        sel = list.len() - 1
+    }
+    let top = 0
+    if sel >= count {
+        top = sel - count + 1
+    }
+    let r = 0
+    while r < count && top + r < list.len() {
+        let s = list[top + r]
+        let title = s.title
+        if title == "" {
+            title = "(untitled)"
+        }
+        let row = "${title}  ·  ${s.model}"
+        if row.length() > inner.w - 2 {
+            row = row.substring(0, inner.w - 2)
+        }
+        if top + r == sel {
+            while row.length() < inner.w - 1 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+        } else {
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.text)
         }
         r = r + 1
     }

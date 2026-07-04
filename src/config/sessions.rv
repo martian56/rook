@@ -1,0 +1,241 @@
+// Session persistence: each conversation is saved to ~/.rook/sessions as a
+// JSON file (id, created time, model, a title, and the transcript entries),
+// rewritten after every turn, so work survives a restart. /sessions lists
+// the saved ones newest first and resumes one: the transcript is restored,
+// and a text-only conversation is rebuilt from the user and assistant lines
+// so the model continues with context (the exact tool-call history is not
+// replayed).
+
+import std/string
+import std/env { get_env, has_env }
+import std/fs { read, write, exists, create_dir_all, list_dir }
+import std/json { JsonValue, parse, stringify }
+import std/time { now, now_millis }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
+import "../ui/transcript" { Entry }
+
+// A saved session's headline, for the picker.
+struct SessionMeta {
+    id: String,
+    created: Int,
+    model: String,
+    title: String,
+}
+
+// The restored contents of a session.
+struct Loaded {
+    model: String,
+    entries: List<Entry>,
+}
+
+// A fresh session id, unique to the millisecond.
+fun new_session_id() -> String {
+    return "${now_millis()}"
+}
+
+// Write the session. A session with no entries is not saved (nothing to
+// resume). Overwrites the same file as the conversation grows.
+fun save_session(id: String, model: String, entries: List<Entry>) {
+    if entries.len() == 0 {
+        return
+    }
+    let dir = _sessions_dir()
+    if dir == "" {
+        return
+    }
+    create_dir_all(dir)
+    let arr: List<JsonValue> = []
+    let i = 0
+    while i < entries.len() {
+        arr.push(_entry_json(entries[i]))
+        i = i + 1
+    }
+    let doc = Obj.new().str("id", id).str("model", model).str("title", _title(entries))
+    doc = doc.str("created", "${now()}").set("entries", JsonValue.Array(arr))
+    write("${dir}/${id}.json", stringify(doc.build()))
+    return
+}
+
+// Every saved session, newest first.
+fun list_sessions() -> List<SessionMeta> {
+    let out: List<SessionMeta> = []
+    let dir = _sessions_dir()
+    if dir == "" {
+        return out
+    }
+    let names: List<String> = []
+    match list_dir(dir) {
+        Ok(ns) -> {
+            names = ns
+        },
+        Err(e) -> {
+            return out
+        },
+    }
+    let i = 0
+    while i < names.len() {
+        if names[i].ends_with(".json") {
+            let text = _read_opt("${dir}/${names[i]}")
+            match parse(text) {
+                Ok(j) -> {
+                    out.push(
+                        SessionMeta {
+                            id: as_str(field(j, "id")),
+                            created: _created(j),
+                            model: as_str(field(j, "model")),
+                            title: as_str(field(j, "title")),
+                        },
+                    )
+                },
+                Err(e) -> {},
+            }
+        }
+        i = i + 1
+    }
+    return _sort_newest(out)
+}
+
+// Restore a session by id.
+fun load_session(id: String) -> Loaded {
+    let empty: List<Entry> = []
+    let dir = _sessions_dir()
+    if dir == "" {
+        return Loaded { model: "", entries: empty }
+    }
+    let text = _read_opt("${dir}/${id}.json")
+    return match parse(text) {
+        Ok(j) -> {
+            let entries: List<Entry> = []
+            let arr = as_list(field(j, "entries"))
+            let i = 0
+            while i < arr.len() {
+                entries.push(_json_entry(arr[i]))
+                i = i + 1
+            }
+            Loaded { model: as_str(field(j, "model")), entries }
+        },
+        Err(e) -> Loaded { model: "", entries: empty },
+    }
+}
+
+fun _entry_json(e: Entry) -> JsonValue {
+    return match e {
+        UserMsg(t) -> Obj.new().str("k", "user").str("a", t).build(),
+        BotMsg(t) -> Obj.new().str("k", "bot").str("a", t).build(),
+        ToolMsg(name, result) -> Obj.new().str("k", "tool").str("a", name).str("b", result).build(),
+        Notice(t) -> Obj.new().str("k", "notice").str("a", t).build(),
+        AgentHeader(name, status) -> Obj.new().str("k", "ahdr").str("a", name).str("b", status).build(),
+        AgentTool(agent, name, result) -> Obj.new().str("k", "atool").str("a", agent).str("b", name).str(
+            "c",
+            result,
+        ).build(),
+    }
+}
+
+fun _json_entry(j: JsonValue) -> Entry {
+    let k = as_str(field(j, "k"))
+    let a = as_str(field(j, "a"))
+    let b = as_str(field(j, "b"))
+    if k == "user" {
+        return Entry.UserMsg(a)
+    }
+    if k == "bot" {
+        return Entry.BotMsg(a)
+    }
+    if k == "tool" {
+        return Entry.ToolMsg(a, b)
+    }
+    if k == "ahdr" {
+        return Entry.AgentHeader(a, b)
+    }
+    if k == "atool" {
+        return Entry.AgentTool(a, b, as_str(field(j, "c")))
+    }
+    return Entry.Notice(a)
+}
+
+// The session title: the first user message, trimmed to one short line.
+fun _title(entries: List<Entry>) -> String {
+    let i = 0
+    while i < entries.len() {
+        let t = match entries[i] {
+            UserMsg(txt) -> txt,
+            _ -> "",
+        }
+        if t != "" {
+            let line = t
+            let nl = line.index_of("\n")
+            if nl >= 0 {
+                line = line.substring(0, nl)
+            }
+            if line.length() > 60 {
+                line = line.substring(0, 60)
+            }
+            return line
+        }
+        i = i + 1
+    }
+    return "(no messages)"
+}
+
+fun _sort_newest(xs: List<SessionMeta>) -> List<SessionMeta> {
+    // Small lists; a simple selection sort by created, descending.
+    let out = xs
+    let i = 0
+    while i < out.len() {
+        let best = i
+        let j = i + 1
+        while j < out.len() {
+            if out[j].created > out[best].created {
+                best = j
+            }
+            j = j + 1
+        }
+        if best != i {
+            let tmp = out[i]
+            out[i] = out[best]
+            out[best] = tmp
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// The created timestamp, stored as a string.
+fun _created(j: JsonValue) -> Int {
+    return match as_str(field(j, "created")).parse_int() {
+        Some(n) -> n,
+        None -> 0,
+    }
+}
+
+fun _sessions_dir() -> String {
+    let h = _home()
+    if h == "" {
+        return ""
+    }
+    return "${h}/.rook/sessions"
+}
+
+fun _read_opt(path: String) -> String {
+    if !exists(path) {
+        return ""
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}

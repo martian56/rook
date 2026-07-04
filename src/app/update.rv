@@ -14,6 +14,7 @@ import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
+import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions, load_session }
 import "../config/catalog" { catalog, filter_catalog, index_of }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -76,6 +77,8 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.pending = ""
             m.pending_detail = ""
             m.question = ""
+            // Persist the conversation now that the turn has landed.
+            save_session(m.session_id, m.model, m.entries)
         }
         m.scroll_up = 0
     }
@@ -243,6 +246,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     if m.help_open {
         return _help_key(m, k)
+    }
+    if m.sessions_open {
+        return _sessions_key(m, k)
     }
     if m.shells_open {
         return _shells_key(m, k)
@@ -506,6 +512,63 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
+// Navigate the /sessions picker: arrows move, enter resumes the highlighted
+// session, esc closes.
+fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
+    match k {
+        Up -> {
+            if m.sessions_sel > 0 {
+                m.sessions_sel = m.sessions_sel - 1
+            }
+        },
+        Down -> {
+            if m.sessions_sel < m.sessions_list.len() - 1 {
+                m.sessions_sel = m.sessions_sel + 1
+            }
+        },
+        Enter -> {
+            if m.sessions_list.len() > 0 {
+                _resume(m, m.sessions_list[m.sessions_sel].id)
+            }
+            m.sessions_open = false
+        },
+        Esc -> {
+            m.sessions_open = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
+// Resume a saved session: restore its transcript, rebuild a text-only
+// conversation from it so the model has context, and continue writing to
+// that session's file.
+fun _resume(m: Chat, id: String) {
+    let loaded = load_session(id)
+    m.entries = loaded.entries
+    if loaded.model != "" {
+        set_model(m, loaded.model)
+    }
+    m.agent.clear_convo()
+    let i = 0
+    while i < loaded.entries.len() {
+        match loaded.entries[i] {
+            UserMsg(t) -> {
+                m.agent.push_user(t)
+            },
+            BotMsg(t) -> {
+                m.agent.push_assistant(t)
+            },
+            _ -> {},
+        }
+        i = i + 1
+    }
+    m.session_id = id
+    m.entries.push(Entry.Notice("resumed session"))
+    m.scroll_up = 0
+    return
+}
+
 // Navigate the /shells panel: arrows move the highlight, esc closes. The
 // list itself refreshes on every frame, so statuses stay live.
 fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
@@ -686,6 +749,8 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             clear_todos()
             m.sess_prompt = 0
             m.sess_completion = 0
+            // Start a fresh session so the cleared one stays resumable.
+            m.session_id = new_session_id()
             m.agent.clear_convo()
             return next(m)
         },
@@ -728,6 +793,12 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         Shells -> {
             m.shells_open = true
             m.shells_sel = 0
+            return next(m)
+        },
+        Sessions -> {
+            m.sessions_list = list_sessions()
+            m.sessions_sel = 0
+            m.sessions_open = true
             return next(m)
         },
         Plan -> {

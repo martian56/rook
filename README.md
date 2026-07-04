@@ -132,6 +132,11 @@ Enter tails the highlighted shell: a full-screen pane follows its
 output as it is produced, so a dev server or build log is readable
 while rook keeps working. Esc steps back.
 
+`/sessions` lists your past conversations (newest first) and resumes
+one: the transcript comes back and the model picks up the context.
+Sessions save to `~/.rook/sessions` automatically after each turn;
+`/clear` starts a fresh one and leaves the old one resumable.
+
 `/help` opens the same list as a menu: arrows to browse every command
 (built-in and custom) with its description, Enter to run one, Esc to
 close. The other built-ins: `/clear` (wipe the conversation), `/model`,

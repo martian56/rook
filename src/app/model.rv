@@ -8,6 +8,7 @@ import "../ui/transcript" { Entry, AgentBlock }
 import "../ui/theme" { Theme }
 import "../ui/themes" { startup_theme }
 import "../ui/depth" { themed }
+import "../config/sessions" { SessionMeta, new_session_id }
 import "../commands" { CmdInfo, builtin_commands, merge_infos }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, command_infos }
@@ -86,6 +87,12 @@ struct Chat {
     // Session token totals, drained from the agent for the status bar.
     sess_prompt: Int,
     sess_completion: Int,
+    // Persistence: the current session's id (its file on disk), and the
+    // /sessions picker (open, the highlighted row, and the loaded list).
+    session_id: String,
+    sessions_open: Bool,
+    sessions_sel: Int,
+    sessions_list: List<SessionMeta>,
 }
 
 fun chat_init() -> Chat {
@@ -94,6 +101,7 @@ fun chat_init() -> Chat {
     let open_agents: List<AgentBlock> = []
     let no_choices: List<String> = []
     let no_matches: List<String> = []
+    let no_sessions: List<SessionMeta> = []
     return Chat {
         entries,
         entry: TextInput.new(),
@@ -139,6 +147,10 @@ fun chat_init() -> Chat {
         mention_dismissed: false,
         sess_prompt: 0,
         sess_completion: 0,
+        session_id: new_session_id(),
+        sessions_open: false,
+        sessions_sel: 0,
+        sessions_list: no_sessions,
     }
 }
 
