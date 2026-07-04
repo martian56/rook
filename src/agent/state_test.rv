@@ -73,6 +73,25 @@ fun test_interrupt_flag() {
     assert_true(st.interrupted())
 }
 
+fun test_usage_accumulates_per_turn_and_session() {
+    let st = AgentState.new()
+    st.add_usage(100, 40)
+    st.add_usage(50, 20)
+    let t = st.turn_tokens()
+    assert_eq_int(t.prompt, 150)
+    assert_eq_int(t.completion, 60)
+    // A new turn resets the turn total but keeps the session total.
+    st.begin()
+    let after = st.turn_tokens()
+    assert_eq_int(after.prompt, 0)
+    let snap = st.drain()
+    assert_eq_int(snap.sess_prompt, 150)
+    assert_eq_int(snap.sess_completion, 60)
+    // Clearing the conversation resets the session total.
+    st.clear_convo()
+    assert_eq_int(st.drain().sess_prompt, 0)
+}
+
 fun test_plan_flag_round_trips_and_survives_begin() {
     let st = AgentState.new()
     assert_false(st.plan())

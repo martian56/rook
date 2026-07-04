@@ -14,6 +14,7 @@ import "./subturn" { run_subagent }
 import "../tools/registry" { tools, needs_approval, dispatch, label }
 import "../tools/preview" { change_preview }
 import "../tools/permissions" { Verdict, check_permission }
+import "../tools/pricing" { usage_label }
 import "../tools/args" { arg }
 import "../agents/dir" { roots }
 import "../agents/subagents" { Subagent, all_subagents, subagent_index }
@@ -46,6 +47,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 reply_text = reply.content
                 calls = reply.tool_calls
                 finish = reply.finish_reason
+                st.add_usage(reply.usage.prompt_tokens, reply.usage.completion_tokens)
             },
             Err(e) -> {
                 err = e.message
@@ -63,11 +65,13 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 st.push_assistant(reply_text)
             }
             st.emit(DisplayEvent.Info("Interrupted"))
+            _report_usage(st, model)
             st.finish()
             return
         }
         if calls.len() == 0 {
             st.push_assistant(reply_text)
+            _report_usage(st, model)
             st.finish()
             return
         }
@@ -118,7 +122,18 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         round = round + 1
     }
     st.emit(DisplayEvent.Info("stopped after ${MAX_ROUNDS} tool rounds"))
+    _report_usage(st, model)
     st.finish()
+    return
+}
+
+// Emit this turn's token usage and estimated cost, when there is any.
+fun _report_usage(st: AgentState, model: String) {
+    let t = st.turn_tokens()
+    if t.prompt + t.completion == 0 {
+        return
+    }
+    st.emit(DisplayEvent.Info("turn: ${usage_label(model, t.prompt, t.completion)}"))
     return
 }
 

@@ -67,6 +67,8 @@ fun _tick(m: Chat) -> Step<Chat> {
         }
         m.question = snap.question
         m.choices = snap.choices
+        m.sess_prompt = snap.sess_prompt
+        m.sess_completion = snap.sess_completion
         if snap.done {
             m.active = false
             m.turns = m.turns + 1
@@ -682,6 +684,8 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             let blocks: List<AgentBlock> = []
             m.open_agents = blocks
             clear_todos()
+            m.sess_prompt = 0
+            m.sess_completion = 0
             m.agent.clear_convo()
             return next(m)
         },

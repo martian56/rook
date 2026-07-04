@@ -42,6 +42,15 @@ struct Snapshot {
     choices: List<String>,
     // Extra lines shown under the pending approval (a diff preview).
     pending_detail: String,
+    // Session token totals, for the status bar.
+    sess_prompt: Int,
+    sess_completion: Int,
+}
+
+// Token counts, for reporting a turn's usage.
+struct Tokens {
+    prompt: Int,
+    completion: Int,
 }
 
 struct AgentState {
@@ -69,6 +78,12 @@ struct AgentState {
     // Plan mode: read-only research, mutating tools blocked. A session
     // toggle set from the UI before each turn, not reset by begin().
     plan_flag: Bool,
+    // Token usage: the current turn's (reset by begin) and the session's
+    // running total (reset by clear_convo).
+    turn_prompt: Int,
+    turn_completion: Int,
+    sess_prompt: Int,
+    sess_completion: Int,
 }
 
 impl AgentState {
@@ -90,7 +105,29 @@ impl AgentState {
             ask_lock: mutex(),
             cancel: CancelToken.new(),
             plan_flag: false,
+            turn_prompt: 0,
+            turn_completion: 0,
+            sess_prompt: 0,
+            sess_completion: 0,
         }
+    }
+
+    // Add one reply's token usage to the current turn and the session total.
+    fun add_usage(self, prompt: Int, completion: Int) {
+        self.lock.lock()
+        self.turn_prompt = self.turn_prompt + prompt
+        self.turn_completion = self.turn_completion + completion
+        self.sess_prompt = self.sess_prompt + prompt
+        self.sess_completion = self.sess_completion + completion
+        self.lock.unlock()
+    }
+
+    // This turn's accumulated usage, for the end-of-turn summary.
+    fun turn_tokens(self) -> Tokens {
+        self.lock.lock()
+        let t = Tokens { prompt: self.turn_prompt, completion: self.turn_completion }
+        self.lock.unlock()
+        return t
     }
 
     // Set plan mode. The UI calls this before begin() when it changes.
@@ -120,6 +157,8 @@ impl AgentState {
         let e: List<DisplayEvent> = []
         self.events = e
         self.cancel = CancelToken.new()
+        self.turn_prompt = 0
+        self.turn_completion = 0
         self.lock.unlock()
     }
 
@@ -135,6 +174,10 @@ impl AgentState {
         self.lock.lock()
         let c: List<Message> = []
         self.convo = c
+        self.turn_prompt = 0
+        self.turn_completion = 0
+        self.sess_prompt = 0
+        self.sess_completion = 0
         self.lock.unlock()
     }
 
@@ -200,6 +243,8 @@ impl AgentState {
             question: self.question,
             choices: self.choices,
             pending_detail: self.pending_detail,
+            sess_prompt: self.sess_prompt,
+            sess_completion: self.sess_completion,
         }
         self.lock.unlock()
         return s
