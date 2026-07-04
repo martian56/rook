@@ -1,6 +1,7 @@
 import std/string
-import std/test { assert_true }
-import "./shells" { run_background, shell_count }
+import std/test { assert_true, assert_eq_int, assert_eq_str }
+import std/time { sleep_millis }
+import "./shells" { ShellInfo, run_background, shell_count, list_shells }
 
 fun test_background_command_returns_an_id_immediately() {
     let before = shell_count()
@@ -18,4 +19,51 @@ fun test_each_shell_gets_its_own_id() {
     let a = run_background("echo one")
     let b = run_background("echo two")
     assert_true(a != b)
+}
+
+// Find a shell by id in a snapshot; -1 when absent.
+fun _index_of(infos: List<ShellInfo>, id: Int) -> Int {
+    let i = 0
+    while i < infos.len() {
+        if infos[i].id == id {
+            return i
+        }
+        i = i + 1
+    }
+    return 0 - 1
+}
+
+fun _id_of(started: String) -> Int {
+    // "started shell N: ..." -> N
+    let rest = started.substring(14, started.length())
+    let colon = rest.index_of(":")
+    return match rest.substring(0, colon).parse_int() {
+        Some(n) -> n,
+        None -> 0 - 1,
+    }
+}
+
+fun test_registry_moves_a_shell_from_running_to_exited() {
+    let started = run_background("echo registry-probe")
+    let id = _id_of(started)
+    assert_true(id > 0)
+    // Wait for the child to finish; refresh happens inside list_shells.
+    let tries = 0
+    let done = false
+    while tries < 400 && !done {
+        let infos = list_shells()
+        let at = _index_of(infos, id)
+        assert_true(at >= 0)
+        if !infos[at].running {
+            done = true
+            assert_eq_int(infos[at].code, 0)
+            assert_true(infos[at].output_len > 0)
+            assert_eq_str(infos[at].command, "echo registry-probe")
+            assert_true(infos[at].runtime_ms >= 0)
+        } else {
+            sleep_millis(10)
+            tries = tries + 1
+        }
+    }
+    assert_true(done)
 }
