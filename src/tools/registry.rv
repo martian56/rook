@@ -13,6 +13,7 @@ import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
 import "./tree" { file_tree }
 import "./todos" { set_todos }
 import "./git" { git_status, git_diff, git_commit }
+import "./web" { web_fetch, web_search }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
 
@@ -137,6 +138,16 @@ fun tools() -> List<ToolDef> {
             _schema([Prop { name: "id", desc: "the shell id to stop" }]),
         ),
         ToolDef.new(
+            "web_search",
+            "Search the web and return the top result titles and links. Use it to find current documentation or references.",
+            _schema([Prop { name: "query", desc: "the search query" }]),
+        ),
+        ToolDef.new(
+            "web_fetch",
+            "Fetch a URL and return its readable text (HTML stripped, truncated). Use it to read a page or documentation.",
+            _schema([Prop { name: "url", desc: "the URL to fetch" }]),
+        ),
+        ToolDef.new(
             "use_skill",
             "Load the full instructions of a skill listed in the system prompt. Call it when a skill matches the task, before doing that work.",
             _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
@@ -207,6 +218,12 @@ fun dispatch(call: ToolCall) -> String {
     if call.name == "kill_shell" {
         return kill_shell(arg(a, "id"))
     }
+    if call.name == "web_search" {
+        return web_search(arg(a, "query"))
+    }
+    if call.name == "web_fetch" {
+        return web_fetch(arg(a, "url"))
+    }
     if call.name == "use_skill" {
         return skill_body(roots(), arg(a, "name"))
     }
@@ -262,6 +279,12 @@ fun label(call: ToolCall) -> String {
     }
     if call.name == "kill_shell" {
         return "kill_shell(${arg(a, "id")})"
+    }
+    if call.name == "web_search" {
+        return "web_search(${arg(a, "query")})"
+    }
+    if call.name == "web_fetch" {
+        return "web_fetch(${arg(a, "url")})"
     }
     if call.name == "use_skill" {
         return "use_skill(${arg(a, "name")})"

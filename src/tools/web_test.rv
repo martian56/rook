@@ -1,0 +1,61 @@
+import std/string
+import std/http { Server, Request, Response }
+import std/time { sleep_millis }
+import std/test { assert_true, assert_eq_str }
+import "./web" { html_to_text, parse_ddg, web_fetch }
+
+const PAGE: String = "<html><head><style>.x{color:red}</style><script>var a=1;</script></head><body><h1>Title</h1><p>Hello &amp; welcome.</p><div>Line   two</div></body></html>"
+
+const DDG: String = "<div class=\"result\"><a rel=\"nofollow\" class=\"result__a\" href=\"//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fdocs&rut=x\">Example Docs</a><a class=\"result__snippet\">snip</a></div><div class=\"result\"><a class=\"result__a\" href=\"https://plain.example/page\">Plain &amp; Simple</a></div>"
+
+fun test_html_to_text_strips_and_decodes() {
+    let t = html_to_text(PAGE)
+    assert_true(t.contains("Title"))
+    assert_true(t.contains("Hello & welcome."))
+    assert_true(t.contains("Line two"))
+    // Script and style content is gone.
+    assert_true(!t.contains("color:red"))
+    assert_true(!t.contains("var a=1"))
+    // No tags survive.
+    assert_true(!t.contains("<"))
+}
+
+fun test_parse_ddg_lists_titles_and_decoded_links() {
+    let r = parse_ddg(DDG)
+    assert_true(r.contains("1. Example Docs"))
+    // The uddg redirect is decoded to the real URL, without the rut param.
+    assert_true(r.contains("https://example.com/docs"))
+    assert_true(!r.contains("rut="))
+    assert_true(r.contains("2. Plain & Simple"))
+    assert_true(r.contains("https://plain.example/page"))
+}
+
+fun test_parse_ddg_handles_no_results() {
+    assert_eq_str(parse_ddg("<html><body>nothing here</body></html>"), "(no results)")
+}
+
+fun page_handler(req: Request) -> Response {
+    return Response.text(PAGE)
+}
+
+fun serve_page() {
+    let app = Server.new()
+    app.get("/", page_handler)
+    app.listen("127.0.0.1:8471")
+}
+
+fun test_web_fetch_reads_a_page_as_text() {
+    spawn(fun() -> Unit {
+        serve_page()
+    })
+    sleep_millis(200)
+    let t = web_fetch("http://127.0.0.1:8471/")
+    assert_true(t.contains("Title"))
+    assert_true(t.contains("Hello & welcome."))
+    assert_true(!t.contains("var a=1"))
+    return
+}
+
+fun test_web_fetch_validates_input() {
+    assert_true(web_fetch("").starts_with("error:"))
+}

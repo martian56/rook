@@ -1,0 +1,328 @@
+// Web tools: fetch a URL as readable text, and search the web. Both go
+// through std/http. web_fetch strips a page down to text; web_search hits
+// the DuckDuckGo HTML endpoint and lists the result titles and links.
+// The parsing (html_to_text, parse_ddg) is pure so it is tested directly;
+// only the network call itself is untested.
+
+import std/string
+import std/http { request_with_timeout, HttpResponse }
+
+const TIMEOUT_MS: Int = 15000
+const MAX_TEXT: Int = 6000
+const MAX_RESULTS: Int = 8
+
+// Fetch `url` and return its readable text, truncated. HTML is stripped to
+// text; other bodies come back as-is.
+fun web_fetch(url: String) -> String {
+    let u = url.trim()
+    if u == "" {
+        return "error: web_fetch needs a url"
+    }
+    if !u.starts_with("http://") && !u.starts_with("https://") {
+        u = "https://${u}"
+    }
+    let headers = "User-Agent: rook/1.0\nAccept: text/html,text/plain"
+    return match request_with_timeout("GET", u, "", headers, TIMEOUT_MS) {
+        Ok(resp) -> _readable(resp),
+        Err(e) -> "error: could not fetch ${u}: ${e.message}",
+    }
+}
+
+fun _readable(resp: HttpResponse) -> String {
+    if resp.status_code >= 400 {
+        return "error: ${resp.status_code} ${resp.status_text}"
+    }
+    let body = resp.body
+    if _looks_like_html(body) {
+        body = html_to_text(body)
+    }
+    body = body.trim()
+    if body == "" {
+        return "(empty page)"
+    }
+    if body.length() > MAX_TEXT {
+        return "${body.substring(0, MAX_TEXT)}\n… (truncated)"
+    }
+    return body
+}
+
+// Search the web and list the top results (title and link).
+fun web_search(query: String) -> String {
+    let q = query.trim()
+    if q == "" {
+        return "error: web_search needs a query"
+    }
+    let url = "https://html.duckduckgo.com/html/?q=${_url_encode(q)}"
+    let headers = "User-Agent: rook/1.0\nAccept: text/html"
+    return match request_with_timeout("GET", url, "", headers, TIMEOUT_MS) {
+        Ok(resp) -> {
+            if resp.status_code >= 400 {
+                "error: search returned ${resp.status_code} ${resp.status_text}"
+            } else {
+                parse_ddg(resp.body)
+            }
+        },
+        Err(e) -> "error: could not search: ${e.message}",
+    }
+}
+
+// Strip HTML to readable text: drop script and style blocks, turn block
+// boundaries into newlines, remove the remaining tags, decode the common
+// entities, and collapse whitespace.
+fun html_to_text(html: String) -> String {
+    let s = _remove_block(html, "<script", "</script>")
+    s = _remove_block(s, "<style", "</style>")
+    s = s.replace("</p>", "\n").replace("</div>", "\n").replace("</li>", "\n")
+    s = s.replace("</h1>", "\n").replace("</h2>", "\n").replace("</h3>", "\n")
+    s = s.replace("</tr>", "\n").replace("<br>", "\n").replace("<br/>", "\n").replace(
+        "<br />",
+        "\n",
+    )
+    s = _strip_tags(s)
+    s = _decode_entities(s)
+    return _collapse(s)
+}
+
+// Parse DuckDuckGo HTML results into a numbered list of title and link.
+fun parse_ddg(html: String) -> String {
+    let out: List<String> = []
+    let s = html
+    while out.len() < MAX_RESULTS {
+        let m = s.index_of("result__a")
+        if m < 0 {
+            break
+        }
+        s = s.substring(m, s.length())
+        let h = s.index_of("href=\"")
+        if h < 0 {
+            break
+        }
+        let after = s.substring(h + 6, s.length())
+        let end = after.index_of("\"")
+        if end < 0 {
+            break
+        }
+        let url = _ddg_url(after.substring(0, end))
+        let title = ""
+        let gt = after.index_of(">")
+        if gt >= 0 {
+            let t = after.substring(gt + 1, after.length())
+            let lt = t.index_of("<")
+            if lt >= 0 {
+                title = _decode_entities(_strip_tags(t.substring(0, lt))).trim()
+            }
+        }
+        if url != "" {
+            let n = out.len() + 1
+            out.push("${n}. ${title}\n   ${url}")
+        }
+        s = after
+    }
+    if out.len() == 0 {
+        return "(no results)"
+    }
+    let text = ""
+    let i = 0
+    while i < out.len() {
+        if i > 0 {
+            text = text.concat("\n\n")
+        }
+        text = text.concat(out[i])
+        i = i + 1
+    }
+    return text
+}
+
+// A DuckDuckGo result href is often a redirect //duckduckgo.com/l/?uddg=<encoded>;
+// pull the real URL out and decode it. A plain href is returned as-is, with
+// a scheme added to a protocol-relative one.
+fun _ddg_url(raw: String) -> String {
+    let key = "uddg="
+    let at = raw.index_of(key)
+    if at >= 0 {
+        let rest = raw.substring(at + key.length(), raw.length())
+        let amp = rest.index_of("&")
+        if amp >= 0 {
+            rest = rest.substring(0, amp)
+        }
+        return _url_decode(rest)
+    }
+    if raw.starts_with("//") {
+        return "https:${raw}"
+    }
+    return raw
+}
+
+fun _looks_like_html(body: String) -> Bool {
+    let head = body
+    if head.length() > 400 {
+        head = head.substring(0, 400)
+    }
+    let l = head.to_lower()
+    return l.contains("<html") || l.contains("<!doctype html") || l.contains("<body") || l.contains(
+        "<div",
+    )
+}
+
+fun _remove_block(s: String, open: String, close: String) -> String {
+    let out = s
+    let guard = 0
+    while guard < 1000 {
+        let a = out.index_of(open)
+        if a < 0 {
+            return out
+        }
+        let tail = out.substring(a, out.length())
+        let b = tail.index_of(close)
+        if b < 0 {
+            // Unclosed: drop the rest.
+            return out.substring(0, a)
+        }
+        out = out.substring(0, a).concat(tail.substring(b + close.length(), tail.length()))
+        guard = guard + 1
+    }
+    return out
+}
+
+fun _strip_tags(s: String) -> String {
+    let out = ""
+    let depth = 0
+    let i = 0
+    while i < s.length() {
+        let c = s.byte_at(i)
+        if c == 60 {
+            depth = depth + 1
+        } else if c == 62 {
+            if depth > 0 {
+                depth = depth - 1
+            }
+        } else {
+            if depth == 0 {
+                out = out.concat(s.substring(i, i + 1))
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _decode_entities(s: String) -> String {
+    let out = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+    out = out.replace("&quot;", "\"").replace("&#39;", "'").replace("&#x27;", "'")
+    out = out.replace("&nbsp;", " ").replace("&mdash;", "-").replace("&ndash;", "-")
+    return out
+}
+
+// Collapse whitespace: trim each line, drop empty lines, and squeeze runs of
+// spaces and tabs inside a line to one space.
+fun _collapse(s: String) -> String {
+    let lines = s.lines()
+    let out = ""
+    let i = 0
+    while i < lines.len() {
+        let line = _squeeze(lines[i]).trim()
+        if line != "" {
+            if out != "" {
+                out = out.concat("\n")
+            }
+            out = out.concat(line)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _squeeze(s: String) -> String {
+    let out = ""
+    let prev_space = false
+    let i = 0
+    while i < s.length() {
+        let c = s.byte_at(i)
+        let is_space = c == 32 || c == 9
+        if is_space {
+            if !prev_space {
+                out = out.concat(" ")
+            }
+            prev_space = true
+        } else {
+            out = out.concat(s.substring(i, i + 1))
+            prev_space = false
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _url_encode(s: String) -> String {
+    let out = ""
+    let i = 0
+    while i < s.length() {
+        let b = s.byte_at(i)
+        if _unreserved(b) {
+            out = out.concat(s.substring(i, i + 1))
+        } else {
+            out = out.concat(_hex2(b))
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _url_decode(s: String) -> String {
+    let out = ""
+    let i = 0
+    while i < s.length() {
+        let c = s.byte_at(i)
+        if c == 37 && i + 2 < s.length() {
+            let hi = _hexval(s.byte_at(i + 1))
+            let lo = _hexval(s.byte_at(i + 2))
+            if hi >= 0 && lo >= 0 {
+                out = out.concat(__str_from_byte(hi * 16 + lo))
+                i = i + 3
+            } else {
+                out = out.concat(s.substring(i, i + 1))
+                i = i + 1
+            }
+        } else if c == 43 {
+            out = out.concat(" ")
+            i = i + 1
+        } else {
+            out = out.concat(s.substring(i, i + 1))
+            i = i + 1
+        }
+    }
+    return out
+}
+
+fun _unreserved(b: Int) -> Bool {
+    if b >= 48 && b <= 57 {
+        return true
+    }
+    if b >= 65 && b <= 90 {
+        return true
+    }
+    if b >= 97 && b <= 122 {
+        return true
+    }
+    return b == 45 || b == 95 || b == 46 || b == 126
+}
+
+fun _hex2(b: Int) -> String {
+    let digits = "0123456789ABCDEF"
+    let hi = b / 16
+    let lo = b % 16
+    return "%${digits.substring(hi, hi + 1)}${digits.substring(lo, lo + 1)}"
+}
+
+fun _hexval(b: Int) -> Int {
+    if b >= 48 && b <= 57 {
+        return b - 48
+    }
+    if b >= 65 && b <= 70 {
+        return b - 55
+    }
+    if b >= 97 && b <= 102 {
+        return b - 87
+    }
+    return 0 - 1
+}

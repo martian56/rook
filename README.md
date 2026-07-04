@@ -254,6 +254,13 @@ parallel, each on its own goroutine with its own conversation, and the
 main agent continues once every result is back, wide read-only work
 like searching three areas at once finishes in one round.
 
+## Web
+
+`web_search` returns the top results (titles and links) for a query,
+and `web_fetch` reads a URL as text with the HTML stripped, so the
+model can pull in current documentation during a task. Both are
+read-only and run automatically; output is truncated like other tools.
+
 ## Git
 
 rook is git-aware. `git_status` and `git_diff` (read-only, auto-run) let
