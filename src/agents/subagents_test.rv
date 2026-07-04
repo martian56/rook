@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, subagent_index, subagents_prompt }
+import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents }
 import "./front" { parse_front, front_get }
 
 const DOC: String = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."
@@ -67,6 +67,54 @@ fun test_prompt_lists_agents_for_dispatch() {
     let p = subagents_prompt(one)
     assert_true(p.contains("- reviewer: critique a diff"))
     assert_true(p.contains("dispatch"))
+}
+
+fun test_builtins_are_three_read_only_agents() {
+    let bs = builtin_subagents()
+    assert_true(bs.len() == 3)
+    assert_true(subagent_index(bs, "explorer") >= 0)
+    assert_true(subagent_index(bs, "reviewer") >= 0)
+    assert_true(subagent_index(bs, "planner") >= 0)
+    let i = 0
+    while i < bs.len() {
+        assert_true(bs[i].tools.len() > 0)
+        let t = 0
+        while t < bs[i].tools.len() {
+            assert_true(bs[i].tools[t] != "write_file")
+            assert_true(bs[i].tools[t] != "edit_file")
+            assert_true(bs[i].tools[t] != "run_command")
+            t = t + 1
+        }
+        assert_true(bs[i].prompt.length() > 0)
+        i = i + 1
+    }
+}
+
+fun test_all_subagents_lets_a_definition_override_a_builtin() {
+    create_dir_all("_rook_sa_o/subagents")
+    write(
+        "_rook_sa_o/subagents/reviewer.md",
+        "---\ndescription: my reviewer\n---\nCustom reviewer.",
+    )
+    write("_rook_sa_o/subagents/extra.md", "---\ndescription: extra agent\n---\nExtra.")
+
+    let agents = all_subagents(["_rook_sa_o"])
+    assert_true(agents.len() == 4)
+    let r = subagent_index(agents, "reviewer")
+    assert_eq_str(agents[r].description, "my reviewer")
+    assert_eq_str(agents[r].prompt, "Custom reviewer.")
+    assert_true(subagent_index(agents, "extra") >= 0)
+
+    remove_file("_rook_sa_o/subagents/reviewer.md")
+    remove_file("_rook_sa_o/subagents/extra.md")
+    remove_dir("_rook_sa_o/subagents")
+    remove_dir("_rook_sa_o")
+    return
+}
+
+fun test_all_subagents_without_definitions_is_the_builtins() {
+    let none: List<String> = []
+    assert_true(all_subagents(none).len() == 3)
 }
 
 fun test_front_parses_any_key_and_unquotes() {
