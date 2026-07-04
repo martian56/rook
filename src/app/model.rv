@@ -21,6 +21,11 @@ struct Chat {
     active: Bool,
     // The tool label awaiting approval, "" when none is pending.
     pending: String,
+    // The model's question awaiting a pick, "" when none, with its options
+    // and the highlighted one.
+    question: String,
+    choices: List<String>,
+    choice_sel: Int,
     // The streaming reply's accumulated text and the transcript index of its
     // bubble (-1 when not streaming a bubble).
     stream_text: String,
@@ -75,12 +80,16 @@ fun chat_init() -> Chat {
     let model = resolve_model()
     let entries: List<Entry> = []
     let open_agents: List<AgentBlock> = []
+    let no_choices: List<String> = []
     return Chat {
         entries,
         entry: TextInput.new(),
         agent: AgentState.new(),
         active: false,
         pending: "",
+        question: "",
+        choices: no_choices,
+        choice_sel: 0,
         stream_text: "",
         cur_bubble: 0 - 1,
         tick: 0,

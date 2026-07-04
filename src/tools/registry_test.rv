@@ -8,7 +8,7 @@ fun call(name: String, args: String) -> ToolCall {
 }
 
 fun test_all_tools_are_defined() {
-    assert_eq_int(tools().len(), 12)
+    assert_eq_int(tools().len(), 13)
 }
 
 fun test_approval_policy() {
@@ -19,6 +19,7 @@ fun test_approval_policy() {
     assert_true(needs_approval("kill_shell"))
     assert_false(needs_approval("read_shell"))
     assert_false(needs_approval("list_shells"))
+    assert_false(needs_approval("ask_user"))
     assert_false(needs_approval("read_file"))
     assert_false(needs_approval("list_dir"))
     assert_false(needs_approval("grep"))
@@ -51,6 +52,15 @@ fun test_use_skill_routes_and_labels() {
     // no-skills error, proving dispatch reached the skills module.
     assert_true(dispatch(call("use_skill", "{\"name\":\"x\"}")).starts_with("error:"))
     assert_eq_str(label(call("use_skill", "{\"name\":\"release\"}")), "use_skill(release)")
+}
+
+fun test_ask_user_is_labeled_and_turn_only() {
+    assert_eq_str(
+        label(call("ask_user", "{\"question\":\"Which way?\",\"options\":\"a, b\"}")),
+        "ask_user(Which way?)",
+    )
+    // Only the turn loop may run it; the registry router refuses.
+    assert_true(dispatch(call("ask_user", "{}")).starts_with("error:"))
 }
 
 fun test_dispatch_tool_is_auto_run_and_labeled() {

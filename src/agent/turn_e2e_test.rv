@@ -15,6 +15,7 @@ let read_hits = 0
 let write_hits = 0
 let dispatch_hits = 0
 let fanout_hits = 0
+let ask_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun read_handler(req: Request) -> Response {
@@ -98,6 +99,25 @@ fun fanout_handler(req: Request) -> Response {
     return Response.text(
         "data: {\"choices\":[{\"delta\":{\"content\":\"Both agents reported.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
     )
+}
+
+// Round 1: ask the user a question. Round 2: acknowledge the pick.
+fun ask_handler(req: Request) -> Response {
+    ask_hits = ask_hits + 1
+    if ask_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"q1\",\"function\":{\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Which path?\\\",\\\"options\\\":\\\"fast, safe\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Going the safe way.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_ask() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", ask_handler)
+    app.listen("127.0.0.1:8467")
 }
 
 fun serve_fanout() {
@@ -268,6 +288,39 @@ fun test_two_dispatches_fan_out_and_both_results_return() {
     remove_file(".agents/subagents/shouter.md")
     remove_dir(".agents/subagents")
     remove_dir(".agents")
+    return
+}
+
+fun test_ask_user_round_trips_the_pick() {
+    spawn(fun() -> Unit {
+        serve_ask()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("decide for me")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8467/v1")
+    })
+    // Play the user: wait for the question, pick the second option.
+    spawn(fun() -> Unit {
+        let tries = 0
+        let answered = false
+        while tries < 400 && !answered {
+            if st.question_now() != "" {
+                st.decide(1)
+                answered = true
+            }
+            sleep_millis(10)
+            tries = tries + 1
+        }
+    })
+    let got = e2e_drain(st)
+    assert_true(got.contains("[info you chose: safe]"))
+    assert_true(got.contains("[ask_user(Which path?) => The user chose: safe]"))
+    assert_true(got.contains("Going the safe way."))
+    // user, assistant(tool_calls), tool_result, assistant(final).
+    assert_eq_int(st.messages().len(), 4)
     return
 }
 
