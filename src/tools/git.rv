@@ -1,0 +1,81 @@
+// Git helpers presented as clean tools. git_status and git_diff read the
+// working tree; git_commit stages everything and commits a drafted message
+// (through the approval prompt). Git is invoked directly (not through the
+// shell) so arguments and the multi-line message need no quoting: the
+// message is fed to `git commit -F -` on stdin.
+
+import std/string
+import std/process { run, run_with_input, Output }
+
+const MAX_DIFF: Int = 6000
+
+// A short branch line plus the porcelain status, or an error when this is
+// not a git repository.
+fun git_status() -> String {
+    let br = _git(["rev-parse", "--abbrev-ref", "HEAD"])
+    if br.code != 0 {
+        return "error: not a git repository (or git is unavailable): ${br.stderr.trim()}"
+    }
+    let branch = br.stdout.trim()
+    let st = _git(["status", "--short"])
+    if st.code != 0 {
+        return "error: ${st.stderr.trim()}"
+    }
+    let body = st.stdout.trim()
+    if body == "" {
+        return "On branch ${branch}\n(clean working tree)"
+    }
+    return "On branch ${branch}\n${body}"
+}
+
+// The working-tree diff. staged "true" diffs the index; a non-empty path
+// limits it to that path. Truncated so a large diff cannot bury the reply.
+fun git_diff(staged: String, path: String) -> String {
+    let args = ["diff"]
+    if staged.trim() == "true" {
+        args.push("--cached")
+    }
+    if path.trim() != "" {
+        args.push("--")
+        args.push(path)
+    }
+    let d = _git(args)
+    if d.code != 0 {
+        return "error: ${d.stderr.trim()}"
+    }
+    let body = d.stdout
+    if body.trim() == "" {
+        return "(no changes)"
+    }
+    if body.length() > MAX_DIFF {
+        return "${body.substring(0, MAX_DIFF)}\n… (diff truncated)"
+    }
+    return body
+}
+
+// Stage everything and commit `message`. Mutating: the turn gates it through
+// approval, which shows the message first.
+fun git_commit(message: String) -> String {
+    if message.trim() == "" {
+        return "error: git_commit needs a message"
+    }
+    let add = _git(["add", "-A"])
+    if add.code != 0 {
+        return "error: git add failed: ${add.stderr.trim()}"
+    }
+    let out = match run_with_input("git", ["commit", "-F", "-"], message) {
+        Ok(o) -> o,
+        Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
+    }
+    if out.code != 0 {
+        return "error: git commit failed: ${out.stdout.trim()} ${out.stderr.trim()}".trim()
+    }
+    return "committed:\n${out.stdout.trim()}"
+}
+
+fun _git(args: List<String>) -> Output {
+    return match run("git", args) {
+        Ok(o) -> o,
+        Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
+    }
+}

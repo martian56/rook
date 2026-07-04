@@ -8,9 +8,12 @@ import "github.com/martian56/aviary/message" { ToolCall }
 import "./args" { arg }
 import "../ui/diff" { unified }
 
-// The unified diff for a mutating file call, "" for anything else (or when
-// the change is a no-op).
+// The unified diff for a mutating file call, or the message for a commit,
+// "" for anything else (or when the change is a no-op).
 fun change_preview(call: ToolCall) -> String {
+    if call.name == "git_commit" {
+        return arg(call.arguments, "message")
+    }
     if call.name == "write_file" {
         let path = arg(call.arguments, "path")
         let old = _read_opt(path)

@@ -1,0 +1,25 @@
+import std/string
+import std/test { assert_true }
+import "./git" { git_status, git_diff, git_commit }
+
+// These run against the real repository the suite executes in, which is a
+// git checkout, so only the read-only tools are exercised for real; the
+// commit path is checked through its validation, never committing.
+
+fun test_status_reports_a_branch() {
+    let s = git_status()
+    assert_true(!s.starts_with("error:"))
+    assert_true(s.contains("On branch "))
+}
+
+fun test_diff_runs_without_error() {
+    let d = git_diff("", "")
+    assert_true(!d.starts_with("error:"))
+    let staged = git_diff("true", "")
+    assert_true(!staged.starts_with("error:"))
+}
+
+fun test_commit_rejects_an_empty_message() {
+    assert_true(git_commit("").starts_with("error:"))
+    assert_true(git_commit("   ").starts_with("error:"))
+}
