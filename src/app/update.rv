@@ -19,7 +19,7 @@ import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
-import "../tools/shells" { list_shells }
+import "../tools/shells" { list_shells, kill_all_shells }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -209,6 +209,7 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
         Ctrl(c) -> {
             if c == "c" {
                 if m.armed {
+                    kill_all_shells()
                     return quit(m)
                 }
                 m.armed = true
@@ -569,6 +570,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
 
     match parse_command(text) {
         Quit -> {
+            kill_all_shells()
             return quit(m)
         },
         Clear -> {

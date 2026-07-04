@@ -85,6 +85,9 @@ fun refresh() {
         let s = STORE.shells[i]
         if !s.done {
             s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
+            let capped = cap_output(s.output, s.read_pos, MAX_STORE_OUTPUT)
+            s.output = capped.output
+            s.read_pos = capped.read_pos
             match s.child.poll() {
                 Some(code) -> {
                     // One more drain catches what arrived between the read
@@ -96,6 +99,69 @@ fun refresh() {
                 },
                 None -> {},
             }
+        }
+        i = i + 1
+    }
+    _prune(KEEP_DONE)
+    STORE.lock.unlock()
+    return
+}
+
+// Drop the oldest exited shells past `keep`, fully-read ones first, so the
+// registry cannot grow without bound over a long session. Runs under the
+// store lock.
+fun _prune(keep: Int) {
+    let done = 0
+    let i = 0
+    while i < STORE.shells.len() {
+        if STORE.shells[i].done {
+            done = done + 1
+        }
+        i = i + 1
+    }
+    // First pass drops fully-read exited shells, oldest first.
+    let out: List<BgShell> = []
+    i = 0
+    while i < STORE.shells.len() {
+        let s = STORE.shells[i]
+        if done > keep && s.done && s.read_pos >= s.output.length() {
+            done = done - 1
+        } else {
+            out.push(s)
+        }
+        i = i + 1
+    }
+    // Second pass drops any exited shell while still over.
+    let final_list: List<BgShell> = []
+    i = 0
+    while i < out.len() {
+        let s = out[i]
+        if done > keep && s.done {
+            done = done - 1
+        } else {
+            final_list.push(s)
+        }
+        i = i + 1
+    }
+    STORE.shells = final_list
+    return
+}
+
+// Stop every running shell and wait for each exit, so quitting rook never
+// leaves an orphaned child. Safe to call with nothing running.
+fun kill_all_shells() {
+    refresh()
+    STORE.lock.lock()
+    let i = 0
+    while i < STORE.shells.len() {
+        let s = STORE.shells[i]
+        if !s.done {
+            s.child.kill()
+            let code = s.child.wait()
+            s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
+            s.child.free()
+            s.done = true
+            s.code = code
         }
         i = i + 1
     }
@@ -212,6 +278,33 @@ fun kill_shell(id_text: String) -> String {
 
 // Keep a read from burying the transcript; the newest output wins.
 const MAX_READ: Int = 4000
+
+// Cap on each shell's stored output; the runtime buffers are already
+// bounded, and this bounds what the store accumulates across drains. The
+// newest bytes win.
+const MAX_STORE_OUTPUT: Int = 262144
+
+// How many exited shells the registry keeps before pruning the oldest.
+const KEEP_DONE: Int = 20
+
+// The store-side cap, pure for tests: trim `output` to `max` keeping the
+// tail, and slide `read_pos` down with the trimmed prefix.
+struct Capped {
+    output: String,
+    read_pos: Int,
+}
+
+fun cap_output(output: String, read_pos: Int, max: Int) -> Capped {
+    if output.length() <= max {
+        return Capped { output, read_pos }
+    }
+    let cut = output.length() - max
+    let pos = read_pos - cut
+    if pos < 0 {
+        pos = 0
+    }
+    return Capped { output: output.substring(cut, output.length()), read_pos: pos }
+}
 
 fun _status_line(s: BgShell) -> String {
     if s.done {

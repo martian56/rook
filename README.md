@@ -83,7 +83,10 @@ instead of blocking; the output collects in the background. The model
 follows up with `read_shell` (what a shell printed since its last
 look), `list_shells` (status, runtime, and command of each), and
 `kill_shell` (stop one; this asks for approval). So rook can start the
-app it just built, watch the log, and react to what it sees.
+app it just built, watch the log, and react to what it sees. Stored
+output is capped so a chatty process cannot grow memory without bound,
+old finished shells fall off the list, and quitting rook kills
+everything still running so no child is orphaned.
 
 `run_command` runs through the platform shell in the working directory and
 returns stdout, stderr, and the exit code. Tool output is truncated so a
