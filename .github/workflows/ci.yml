@@ -13,27 +13,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    env:
-      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Raven (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          gh release download --repo martian56/raven --pattern '*x86_64-unknown-linux-gnu.tar.gz' --output raven.tar.gz
-          mkdir -p "$HOME/raven-toolchain"
-          tar -xzf raven.tar.gz --strip-components=1 -C "$HOME/raven-toolchain"
-          echo "$HOME/raven-toolchain" >> "$GITHUB_PATH"
-
-      - name: Install Raven (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          gh release download --repo martian56/raven --pattern '*x86_64-pc-windows-msvc.zip' --output raven.zip
-          New-Item -ItemType Directory -Force "$env:USERPROFILE\raven-toolchain" | Out-Null
-          Expand-Archive raven.zip -DestinationPath "$env:USERPROFILE\raven-toolchain"
-          Add-Content $env:GITHUB_PATH "$env:USERPROFILE\raven-toolchain"
+      - name: Install Raven
+        uses: martian56/setup-raven@v1
 
       - name: Build
         run: rvpm build
