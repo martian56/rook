@@ -254,6 +254,13 @@ parallel, each on its own goroutine with its own conversation, and the
 main agent continues once every result is back, wide read-only work
 like searching three areas at once finishes in one round.
 
+## Git
+
+rook is git-aware. `git_status` and `git_diff` (read-only, auto-run) let
+the model see the branch and the working tree; `git_commit` stages
+everything and commits a message the model drafts, shown in the
+approval prompt for you to allow or deny before it runs.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

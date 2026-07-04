@@ -12,6 +12,7 @@ import "./shell" { run_command }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
 import "./tree" { file_tree }
 import "./todos" { set_todos }
+import "./git" { git_status, git_diff, git_commit }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
 
@@ -46,6 +47,29 @@ fun tools() -> List<ToolDef> {
                     Prop { name: "depth", desc: "levels to descend; defaults to 3" },
                 ],
             ),
+        ),
+        ToolDef.new(
+            "git_status",
+            "Show the git branch and the working-tree status (staged and unstaged changes).",
+            _schema(no_props),
+        ),
+        ToolDef.new(
+            "git_diff",
+            "Show the git diff of the working tree. Set staged to \"true\" for the staged diff, or give a path to limit it.",
+            _schema(
+                [
+                    Prop {
+                        name: "staged",
+                        desc: "\"true\" to diff the index instead of the working tree",
+                    },
+                    Prop { name: "path", desc: "limit the diff to this path; optional" },
+                ],
+            ),
+        ),
+        ToolDef.new(
+            "git_commit",
+            "Stage all changes and commit with a message you draft, following the repository conventions (check AGENTS.md or recent git log). The user approves before it runs.",
+            _schema([Prop { name: "message", desc: "the full commit message" }]),
         ),
         ToolDef.new(
             "grep",
@@ -147,7 +171,7 @@ fun tools() -> List<ToolDef> {
 
 // Whether a tool changes the repo or the machine and so must be approved.
 fun needs_approval(name: String) -> Bool {
-    return name == "write_file" || name == "edit_file" || name == "run_command" || name == "run_background" || name == "kill_shell"
+    return name == "write_file" || name == "edit_file" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit"
 }
 
 // Run a tool call and return its result string.
@@ -212,6 +236,15 @@ fun label(call: ToolCall) -> String {
     if call.name == "grep" {
         return "grep(${arg(a, "pattern")})"
     }
+    if call.name == "git_status" {
+        return "git_status"
+    }
+    if call.name == "git_diff" {
+        return "git_diff"
+    }
+    if call.name == "git_commit" {
+        return "git_commit(${_first_line(arg(a, "message"))})"
+    }
     if call.name == "file_tree" {
         return "file_tree(${arg(a, "path")})"
     }
@@ -243,6 +276,15 @@ fun label(call: ToolCall) -> String {
         return "ask_user(${arg(a, "question")})"
     }
     return call.name
+}
+
+// The first line of a commit message, for the tool label.
+fun _first_line(msg: String) -> String {
+    let nl = msg.index_of("\n")
+    if nl < 0 {
+        return msg
+    }
+    return msg.substring(0, nl)
 }
 
 fun _schema(props: List<Prop>) -> JsonValue {
