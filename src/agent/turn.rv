@@ -12,6 +12,7 @@ import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
 import "./subturn" { run_subagent }
 import "../tools/registry" { tools, needs_approval, dispatch, label }
+import "../tools/preview" { change_preview }
 import "../tools/args" { arg }
 import "../agents/dir" { roots }
 import "../agents/subagents" { Subagent, all_subagents, subagent_index }
@@ -100,7 +101,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                         result = _run_one(st, call, allowed)
                     }
                 }
-                st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
+                st.emit(DisplayEvent.ToolRan(label(call), _display(call, result)))
                 st.push_tool_result(call.id, call.name, result)
             }
             i = i + 1
@@ -226,18 +227,30 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
     if !needs_approval(call.name) {
         return dispatch(call)
     }
+    // The diff this call would make, shown in the approval prompt and, on
+    // success, under the tool row.
+    let preview = change_preview(call)
     if _contains(allowed, call.name) {
-        return dispatch(call)
+        return _with_preview(dispatch(call), preview)
     }
-    let decision = st.ask(label(call))
+    let decision = st.ask_detail(label(call), preview)
     if decision == 2 {
         allowed.push(call.name)
-        return dispatch(call)
+        return _with_preview(dispatch(call), preview)
     }
     if decision == 1 {
-        return dispatch(call)
+        return _with_preview(dispatch(call), preview)
     }
     return "The user denied this action. Do not retry it; ask what they would prefer."
+}
+
+// Append the diff under a successful result, so the transcript (and the
+// model) see what changed; errors pass through bare.
+fun _with_preview(result: String, preview: String) -> String {
+    if preview == "" || result.starts_with("error:") {
+        return result
+    }
+    return "${result}\n${preview}"
 }
 
 fun _with_tools(req: ChatRequest) -> ChatRequest {
@@ -260,6 +273,20 @@ fun _contains(xs: List<String>, name: String) -> Bool {
         i = i + 1
     }
     return false
+}
+
+// What a tool row shows: the clipped first line, plus the diff lines under
+// a file change so the transcript displays what changed.
+fun _display(call: ToolCall, result: String) -> String {
+    let head = _short(result)
+    if call.name != "write_file" && call.name != "edit_file" {
+        return head
+    }
+    let nl = result.index_of("\n")
+    if nl < 0 {
+        return head
+    }
+    return "${head}\n${result.substring(nl + 1, result.length())}"
 }
 
 // A compact one-liner for the tool bullet: the first line, clipped.

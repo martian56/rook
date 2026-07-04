@@ -1,0 +1,86 @@
+// A small line diff for showing edits: trim the common prefix and suffix,
+// then present the changed middle as "-" old lines and "+" new lines with a
+// little unchanged context around it. One contiguous block, which is what a
+// write_file or edit_file change almost always is; interleaved changes
+// simply widen the block. Pure, so the tests feed strings straight in.
+
+import std/string
+
+// Context lines shown around the changed block.
+const CONTEXT: Int = 2
+
+// Cap on emitted lines so a full-file rewrite cannot flood the transcript.
+const MAX_LINES: Int = 24
+
+// The unified diff text, "" when the sides are identical. Lines come back
+// prefixed "  " (context), "- " (removed), or "+ " (added).
+fun unified(old_text: String, new_text: String) -> String {
+    if old_text == new_text {
+        return ""
+    }
+    let old_lines = old_text.lines()
+    let new_lines = new_text.lines()
+
+    // Common prefix.
+    let start = 0
+    while start < old_lines.len() && start < new_lines.len() && old_lines[start] == new_lines[start] {
+        start = start + 1
+    }
+    // Common suffix, not overlapping the prefix.
+    let old_end = old_lines.len()
+    let new_end = new_lines.len()
+    while old_end > start && new_end > start && old_lines[old_end - 1] == new_lines[new_end - 1] {
+        old_end = old_end - 1
+        new_end = new_end - 1
+    }
+
+    let out: List<String> = []
+    let ctx_from = start - CONTEXT
+    if ctx_from < 0 {
+        ctx_from = 0
+    }
+    let i = ctx_from
+    while i < start {
+        out.push("  ${old_lines[i]}")
+        i = i + 1
+    }
+    i = start
+    while i < old_end {
+        out.push("- ${old_lines[i]}")
+        i = i + 1
+    }
+    i = start
+    while i < new_end {
+        out.push("+ ${new_lines[i]}")
+        i = i + 1
+    }
+    let ctx_to = old_end + CONTEXT
+    if ctx_to > old_lines.len() {
+        ctx_to = old_lines.len()
+    }
+    i = old_end
+    while i < ctx_to {
+        out.push("  ${old_lines[i]}")
+        i = i + 1
+    }
+
+    // Cap, keeping the head where the change starts.
+    let total = out.len()
+    let shown = total
+    if shown > MAX_LINES {
+        shown = MAX_LINES
+    }
+    let text = ""
+    i = 0
+    while i < shown {
+        if i > 0 {
+            text = text.concat("\n")
+        }
+        text = text.concat(out[i])
+        i = i + 1
+    }
+    if total > shown {
+        text = "${text}\n… ${total - shown} more lines"
+    }
+    return text
+}

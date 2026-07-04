@@ -59,6 +59,7 @@ fun _tick(m: Chat) -> Step<Chat> {
         let snap = m.agent.drain()
         apply_events(m, snap.events)
         m.pending = snap.pending
+        m.pending_detail = snap.pending_detail
         if m.question != snap.question {
             m.choice_sel = 0
         }
@@ -69,6 +70,7 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.turns = m.turns + 1
             m.cur_bubble = 0 - 1
             m.pending = ""
+            m.pending_detail = ""
             m.question = ""
         }
         m.scroll_up = 0

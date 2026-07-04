@@ -37,6 +37,9 @@ OpenRouter is the default provider, since one key there reaches most models.
   automatically; a file write, edit, or shell command pauses for your
   approval: **y** to allow, **a** to allow every call of that kind for the
   rest of the turn, **n** to deny (the denial is fed back to the model).
+  A file change shows its diff right in the approval prompt, removals
+  red, additions green, and again under the tool row once it runs, so
+  you see exactly what changed.
 - **Esc** interrupts; **ctrl+c** twice quits. **PageUp/PageDown** or the
   mouse wheel scroll.
 

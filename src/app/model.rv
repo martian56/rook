@@ -19,8 +19,10 @@ struct Chat {
     agent: AgentState,
     // A turn is in flight (the goroutine is streaming).
     active: Bool,
-    // The tool label awaiting approval, "" when none is pending.
+    // The tool label awaiting approval, "" when none is pending, and the
+    // diff preview shown under it.
     pending: String,
+    pending_detail: String,
     // The model's question awaiting a pick, "" when none, with its options
     // and the highlighted one.
     question: String,
@@ -87,6 +89,7 @@ fun chat_init() -> Chat {
         agent: AgentState.new(),
         active: false,
         pending: "",
+        pending_detail: "",
         question: "",
         choices: no_choices,
         choice_sel: 0,

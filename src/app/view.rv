@@ -448,11 +448,19 @@ fun _question(m: Chat, f: Frame) {
 // A centered modal asking to approve one mutating tool call.
 fun _approval(m: Chat, f: Frame) {
     let full = f.area()
-    let w = 62
+    let w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
-    let h = 6
+    let detail: List<String> = []
+    if m.pending_detail != "" {
+        detail = m.pending_detail.lines()
+    }
+    let extra = detail.len()
+    if extra > 12 {
+        extra = 12
+    }
+    let h = 6 + extra
     let x = full.x + (full.w - w) / 2
     let y = full.y + (full.h - h) / 2
     if y < full.y {
@@ -466,13 +474,32 @@ fun _approval(m: Chat, f: Frame) {
     box.render(area, f.buf)
     let inner = box.inner(area)
     f.buf.set_string(inner.x + 1, inner.y, m.pending, Style.new().bold())
+    let r = 0
+    while r < extra {
+        let line = detail[r]
+        if line.length() > inner.w - 2 {
+            line = line.substring(0, inner.w - 2)
+        }
+        f.buf.set_string(inner.x + 1, inner.y + 1 + r, line, _approval_diff_style(line, m))
+        r = r + 1
+    }
     f.buf.set_string(
         inner.x + 1,
-        inner.y + 2,
+        inner.y + 2 + extra,
         "[y] allow    [a] allow all    [n] deny",
         m.theme.dim,
     )
     return
+}
+
+fun _approval_diff_style(line: String, m: Chat) -> Style {
+    if line.starts_with("- ") {
+        return m.theme.error
+    }
+    if line.starts_with("+ ") {
+        return m.theme.tool
+    }
+    return m.theme.dim
 }
 
 // A centered modal listing the model catalog, drawn over everything else.

@@ -46,9 +46,21 @@ fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
                 out.push(
                     Line.from_spans([Span.styled("● ", theme.tool), Span.styled(name, theme.text.bold())]),
                 )
+                // The first line sits behind the elbow; any further lines
+                // are a diff, colored by their -/+ prefix.
+                let rows = result.lines()
+                let first = ""
+                if rows.len() > 0 {
+                    first = rows[0]
+                }
                 out.push(
-                    Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(result, theme.result)]),
+                    Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(first, theme.result)]),
                 )
+                let r = 1
+                while r < rows.len() {
+                    out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
+                    r = r + 1
+                }
             },
             Notice(t) -> {
                 out.push(Line.styled("  ${t}", theme.error))
@@ -83,6 +95,18 @@ fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
         i = i + 1
     }
     return out
+}
+
+// The style of one diff line: removals in the error color, additions in
+// the tool green, context dim.
+fun _diff_style(line: String, theme: Theme) -> Style {
+    if line.starts_with("- ") {
+        return theme.error
+    }
+    if line.starts_with("+ ") {
+        return theme.tool
+    }
+    return theme.dim
 }
 
 // Whether the entry at i should sit flush against the next one: a header

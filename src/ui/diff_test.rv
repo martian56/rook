@@ -1,0 +1,46 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import "./diff" { unified }
+
+fun test_identical_sides_diff_empty() {
+    assert_eq_str(unified("a\nb", "a\nb"), "")
+}
+
+fun test_changed_middle_shows_minus_plus_with_context() {
+    let old = "one\ntwo\nthree\nfour\nfive"
+    let new = "one\ntwo\nTHREE\nfour\nfive"
+    let d = unified(old, new)
+    assert_true(d.contains("- three"))
+    assert_true(d.contains("+ THREE"))
+    assert_true(d.contains("  two"))
+    assert_true(d.contains("  four"))
+    assert_true(!d.contains("- one"))
+}
+
+fun test_pure_addition_and_removal() {
+    let add = unified("a\nc", "a\nb\nc")
+    assert_true(add.contains("+ b"))
+    assert_true(!add.contains("- "))
+    let del = unified("a\nb\nc", "a\nc")
+    assert_true(del.contains("- b"))
+    assert_true(!del.contains("+ "))
+}
+
+fun test_new_file_is_all_additions() {
+    let d = unified("", "first\nsecond")
+    assert_true(d.contains("+ first"))
+    assert_true(d.contains("+ second"))
+}
+
+fun test_a_huge_change_is_capped() {
+    let old = ""
+    let new = ""
+    let i = 0
+    while i < 60 {
+        new = "${new}line ${i}\n"
+        i = i + 1
+    }
+    let d = unified(old, new)
+    assert_true(d.contains("more lines"))
+    assert_true(d.lines().len() < 30)
+}

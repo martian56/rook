@@ -1,0 +1,45 @@
+// The diff a pending write_file or edit_file call would make, computed
+// against the file as it is right now: shown in the approval prompt before
+// anything runs, and in the transcript after. Other tools have no preview.
+
+import std/string
+import std/fs { read, exists }
+import "github.com/martian56/aviary/message" { ToolCall }
+import "./args" { arg }
+import "../ui/diff" { unified }
+
+// The unified diff for a mutating file call, "" for anything else (or when
+// the change is a no-op).
+fun change_preview(call: ToolCall) -> String {
+    if call.name == "write_file" {
+        let path = arg(call.arguments, "path")
+        let old = _read_opt(path)
+        return unified(old, arg(call.arguments, "content"))
+    }
+    if call.name == "edit_file" {
+        let path = arg(call.arguments, "path")
+        let old = _read_opt(path)
+        let from = arg(call.arguments, "old_text")
+        if old == "" || from == "" {
+            return ""
+        }
+        let at = old.index_of(from)
+        if at < 0 {
+            return ""
+        }
+        let before = old.substring(0, at)
+        let after = old.substring(at + from.length(), old.length())
+        return unified(old, "${before}${arg(call.arguments, "new_text")}${after}")
+    }
+    return ""
+}
+
+fun _read_opt(path: String) -> String {
+    if path == "" || !exists(path) {
+        return ""
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+}

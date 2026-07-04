@@ -1,0 +1,54 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, remove_file }
+import "github.com/martian56/aviary/message" { ToolCall }
+import "./preview" { change_preview }
+
+fun call(name: String, args: String) -> ToolCall {
+    return ToolCall { id: "1", name, arguments: args }
+}
+
+fun test_write_preview_diffs_against_the_current_file() {
+    write("_rook_pv.txt", "alpha\nbeta")
+    let p = change_preview(
+        call("write_file", "{\"path\":\"_rook_pv.txt\",\"content\":\"alpha\\ngamma\"}"),
+    )
+    assert_true(p.contains("- beta"))
+    assert_true(p.contains("+ gamma"))
+    remove_file("_rook_pv.txt")
+    return
+}
+
+fun test_write_preview_of_a_new_file_is_all_additions() {
+    let p = change_preview(
+        call("write_file", "{\"path\":\"_rook_pv_new.txt\",\"content\":\"fresh\"}"),
+    )
+    assert_true(p.contains("+ fresh"))
+    assert_true(!p.contains("- "))
+}
+
+fun test_edit_preview_shows_the_replacement_in_place() {
+    write("_rook_pv_e.txt", "keep\nchange me\nkeep too")
+    let p = change_preview(
+        call(
+            "edit_file",
+            "{\"path\":\"_rook_pv_e.txt\",\"old_text\":\"change me\",\"new_text\":\"changed\"}",
+        ),
+    )
+    assert_true(p.contains("- change me"))
+    assert_true(p.contains("+ changed"))
+    assert_true(p.contains("  keep"))
+    remove_file("_rook_pv_e.txt")
+    return
+}
+
+fun test_other_tools_and_misses_have_no_preview() {
+    assert_eq_str(change_preview(call("run_command", "{\"command\":\"ls\"}")), "")
+    write("_rook_pv_m.txt", "abc")
+    let p = change_preview(
+        call("edit_file", "{\"path\":\"_rook_pv_m.txt\",\"old_text\":\"zzz\",\"new_text\":\"q\"}"),
+    )
+    assert_eq_str(p, "")
+    remove_file("_rook_pv_m.txt")
+    return
+}

@@ -40,6 +40,8 @@ struct Snapshot {
     // alongside.
     question: String,
     choices: List<String>,
+    // Extra lines shown under the pending approval (a diff preview).
+    pending_detail: String,
 }
 
 struct AgentState {
@@ -53,6 +55,8 @@ struct AgentState {
     // The question awaiting an answer, "" when none, and its options.
     question: String,
     choices: List<String>,
+    // Extra lines under the pending approval (a diff preview), "" when none.
+    pending_detail: String,
     // One-slot decision channel: 0 deny, 1 allow, 2 allow all of this kind.
     decisions: Channel,
     // Serializes ask() so parallel subagents queue for the one approval
@@ -78,6 +82,7 @@ impl AgentState {
             pending: "",
             question: "",
             choices,
+            pending_detail: "",
             decisions: channel_buffered(1),
             ask_lock: mutex(),
             cancel: CancelToken.new(),
@@ -175,6 +180,7 @@ impl AgentState {
             pending: self.pending,
             question: self.question,
             choices: self.choices,
+            pending_detail: self.pending_detail,
         }
         self.lock.unlock()
         return s
@@ -216,13 +222,20 @@ impl AgentState {
     // answers. Returns 0 deny, 1 allow, 2 allow all of this kind. Callers
     // queue: with agents running in parallel, one approval shows at a time.
     fun ask(self, desc: String) -> Int {
+        return self.ask_detail(desc, "")
+    }
+
+    // ask with extra lines (a diff preview) shown under the label.
+    fun ask_detail(self, desc: String, detail: String) -> Int {
         self.ask_lock.lock()
         self.lock.lock()
         self.pending = desc
+        self.pending_detail = detail
         self.lock.unlock()
         let d = self.decisions.recv()
         self.lock.lock()
         self.pending = ""
+        self.pending_detail = ""
         self.lock.unlock()
         self.ask_lock.unlock()
         return d
