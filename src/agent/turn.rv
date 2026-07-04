@@ -31,7 +31,8 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
             return
         }
         st.emit(DisplayEvent.Started)
-        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0)).cancelable(
+        let plan = st.plan()
+        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0, plan), plan).cancelable(
             st.token(),
         )
         let on_chunk = fun(d: String) -> Unit = st.chunk(d)
@@ -225,6 +226,11 @@ fun _ask_user(st: AgentState, call: ToolCall) -> String {
 // Run one tool call, gating a mutating one through approval unless its kind
 // was already allowed for the turn.
 fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
+    // Plan mode blocks every mutating tool outright, even if one slips into
+    // a request; the model should propose the change, not make it.
+    if st.plan() && needs_approval(call.name) {
+        return "Plan mode is on, so ${call.name} is unavailable. Describe this change as part of your plan instead; the user will turn plan mode off to carry it out."
+    }
     // Settings rules come first: a deny blocks any tool, an allow skips the
     // prompt for a gated one.
     let denied = ""
@@ -270,12 +276,17 @@ fun _with_preview(result: String, preview: String) -> String {
     return "${result}\n${preview}"
 }
 
-fun _with_tools(req: ChatRequest) -> ChatRequest {
+// Attach the tools the model may use. In plan mode the mutating tools are
+// withheld, so the model researches and proposes instead of changing
+// anything.
+fun _with_tools(req: ChatRequest, plan: Bool) -> ChatRequest {
     let ts = tools()
     let r = req
     let i = 0
     while i < ts.len() {
-        r = r.tool(ts[i])
+        if !plan || !needs_approval(ts[i].name) {
+            r = r.tool(ts[i])
+        }
         i = i + 1
     }
     return r

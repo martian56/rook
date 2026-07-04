@@ -13,6 +13,7 @@ fun tag(c: Command) -> String {
         ThemePicker -> "themes",
         ThemeSet(name) -> "theme:${name}",
         Shells -> "shells",
+        Plan -> "plan",
         Login -> "login",
         Unknown(t) -> "unknown:${t}",
     }
@@ -51,6 +52,10 @@ fun test_shells_opens_the_panel() {
     assert_eq_str(tag(parse_command("/shells")), "shells")
 }
 
+fun test_plan_toggles() {
+    assert_eq_str(tag(parse_command("/plan")), "plan")
+}
+
 fun test_key_and_login_open_auth() {
     assert_eq_str(tag(parse_command("/key")), "login")
     assert_eq_str(tag(parse_command("/login")), "login")
@@ -79,6 +84,7 @@ fun test_builtins_cover_every_command() {
     assert_true(names.contains("clear"))
     assert_true(names.contains("quit"))
     assert_true(names.contains("shells"))
+    assert_true(names.contains("plan"))
 }
 
 fun test_menu_opens_on_slash_and_filters() {

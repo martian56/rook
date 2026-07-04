@@ -73,6 +73,18 @@ fun test_interrupt_flag() {
     assert_true(st.interrupted())
 }
 
+fun test_plan_flag_round_trips_and_survives_begin() {
+    let st = AgentState.new()
+    assert_false(st.plan())
+    st.set_plan(true)
+    assert_true(st.plan())
+    // A new turn keeps plan mode (it is a session toggle, not per-turn).
+    st.begin()
+    assert_true(st.plan())
+    st.set_plan(false)
+    assert_false(st.plan())
+}
+
 fun test_interrupt_cancels_the_stream_token() {
     let st = AgentState.new()
     assert_false(st.token().canceled())

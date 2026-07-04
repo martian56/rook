@@ -699,10 +699,18 @@ fun _status(m: Chat, area: Rect, f: Frame) {
         sty = m.theme.accent
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)
+    // Right side: the model, with a plan-mode badge ahead of it when on.
     let right = "rook · ${m.model}"
+    if m.plan_mode {
+        right = "◆ PLAN · ${right}"
+    }
     let rx = area.x + area.w - width(right) - 1
     if rx > area.x + width(left) + 2 {
-        f.buf.set_string(rx, area.y, right, m.theme.status)
+        let rsty = m.theme.status
+        if m.plan_mode {
+            rsty = m.theme.warn
+        }
+        f.buf.set_string(rx, area.y, right, rsty)
         return
     }
     return

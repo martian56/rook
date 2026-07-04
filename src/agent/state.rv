@@ -66,6 +66,9 @@ struct AgentState {
     // cancels it so an in-flight reply stops at the next delta instead of
     // running to the end.
     cancel: CancelToken,
+    // Plan mode: read-only research, mutating tools blocked. A session
+    // toggle set from the UI before each turn, not reset by begin().
+    plan_flag: Bool,
 }
 
 impl AgentState {
@@ -86,7 +89,23 @@ impl AgentState {
             decisions: channel_buffered(1),
             ask_lock: mutex(),
             cancel: CancelToken.new(),
+            plan_flag: false,
         }
+    }
+
+    // Set plan mode. The UI calls this before begin() when it changes.
+    fun set_plan(self, on: Bool) {
+        self.lock.lock()
+        self.plan_flag = on
+        self.lock.unlock()
+    }
+
+    // Whether the turn is in plan mode (read-only, no mutations).
+    fun plan(self) -> Bool {
+        self.lock.lock()
+        let p = self.plan_flag
+        self.lock.unlock()
+        return p
     }
 
     // Start a fresh turn: keep the conversation, reset per-turn state.

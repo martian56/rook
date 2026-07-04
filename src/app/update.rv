@@ -661,6 +661,20 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.shells_sel = 0
             return next(m)
         },
+        Plan -> {
+            m.plan_mode = !m.plan_mode
+            if m.plan_mode {
+                m.entries.push(
+                    Entry.Notice(
+                        "plan mode on: I will research and propose, not change anything. /plan again to carry it out.",
+                    ),
+                )
+            } else {
+                m.entries.push(Entry.Notice("plan mode off"))
+            }
+            m.scroll_up = 0
+            return next(m)
+        },
         Login -> {
             _open_key_entry(m)
             return next(m)
@@ -703,6 +717,7 @@ fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
         return next(m)
     }
     m.agent.push_user(prompt)
+    m.agent.set_plan(m.plan_mode)
     m.agent.begin()
     m.word = thinking_word(m.turns)
     m.elapsed = 0

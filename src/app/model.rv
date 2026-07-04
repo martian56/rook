@@ -76,6 +76,8 @@ struct Chat {
     shells_open: Bool,
     shells_sel: Int,
     shells_focus: Int,
+    // Plan mode: the model researches and proposes, mutating tools blocked.
+    plan_mode: Bool,
 }
 
 fun chat_init() -> Chat {
@@ -122,6 +124,7 @@ fun chat_init() -> Chat {
         shells_open: false,
         shells_sel: 0,
         shells_focus: 0,
+        plan_mode: false,
     }
 }
 

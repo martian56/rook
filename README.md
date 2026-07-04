@@ -92,6 +92,13 @@ output is capped so a chatty process cannot grow memory without bound,
 old finished shells fall off the list, and quitting rook kills
 everything still running so no child is orphaned.
 
+`/plan` toggles plan mode: the model may read, search, and inspect but
+its write, edit, and command tools are withheld, so it studies the task
+and proposes an ordered plan instead of changing anything. The status
+bar shows a `◆ PLAN` badge while it is on. Review the plan, then `/plan`
+again to carry it out. Subagents dispatched in plan mode are read-only
+too.
+
 During multi-step work the model keeps a checklist with `set_todos`,
 shown live above the input: done steps check off dim, the current one
 is highlighted, pending ones wait. `/clear` empties it.

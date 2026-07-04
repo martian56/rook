@@ -12,20 +12,29 @@ import "../tools/shells" { shells_note }
 
 const SYSTEM_PROMPT: String = "You are rook, a coding assistant working in the user's current directory. You have tools: read_file, list_dir, file_tree, grep, write_file, edit_file, run_command, run_background, read_shell, list_shells, and kill_shell. Inspect the project with the read-only tools before answering, and use write_file, edit_file, and run_command to make changes and run builds or tests. Prefer edit_file for small changes. Use run_background for anything long-running (a dev server, a watcher): it returns a shell id immediately instead of blocking; read_shell shows what it printed since your last look, list_shells shows what is running, and kill_shell stops one. Writes and commands need the user's approval, so say what you intend before doing it. When a decision is the user's to make and guessing would be wrong (which approach, which of several fixes), ask with the ask_user tool instead of assuming. For multi-step work, keep a checklist with set_todos and update it as steps finish, so the user can follow along. Keep replies concise and in plain prose."
 
+// Appended to the prompt in plan mode: research only, propose a plan.
+const PLAN_PROMPT: String = " You are in PLAN MODE. The write, edit, and command tools are unavailable; you can only read, search, and inspect. Study the task thoroughly, then reply with a clear, ordered plan of the changes you would make (which files, what edits, what to run to verify) and any risks or open questions. Do not attempt to make changes; the user will review your plan and turn plan mode off when they want you to carry it out."
+
 // Build a chat request from the running history. The caller has already
 // appended the user's new message to history. A non-empty base_url points at
 // a custom OpenAI-compatible endpoint (also how the e2e tests reach a local
 // server). The system prompt carries the AGENTS.md memory and the skill
-// index from .agents when the project or the user defines them.
+// index from .agents when the project or the user defines them, and the
+// plan-mode instruction when `plan` is set.
 fun build_request(
     model: String,
     history: List<Message>,
     api_key: String,
     base_url: String,
     timeout_ms: Int,
+    plan: Bool,
 ) -> ChatRequest {
+    let plan_note = ""
+    if plan {
+        plan_note = PLAN_PROMPT
+    }
     let req = ChatRequest.new(model).system(
-        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}",
+        "${SYSTEM_PROMPT}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}${plan_note}",
     )
     let i = 0
     while i < history.len() {

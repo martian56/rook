@@ -6,7 +6,7 @@
 import std/string
 import std/http { Server, Request, Response }
 import std/sync { sleep_millis }
-import std/fs { write as fs_write, remove_file, remove_dir, create_dir_all }
+import std/fs { write as fs_write, remove_file, remove_dir, create_dir_all, exists }
 import std/test { assert_true, assert_eq_int }
 import "./state" { AgentState, DisplayEvent, Snapshot }
 import "./turn" { run_turn }
@@ -17,6 +17,7 @@ let dispatch_hits = 0
 let fanout_hits = 0
 let ask_hits = 0
 let perm_hits = 0
+let plan_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun read_handler(req: Request) -> Response {
@@ -55,6 +56,25 @@ fun perm_handler(req: Request) -> Response {
     return Response.text(
         "data: {\"choices\":[{\"delta\":{\"content\":\"Done, wrote the file.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
     )
+}
+
+// Round 1: try to write a file (blocked in plan mode). Round 2: concede.
+fun plan_handler(req: Request) -> Response {
+    plan_hits = plan_hits + 1
+    if plan_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"pl1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e_plan.txt\\\",\\\"content\\\":\\\"should not exist\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Here is my plan instead.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_plan() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", plan_handler)
+    app.listen("127.0.0.1:8469")
 }
 
 // One server plays both sides of a dispatch: the subagent's requests carry
@@ -368,6 +388,27 @@ fun test_an_allow_rule_skips_the_approval_prompt() {
     remove_file("_rook_e2e_perm.txt")
     remove_file(".agents/settings.json")
     remove_dir(".agents")
+    return
+}
+
+fun test_plan_mode_blocks_a_write() {
+    spawn(fun() -> Unit {
+        serve_plan()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("change the file")
+    st.set_plan(true)
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8469/v1")
+    })
+    let got = e2e_drain(st)
+    // The write was refused, the model got the plan-mode message, and it
+    // closed with its plan instead. No file was created.
+    assert_true(got.contains("Plan mode is on"))
+    assert_true(got.contains("Here is my plan instead."))
+    assert_true(!exists("_rook_e2e_plan.txt"))
     return
 }
 
