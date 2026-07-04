@@ -1,8 +1,75 @@
-// Slash-command parsing. Everything the user types at the prompt goes
-// through here first: a leading slash is a command, anything else is a
-// message for the model. Kept pure so it is easy to test.
+// Slash-command parsing and the command registry. Everything the user types
+// at the prompt goes through here first: a leading slash is a command,
+// anything else is a message for the model. Kept pure so it is easy to test.
 
 import std/string
+
+// One command as the slash menu and /help present it.
+struct CmdInfo {
+    name: String,
+    desc: String,
+}
+
+// The built-in commands, in menu order.
+fun builtin_commands() -> List<CmdInfo> {
+    return [
+        CmdInfo { name: "help", desc: "show every command" },
+        CmdInfo { name: "model", desc: "switch model; /model <provider/model> sets one directly" },
+        CmdInfo { name: "theme", desc: "switch the color theme" },
+        CmdInfo { name: "key", desc: "set the current provider's API key" },
+        CmdInfo { name: "clear", desc: "wipe the conversation" },
+        CmdInfo { name: "quit", desc: "exit rook" },
+    ]
+}
+
+// Append `extra` (custom commands) to `base`, skipping names the base
+// already has, so a custom command can never shadow a built-in in the menu.
+fun merge_infos(base: List<CmdInfo>, extra: List<CmdInfo>) -> List<CmdInfo> {
+    let i = 0
+    while i < extra.len() {
+        if !_has_info(base, extra[i].name) {
+            base.push(extra[i])
+        }
+        i = i + 1
+    }
+    return base
+}
+
+// The commands the slash menu should offer for the current input: every
+// command whose name starts with what was typed after "/". Empty when the
+// input is not a bare slash command (no leading "/", or arguments already
+// typed), which is also the menu's closed state.
+fun menu_matches(cmds: List<CmdInfo>, input: String) -> List<CmdInfo> {
+    let out: List<CmdInfo> = []
+    if !input.starts_with("/") {
+        return out
+    }
+    let rest = input.substring(1, input.length())
+    if rest.contains(" ") {
+        return out
+    }
+    let want = rest.to_lower()
+    let i = 0
+    while i < cmds.len() {
+        if cmds[i].name.to_lower().starts_with(want) {
+            out.push(cmds[i])
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _has_info(cmds: List<CmdInfo>, name: String) -> Bool {
+    let want = name.to_lower()
+    let i = 0
+    while i < cmds.len() {
+        if cmds[i].name.to_lower() == want {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
 
 enum Command {
     Send(String),

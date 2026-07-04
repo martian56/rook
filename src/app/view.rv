@@ -16,6 +16,7 @@ import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
 import "../config/catalog" { catalog }
+import "../commands" { CmdInfo, menu_matches }
 
 fun chat_view(m: Chat, f: Frame) {
     let rows = split_v(
@@ -35,6 +36,9 @@ fun chat_view(m: Chat, f: Frame) {
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[3], f)
+    if !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.slash_dismissed {
+        _slash_menu(m, rows[2], f)
+    }
     if m.pending != "" {
         _approval(m, f)
     }
@@ -47,6 +51,78 @@ fun chat_view(m: Chat, f: Frame) {
     if m.entering_key {
         _key_modal(m, f)
     }
+}
+
+// The slash menu: a dropdown of matching commands anchored above the input
+// box while a bare "/name" prefix is being typed. The highlighted row runs
+// on enter, completes on tab.
+fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
+    let matches = menu_matches(m.cmd_infos, m.entry.value)
+    if matches.len() == 0 {
+        return
+    }
+    let count = matches.len()
+    if count > 8 {
+        count = 8
+    }
+    let h = count + 2
+    let y = input_area.y - h
+    if y < f.area().y {
+        y = f.area().y
+        h = input_area.y - y
+        if h < 3 {
+            return
+        }
+        count = h - 2
+    }
+    let w = input_area.w
+    if w > 64 {
+        w = 64
+    }
+    let area = Rect.new(input_area.x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().style(m.theme.border)
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+
+    let sel = m.slash_sel
+    if sel >= matches.len() {
+        sel = matches.len() - 1
+    }
+    // Scroll the window so the selection stays visible.
+    let top = 0
+    if sel >= count {
+        top = sel - count + 1
+    }
+    let r = 0
+    while r < count {
+        let it = matches[top + r]
+        let name = "/${it.name}"
+        while name.length() < 12 {
+            name = name.concat(" ")
+        }
+        let avail = inner.w - name.length() - 3
+        let desc = it.desc
+        if avail <= 0 {
+            desc = ""
+        } else {
+            if desc.length() > avail {
+                desc = desc.substring(0, avail)
+            }
+        }
+        if top + r == sel {
+            let row = "${name}  ${desc}"
+            while row.length() < inner.w - 1 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+        } else {
+            let x = f.buf.set_string(inner.x + 1, inner.y + r, name, m.theme.accent)
+            f.buf.set_string(x + 2, inner.y + r, desc, m.theme.dim)
+        }
+        r = r + 1
+    }
+    return
 }
 
 // A centered modal to enter the current provider's API key. The value is

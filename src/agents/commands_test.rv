@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./commands" { CustomCommand, load_commands, parse_command_file, find_expansion, expand, commands_help }
+import "./commands" { CustomCommand, load_commands, parse_command_file, find_expansion, expand, commands_help, command_infos }
 
 fun test_parse_reads_description_and_template() {
     let c = parse_command_file(
@@ -59,6 +59,17 @@ fun test_load_commands_shadows_and_skips_non_md() {
     remove_dir("_rook_cm_p")
     remove_dir("_rook_cm_g")
     return
+}
+
+fun test_command_infos_map_with_a_fallback_description() {
+    let cmds = [
+        CustomCommand { name: "release", description: "cut a release", template: "t" },
+        CustomCommand { name: "bare", description: "", template: "t" },
+    ]
+    let infos = command_infos(cmds)
+    assert_eq_str(infos[0].name, "release")
+    assert_eq_str(infos[0].desc, "cut a release")
+    assert_eq_str(infos[1].desc, "custom command")
 }
 
 fun test_help_lists_commands() {

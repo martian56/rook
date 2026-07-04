@@ -11,7 +11,7 @@ import "../agent/state" { DisplayEvent, Snapshot }
 import "../agent/turn" { run_turn }
 import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
-import "../commands" { Command, parse_command }
+import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../config/catalog" { catalog, index_of }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -151,6 +151,47 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
         return next(m)
     }
 
+    // The slash menu: while the input is a bare "/name" prefix, the arrows
+    // move the highlight, tab completes it, enter runs it, esc dismisses.
+    if !m.slash_dismissed {
+        let matches = menu_matches(m.cmd_infos, m.entry.value)
+        if matches.len() > 0 {
+            if m.slash_sel >= matches.len() {
+                m.slash_sel = matches.len() - 1
+            }
+            match k {
+                Up -> {
+                    if m.slash_sel > 0 {
+                        m.slash_sel = m.slash_sel - 1
+                    }
+                    return next(m)
+                },
+                Down -> {
+                    if m.slash_sel < matches.len() - 1 {
+                        m.slash_sel = m.slash_sel + 1
+                    }
+                    return next(m)
+                },
+                Tab -> {
+                    m.entry = TextInput.with_value("/${matches[m.slash_sel].name} ")
+                    m.slash_sel = 0
+                    return next(m)
+                },
+                Enter -> {
+                    let name = matches[m.slash_sel].name
+                    m.entry = TextInput.new()
+                    m.slash_sel = 0
+                    return _run(m, "/${name}")
+                },
+                Esc -> {
+                    m.slash_dismissed = true
+                    return next(m)
+                },
+                _ -> {},
+            }
+        }
+    }
+
     match k {
         Enter -> {
             return _submit(m)
@@ -168,7 +209,12 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
         },
         _ -> {},
     }
+    let before = m.entry.value
     m.entry.handle_key(k)
+    if m.entry.value != before {
+        m.slash_dismissed = false
+        m.slash_sel = 0
+    }
     return next(m)
 }
 
@@ -315,6 +361,12 @@ fun _submit(m: Chat) -> Step<Chat> {
         return next(m)
     }
     m.entry = TextInput.new()
+    return _run(m, text)
+}
+
+// Execute one line of input, a command or a message. Split from _submit so
+// the slash menu can run its selection directly.
+fun _run(m: Chat, text: String) -> Step<Chat> {
     m.scroll_up = 0
 
     match parse_command(text) {
