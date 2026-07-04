@@ -1,13 +1,16 @@
-// A substring grep over a directory tree. Literal matching (no regex),
-// capped at a sane number of hits so a huge tree cannot flood the model's
-// context.
+// A regex grep over a directory tree (RE2 syntax via std/regex: no
+// backreferences or lookaround), capped at a sane number of hits so a huge
+// tree cannot flood the model's context. Case-insensitive matching is the
+// engine's own `(?i)` inline flag, and an optional glob narrows which files
+// are searched by name.
 
 import std/string
-import std/fs { walk, read, is_file }
+import std/regex { compile, Regex }
+import std/fs { walk, read, is_file, basename }
 
 const MAX_MATCHES: Int = 50
 
-fun grep(pattern: String, path: String) -> String {
+fun grep(pattern: String, path: String, glob: String) -> String {
     if pattern == "" {
         return "error: no pattern given"
     }
@@ -15,6 +18,29 @@ fun grep(pattern: String, path: String) -> String {
     if root == "" {
         root = "."
     }
+    return match compile(pattern) {
+        Ok(re) -> _grep_with_pattern(re, root, pattern, glob),
+        Err(e) -> "error: invalid pattern: ${e.message}",
+    }
+}
+
+fun _grep_with_pattern(re: Regex, root: String, pattern: String, glob: String) -> String {
+    let has_glob = glob != ""
+    let result = match compile(_glob_to_regex(glob)) {
+        Ok(name_re) -> _grep_with_regexes(re, name_re, root, pattern, has_glob),
+        Err(e) -> "error: invalid glob: ${e.message}",
+    }
+    re.free()
+    return result
+}
+
+fun _grep_with_regexes(
+    re: Regex,
+    name_re: Regex,
+    root: String,
+    pattern: String,
+    has_glob: Bool,
+) -> String {
     let files: List<String> = []
     let ok = true
     match walk(root) {
@@ -25,42 +51,73 @@ fun grep(pattern: String, path: String) -> String {
             ok = false
         },
     }
-    if !ok {
-        return "error: cannot search ${root}"
-    }
 
     let out = ""
-    let count = 0
-    let i = 0
-    while i < files.len() && count < MAX_MATCHES {
-        let f = files[i]
-        if is_file(f) {
-            let content = ""
-            let rok = true
-            match read(f) {
-                Ok(s) -> {
-                    content = s
-                },
-                Err(e) -> {
-                    rok = false
-                },
-            }
-            if rok {
-                let lines = content.lines()
-                let ln = 0
-                while ln < lines.len() && count < MAX_MATCHES {
-                    if lines[ln].contains(pattern) {
-                        out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
-                        count = count + 1
+    if ok {
+        let count = 0
+        let i = 0
+        while i < files.len() && count < MAX_MATCHES {
+            let f = files[i]
+            if is_file(f) && (!has_glob || name_re.is_match(basename(f))) {
+                let content = ""
+                let rok = true
+                match read(f) {
+                    Ok(s) -> {
+                        content = s
+                    },
+                    Err(e) -> {
+                        rok = false
+                    },
+                }
+                if rok {
+                    let lines = content.lines()
+                    let ln = 0
+                    while ln < lines.len() && count < MAX_MATCHES {
+                        if re.is_match(lines[ln]) {
+                            out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
+                            count = count + 1
+                        }
+                        ln = ln + 1
                     }
-                    ln = ln + 1
                 }
             }
+            i = i + 1
+        }
+        if count == 0 {
+            out = "no matches for '${pattern}' under ${root}"
+        }
+    } else {
+        out = "error: cannot search ${root}"
+    }
+    name_re.free()
+    return out
+}
+
+// Translates a shell-style glob (`*` any run, `?` one char, everything else
+// literal) into an anchored regex. An empty glob (no filter requested)
+// becomes `.*` so it matches any name without ever being consulted.
+fun _glob_to_regex(glob: String) -> String {
+    if glob == "" {
+        return ".*"
+    }
+    let out = ""
+    let i = 0
+    while i < glob.length() {
+        let c = glob.char_at(i)
+        if c == "*" {
+            out = out.concat(".*")
+        } else if c == "?" {
+            out = out.concat(".")
+        } else if _is_regex_meta(c) {
+            out = out.concat("\\").concat(c)
+        } else {
+            out = out.concat(c)
         }
         i = i + 1
     }
-    if count == 0 {
-        return "no matches for '${pattern}' under ${root}"
-    }
-    return out
+    return "^${out}$"
+}
+
+fun _is_regex_meta(c: String) -> Bool {
+    return c == "." || c == "^" || c == "$" || c == "+" || c == "(" || c == ")" || c == "[" || c == "]" || c == "{" || c == "}" || c == "|" || c == "\\"
 }
