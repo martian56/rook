@@ -27,3 +27,4 @@ dest = "share/doc/rook/LICENSE"
 
 [dist.windows]
 upgrade_code = "b7e2f1a4-9c3d-4e6f-8a12-3d5e7f9b0c1d"
+add_to_path = true
