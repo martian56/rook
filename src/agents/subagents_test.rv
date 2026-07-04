@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, subagent_index }
+import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, subagent_index, subagents_prompt }
 import "./front" { parse_front, front_get }
 
 const DOC: String = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."
@@ -58,6 +58,15 @@ fun test_load_shadows_project_over_global() {
     remove_dir("_rook_sa_p")
     remove_dir("_rook_sa_g")
     return
+}
+
+fun test_prompt_lists_agents_for_dispatch() {
+    let none: List<Subagent> = []
+    assert_eq_str(subagents_prompt(none), "")
+    let one = [parse_subagent(DOC, "x")]
+    let p = subagents_prompt(one)
+    assert_true(p.contains("- reviewer: critique a diff"))
+    assert_true(p.contains("dispatch"))
 }
 
 fun test_front_parses_any_key_and_unquotes() {

@@ -8,7 +8,7 @@ fun call(name: String, args: String) -> ToolCall {
 }
 
 fun test_all_tools_are_defined() {
-    assert_eq_int(tools().len(), 7)
+    assert_eq_int(tools().len(), 8)
 }
 
 fun test_approval_policy() {
@@ -47,4 +47,14 @@ fun test_use_skill_routes_and_labels() {
     // no-skills error, proving dispatch reached the skills module.
     assert_true(dispatch(call("use_skill", "{\"name\":\"x\"}")).starts_with("error:"))
     assert_eq_str(label(call("use_skill", "{\"name\":\"release\"}")), "use_skill(release)")
+}
+
+fun test_dispatch_tool_is_auto_run_and_labeled() {
+    assert_false(needs_approval("dispatch"))
+    assert_eq_str(
+        label(call("dispatch", "{\"agent\":\"reviewer\",\"task\":\"t\"}")),
+        "dispatch(reviewer)",
+    )
+    // The registry itself refuses dispatch: only the turn loop may run it.
+    assert_true(dispatch(call("dispatch", "{}")).starts_with("error:"))
 }

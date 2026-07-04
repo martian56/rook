@@ -9,7 +9,11 @@ import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
+import "./subturn" { run_subagent }
 import "../tools/registry" { tools, needs_approval, dispatch, label }
+import "../tools/args" { arg }
+import "../agents/dir" { roots }
+import "../agents/subagents" { Subagent, load_subagents, subagent_index }
 
 const MAX_ROUNDS: Int = 25
 
@@ -56,7 +60,12 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         let i = 0
         while i < calls.len() {
             let call = calls[i]
-            let result = _run_one(st, call, allowed)
+            let result = ""
+            if call.name == "dispatch" {
+                result = _dispatch(st, call, model, api_key, base_url)
+            } else {
+                result = _run_one(st, call, allowed)
+            }
             st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
             st.push_tool_result(call.id, call.name, result)
             i = i + 1
@@ -66,6 +75,43 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
     st.emit(DisplayEvent.Info("stopped after ${MAX_ROUNDS} tool rounds"))
     st.finish()
     return
+}
+
+// A dispatch call: look the subagent up and run it to completion inside
+// this goroutine; its final answer is the tool result. Runs without its own
+// approval since every mutating call the subagent makes still gates
+// individually.
+fun _dispatch(
+    st: AgentState,
+    call: ToolCall,
+    model: String,
+    api_key: String,
+    base_url: String,
+) -> String {
+    let name = arg(call.arguments, "agent")
+    let task = arg(call.arguments, "task")
+    if task.trim() == "" {
+        return "error: dispatch needs a task"
+    }
+    let agents = load_subagents(roots())
+    if agents.len() == 0 {
+        return "error: no subagents are defined; add .agents/subagents/<name>.md"
+    }
+    let idx = subagent_index(agents, name)
+    if idx < 0 {
+        let names = ""
+        let i = 0
+        while i < agents.len() {
+            if i > 0 {
+                names = names.concat(", ")
+            }
+            names = names.concat(agents[i].name)
+            i = i + 1
+        }
+        return "error: no subagent named '${name}'; available: ${names}"
+    }
+    st.emit(DisplayEvent.Info("${agents[idx].name} agent working…"))
+    return run_subagent(st, agents[idx], task, model, api_key, base_url)
 }
 
 // Run one tool call, gating a mutating one through approval unless its kind
