@@ -1,0 +1,41 @@
+import std/string
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./pricing" { Price, price_for, cost_micros, format_usd, format_tokens, usage_label }
+
+fun test_price_matches_across_providers() {
+    assert_true(price_for("openrouter/anthropic/claude-sonnet-5").known)
+    assert_true(price_for("anthropic/claude-sonnet-5").known)
+    assert_eq_int(price_for("anthropic/claude-sonnet-5").in_1k, 3000)
+    assert_true(!price_for("some/unknown-model").known)
+}
+
+fun test_cost_micros() {
+    // 1000 in + 1000 out at 3000/15000 micro per 1k = 3000 + 15000 = 18000.
+    assert_eq_int(cost_micros("anthropic/claude-sonnet-5", 1000, 1000), 18000)
+    // Unknown model reports -1.
+    assert_eq_int(cost_micros("mystery/model", 1000, 1000), 0 - 1)
+}
+
+fun test_format_usd_four_decimals() {
+    assert_eq_str(format_usd(4200), "$0.0042")
+    assert_eq_str(format_usd(18000), "$0.0180")
+    assert_eq_str(format_usd(1500000), "$1.5000")
+    assert_eq_str(format_usd(0), "$0.0000")
+}
+
+fun test_format_tokens_compacts_thousands() {
+    assert_eq_str(format_tokens(940), "940")
+    assert_eq_str(format_tokens(1200), "1.2k")
+    assert_eq_str(format_tokens(15600), "15.6k")
+}
+
+fun test_usage_label() {
+    assert_eq_str(usage_label("anthropic/claude-sonnet-5", 0, 0), "")
+    let known = usage_label("anthropic/claude-sonnet-5", 1000, 1000)
+    assert_true(known.contains("2.0k tok"))
+    assert_true(known.contains("$0.0180"))
+    // Unknown model: tokens, no cost.
+    let unknown = usage_label("mystery/model", 1000, 500)
+    assert_true(unknown.contains("1.5k tok"))
+    assert_true(!unknown.contains("$"))
+}

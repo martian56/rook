@@ -20,6 +20,7 @@ import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
 import "../tools/mentions" { current_mention }
+import "../tools/pricing" { usage_label }
 
 fun chat_view(m: Chat, f: Frame) {
     // The model's checklist takes a strip above the thinking line while it
@@ -760,8 +761,13 @@ fun _status(m: Chat, area: Rect, f: Frame) {
         sty = m.theme.accent
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)
-    // Right side: the model, with a plan-mode badge ahead of it when on.
+    // Right side: session token usage (when any), the model, and a
+    // plan-mode badge ahead of it when on.
     let right = "rook · ${m.model}"
+    let usage = usage_label(m.model, m.sess_prompt, m.sess_completion)
+    if usage != "" {
+        right = "${usage} · ${right}"
+    }
     if m.plan_mode {
         right = "◆ PLAN · ${right}"
     }

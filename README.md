@@ -46,6 +46,9 @@ OpenRouter is the default provider, since one key there reaches most models.
   you see exactly what changed.
 - **Esc** interrupts; **ctrl+c** twice quits. **PageUp/PageDown** or the
   mouse wheel scroll.
+- The status bar shows the session's token usage and an estimated cost;
+  each turn also reports its own tokens and cost when it finishes. Costs
+  are rough per-model estimates for at-a-glance spend, not billing.
 
 ## Choosing a model
 

@@ -83,6 +83,9 @@ struct Chat {
     mention_matches: List<String>,
     mention_sel: Int,
     mention_dismissed: Bool,
+    // Session token totals, drained from the agent for the status bar.
+    sess_prompt: Int,
+    sess_completion: Int,
 }
 
 fun chat_init() -> Chat {
@@ -134,6 +137,8 @@ fun chat_init() -> Chat {
         mention_matches: no_matches,
         mention_sel: 0,
         mention_dismissed: false,
+        sess_prompt: 0,
+        sess_completion: 0,
     }
 }
 
