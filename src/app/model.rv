@@ -8,6 +8,9 @@ import "../ui/transcript" { Entry }
 import "../ui/theme" { Theme }
 import "../ui/themes" { startup_theme }
 import "../ui/depth" { themed }
+import "../commands" { CmdInfo, builtin_commands, merge_infos }
+import "../agents/dir" { roots }
+import "../agents/commands" { load_commands, command_infos }
 import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model }
 
 struct Chat {
@@ -46,6 +49,13 @@ struct Chat {
     theme_picking: Bool,
     theme_sel: Int,
     theme_prev: String,
+    // Every command (built-ins then customs), loaded once at startup, for
+    // the slash menu and /help.
+    cmd_infos: List<CmdInfo>,
+    // The slash menu: the highlighted row, and whether esc dismissed it for
+    // the current input.
+    slash_sel: Int,
+    slash_dismissed: Bool,
 }
 
 fun chat_init() -> Chat {
@@ -76,6 +86,9 @@ fun chat_init() -> Chat {
         theme_picking: false,
         theme_sel: 0,
         theme_prev: "",
+        cmd_infos: merge_infos(builtin_commands(), command_infos(load_commands(roots()))),
+        slash_sel: 0,
+        slash_dismissed: false,
     }
 }
 

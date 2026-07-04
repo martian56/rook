@@ -8,6 +8,7 @@
 import std/string
 import std/fs { read, is_file }
 import "./dir" { merged_names, path_of }
+import "../commands" { CmdInfo }
 
 struct CustomCommand {
     name: String,
@@ -101,6 +102,21 @@ fun expand(template: String, args: String) -> String {
         return template
     }
     return "${template}\n\n${args}"
+}
+
+// The custom commands as menu entries, for the slash menu and /help.
+fun command_infos(cmds: List<CustomCommand>) -> List<CmdInfo> {
+    let out: List<CmdInfo> = []
+    let i = 0
+    while i < cmds.len() {
+        let d = cmds[i].description
+        if d == "" {
+            d = "custom command"
+        }
+        out.push(CmdInfo { name: cmds[i].name, desc: d })
+        i = i + 1
+    }
+    return out
 }
 
 // The /help addendum listing the loaded commands, "" when there are none.

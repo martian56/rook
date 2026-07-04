@@ -1,6 +1,6 @@
 import std/string
-import std/test { assert_eq_str }
-import "./commands" { Command, parse_command }
+import std/test { assert_eq_str, assert_true }
+import "./commands" { Command, parse_command, CmdInfo, builtin_commands, merge_infos, menu_matches }
 
 fun tag(c: Command) -> String {
     return match c {
@@ -57,4 +57,47 @@ fun test_unknown_command() {
 
 fun test_a_message_that_mentions_slash_midtext_is_send() {
     assert_eq_str(tag(parse_command("what does a/b mean")), "send:what does a/b mean")
+}
+
+fun test_builtins_cover_every_command() {
+    let names = ""
+    let cmds = builtin_commands()
+    let i = 0
+    while i < cmds.len() {
+        names = "${names} ${cmds[i].name}"
+        i = i + 1
+    }
+    assert_true(names.contains("help"))
+    assert_true(names.contains("model"))
+    assert_true(names.contains("theme"))
+    assert_true(names.contains("key"))
+    assert_true(names.contains("clear"))
+    assert_true(names.contains("quit"))
+}
+
+fun test_menu_opens_on_slash_and_filters() {
+    let cmds = builtin_commands()
+    assert_true(menu_matches(cmds, "/").len() == cmds.len())
+    let mo = menu_matches(cmds, "/mo")
+    assert_true(mo.len() == 1)
+    assert_eq_str(mo[0].name, "model")
+    assert_true(menu_matches(cmds, "/TH").len() == 1)
+}
+
+fun test_menu_stays_closed_for_plain_text_and_arguments() {
+    let cmds = builtin_commands()
+    assert_true(menu_matches(cmds, "hello").len() == 0)
+    assert_true(menu_matches(cmds, "/model x").len() == 0)
+    assert_true(menu_matches(cmds, "/zz").len() == 0)
+    assert_true(menu_matches(cmds, "").len() == 0)
+}
+
+fun test_merge_infos_never_shadows_a_builtin() {
+    let extra = [
+        CmdInfo { name: "release", desc: "cut a release" },
+        CmdInfo { name: "Model", desc: "impostor" },
+    ]
+    let merged = merge_infos(builtin_commands(), extra)
+    assert_true(merged.len() == builtin_commands().len() + 1)
+    assert_eq_str(merged[merged.len() - 1].name, "release")
 }
