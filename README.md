@@ -227,10 +227,8 @@ as a model, so the suite needs no network and no keys.
 
 ## Known limits
 
-Interrupting a single streamed reply takes effect when it finishes or at
-the next tool step, not mid-stream (that awaits a cancel token in aviary).
-grep is literal substring matching, not regex. One tool call runs at a
-time.
+grep is literal substring matching, not regex. A subagent's own request
+(non-streaming) stops at its next tool round rather than mid-flight.
 
 ## License
 

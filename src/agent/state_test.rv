@@ -73,6 +73,16 @@ fun test_interrupt_flag() {
     assert_true(st.interrupted())
 }
 
+fun test_interrupt_cancels_the_stream_token() {
+    let st = AgentState.new()
+    assert_false(st.token().canceled())
+    st.request_interrupt()
+    assert_true(st.token().canceled())
+    // A new turn gets a fresh token.
+    st.begin()
+    assert_false(st.token().canceled())
+}
+
 fun test_pending_is_readable_without_draining_events() {
     let st = AgentState.new()
     st.emit(DisplayEvent.Started)

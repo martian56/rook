@@ -14,6 +14,7 @@
 import std/string
 import std/sync { Mutex, mutex, Channel, channel_buffered }
 import "github.com/martian56/aviary/message" { Message, ToolCall }
+import "github.com/martian56/aviary/request" { CancelToken }
 
 // What the goroutine tells the UI to show, in order. The Agent* events
 // bracket a subagent run so the UI can render its activity as a nested
@@ -50,6 +51,10 @@ struct AgentState {
     // Serializes ask() so parallel subagents queue for the one approval
     // prompt instead of overwriting each other's pending label.
     ask_lock: Mutex,
+    // The turn's stream cancel token, fresh each begin(). request_interrupt
+    // cancels it so an in-flight reply stops at the next delta instead of
+    // running to the end.
+    cancel: CancelToken,
 }
 
 impl AgentState {
@@ -65,6 +70,7 @@ impl AgentState {
             pending: "",
             decisions: channel_buffered(1),
             ask_lock: mutex(),
+            cancel: CancelToken.new(),
         }
     }
 
@@ -76,7 +82,16 @@ impl AgentState {
         self.pending = ""
         let e: List<DisplayEvent> = []
         self.events = e
+        self.cancel = CancelToken.new()
         self.lock.unlock()
+    }
+
+    // The turn's stream cancel token, for attaching to requests.
+    fun token(self) -> CancelToken {
+        self.lock.lock()
+        let t = self.cancel
+        self.lock.unlock()
+        return t
     }
 
     fun clear_convo(self) {
@@ -161,10 +176,14 @@ impl AgentState {
         return p
     }
 
+    // Stop the turn: the flag ends it at the next round boundary, and
+    // canceling the token stops an in-flight stream at its next delta.
     fun request_interrupt(self) {
         self.lock.lock()
         self.interrupt = true
+        let t = self.cancel
         self.lock.unlock()
+        t.cancel()
     }
 
     fun interrupted(self) -> Bool {

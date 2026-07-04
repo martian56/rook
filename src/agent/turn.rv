@@ -29,16 +29,20 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
             return
         }
         st.emit(DisplayEvent.Started)
-        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0))
+        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0)).cancelable(
+            st.token(),
+        )
         let on_chunk = fun(d: String) -> Unit = st.chunk(d)
 
         let reply_text = ""
         let calls: List<ToolCall> = []
+        let finish = ""
         let err = ""
         match complete_stream(req, on_chunk) {
             Ok(reply) -> {
                 reply_text = reply.content
                 calls = reply.tool_calls
+                finish = reply.finish_reason
             },
             Err(e) -> {
                 err = e.message
@@ -46,6 +50,16 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         }
         if err != "" {
             st.emit(DisplayEvent.Info("error: ${err}"))
+            st.finish()
+            return
+        }
+        // Esc canceled the stream mid-reply: keep whatever streamed in the
+        // conversation and stop here.
+        if finish == "canceled" {
+            if reply_text != "" {
+                st.push_assistant(reply_text)
+            }
+            st.emit(DisplayEvent.Info("Interrupted"))
             st.finish()
             return
         }
