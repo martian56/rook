@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+
+- Surfaced invalid or unreadable `.agents/settings.json` files as startup notices instead of silently ignoring them.
+
 ## 0.3.4
 
 - Required approval before `web_fetch` can read localhost, private network, link-local, shared-address, benchmark, metadata, or hostnames resolving to those targets.

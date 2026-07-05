@@ -18,14 +18,22 @@ import std/string
 import std/fs { read, exists }
 import std/json { JsonValue, parse }
 
+struct SettingsLoad {
+    path: String,
+    present: Bool,
+    text: String,
+    error: String,
+}
+
 // A top-level string field from the settings.json under `root`, "" when the
 // root is empty, the file is absent or unreadable, or the field is not a
 // string.
 fun setting_str(root: String, key: String) -> String {
-    if root == "" {
+    let loaded = load_settings(root)
+    if !loaded.present || loaded.error != "" {
         return ""
     }
-    return setting_from(_read_opt("${root}/settings.json"), key)
+    return setting_from(loaded.text, key)
 }
 
 // The pure half: pull one string field out of a settings document.
@@ -42,27 +50,59 @@ fun setting_from(text: String, key: String) -> String {
 // A top-level object section (permissions, tools, mcp) from the settings
 // under `root`, for the features that consume them. None when absent.
 fun setting_section(root: String, key: String) -> Option<JsonValue> {
-    if root == "" {
+    let loaded = load_settings(root)
+    if !loaded.present || loaded.error != "" || loaded.text.trim() == "" {
         return None
     }
-    let text = _read_opt("${root}/settings.json")
-    if text.trim() == "" {
-        return None
-    }
-    return match parse(text) {
+    return match parse(loaded.text) {
         Ok(j) -> j.get(key),
         Err(e) -> None,
     }
 }
 
-fun _read_opt(path: String) -> String {
-    if !exists(path) {
-        return ""
+// Read one root's settings file while preserving the distinction between a
+// missing file and a file that exists but cannot be read.
+fun load_settings(root: String) -> SettingsLoad {
+    let path = ""
+    if root != "" {
+        path = "${root}/settings.json"
+    }
+    if path == "" || !exists(path) {
+        return SettingsLoad { path, present: false, text: "", error: "" }
     }
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        Ok(s) -> SettingsLoad { path, present: true, text: s, error: "" },
+        Err(e) -> SettingsLoad {
+            path,
+            present: true,
+            text: "",
+            error: "settings error: could not read ${path}: ${e.message}",
+        },
     }
+}
+
+// Human-readable diagnostics for settings files that exist but cannot be
+// used. Missing files stay quiet.
+fun settings_errors_from(rs: List<String>) -> List<String> {
+    let out: List<String> = []
+    let i = 0
+    while i < rs.len() {
+        let loaded = load_settings(rs[i])
+        if loaded.error != "" {
+            out.push(loaded.error)
+        } else {
+            if loaded.present && loaded.text.trim() != "" {
+                match parse(loaded.text) {
+                    Ok(j) -> {},
+                    Err(e) -> {
+                        out.push("settings error: invalid JSON in ${loaded.path}: ${e.message}")
+                    },
+                }
+            }
+        }
+        i = i + 1
+    }
+    return out
 }
 
 fun _field_str(j: JsonValue, key: String) -> String {

@@ -1,0 +1,16 @@
+import std/test { assert_eq_int, assert_eq_str }
+import "./model" { settings_error_entries }
+import "../ui/transcript" { Entry }
+
+fun notice_text(e: Entry) -> String {
+    return match e {
+        Notice(t) -> t,
+        _ -> "",
+    }
+}
+
+fun test_settings_errors_are_visible_startup_notices() {
+    let entries = settings_error_entries(["settings error: invalid JSON in .agents/settings.json"])
+    assert_eq_int(entries.len(), 1)
+    assert_eq_str(notice_text(entries[0]), "settings error: invalid JSON in .agents/settings.json")
+}
