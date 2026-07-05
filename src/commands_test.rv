@@ -15,6 +15,7 @@ fun tag(c: Command) -> String {
         Shells -> "shells",
         Plan -> "plan",
         Sessions -> "sessions",
+        Plugins(a) -> "plugins:${a}",
         Login -> "login",
         Unknown(t) -> "unknown:${t}",
     }
@@ -61,6 +62,15 @@ fun test_sessions_opens_the_picker() {
     assert_eq_str(tag(parse_command("/sessions")), "sessions")
 }
 
+fun test_plugins_command_carries_its_args() {
+    assert_eq_str(tag(parse_command("/plugins")), "plugins:")
+    assert_eq_str(tag(parse_command("/plugins list")), "plugins:list")
+    assert_eq_str(
+        tag(parse_command("/plugins add github.com/u/r v1.0")),
+        "plugins:add github.com/u/r v1.0",
+    )
+}
+
 fun test_key_and_login_open_auth() {
     assert_eq_str(tag(parse_command("/key")), "login")
     assert_eq_str(tag(parse_command("/login")), "login")
@@ -91,6 +101,7 @@ fun test_builtins_cover_every_command() {
     assert_true(names.contains("shells"))
     assert_true(names.contains("plan"))
     assert_true(names.contains("sessions"))
+    assert_true(names.contains("plugins"))
 }
 
 fun test_menu_opens_on_slash_and_filters() {

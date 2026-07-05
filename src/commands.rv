@@ -19,6 +19,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "plan", desc: "toggle plan mode (research and propose, no changes)" },
         CmdInfo { name: "shells", desc: "list background shells" },
         CmdInfo { name: "sessions", desc: "resume a past conversation" },
+        CmdInfo { name: "plugins", desc: "manage plugins (list, add, remove, update)" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "clear", desc: "wipe the conversation" },
         CmdInfo { name: "quit", desc: "exit rook" },
@@ -86,6 +87,7 @@ enum Command {
     Shells,
     Plan,
     Sessions,
+    Plugins(String),
     Login,
     Unknown(String),
 }
@@ -124,6 +126,12 @@ fun parse_command(text: String) -> Command {
     }
     if text == "/sessions" {
         return Command.Sessions
+    }
+    if text == "/plugins" {
+        return Command.Plugins("")
+    }
+    if text.starts_with("/plugins ") {
+        return Command.Plugins(text.substring(9, text.length()).trim())
     }
     if text == "/theme" {
         return Command.ThemePicker

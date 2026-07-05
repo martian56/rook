@@ -23,6 +23,7 @@ import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
 import "../tools/shells" { list_shells, kill_all_shells }
 import "../tools/todos" { clear_todos }
+import "../plugins/manage" { run_plugins_command }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -799,6 +800,17 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.sessions_list = list_sessions()
             m.sessions_sel = 0
             m.sessions_open = true
+            return next(m)
+        },
+        Plugins(args) -> {
+            m.entries.push(Entry.UserMsg(text))
+            let lines = run_plugins_command(args).lines()
+            let i = 0
+            while i < lines.len() {
+                m.entries.push(Entry.Notice(lines[i]))
+                i = i + 1
+            }
+            m.scroll_up = 0
             return next(m)
         },
         Plan -> {

@@ -282,7 +282,10 @@ A plugin is a shareable `.agents` bundle: a git repo with a
 An installed plugin is read like another `.agents` root, so its
 skills, subagents, commands, and themes merge into the session
 automatically, with precedence project `.agents` > plugin > global
-`.agents`.
+`.agents`. Manage them with `/plugins`: `list` shows what is installed
+and what each contributes, `add <git-url> [tag]` installs one, `remove
+<name>` deletes one, and `update <name>` re-installs from the recorded
+source.
 
 ## How it is built
 

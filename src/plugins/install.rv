@@ -6,6 +6,7 @@
 // user-facing install_plugin uses the real one.
 
 import std/string
+import std/error { Error }
 import std/env { os_name }
 import std/fs { exists, create_dir_all, read, write }
 import std/process { run, Output }
@@ -125,16 +126,23 @@ fun plugin_source(path: String) -> Plugin {
     }
 }
 
+// Remove a directory tree. On Windows git leaves read-only pack files that
+// rmdir refuses, so clear the read-only attribute across the tree first;
+// otherwise a later re-clone into the leftover fails. attrib and rmdir run
+// as separate calls (a single cmd string with embedded quotes and & does
+// not survive the process-arg quoting).
 fun _remove_tree(path: String) {
-    let shell = "sh"
-    let flag = "-c"
-    let cmd = "rm -rf '${path}'"
     if os_name() == "windows" {
-        shell = "cmd"
-        flag = "/c"
-        cmd = "rmdir /s /q \"${path}\""
+        _ignore(run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]))
+        _ignore(run("cmd", ["/c", "rmdir", "/s", "/q", path]))
+    } else {
+        _ignore(run("rm", ["-rf", path]))
     }
-    match run(shell, [flag, cmd]) {
+    return
+}
+
+fun _ignore(r: Result<Output, Error>) {
+    match r {
         Ok(o) -> {},
         Err(e) -> {},
     }

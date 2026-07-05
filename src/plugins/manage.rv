@@ -1,0 +1,170 @@
+// The user-facing side of plugins: the /plugins command. list shows the
+// installed plugins and what each contributes; add installs from a git URL
+// (optionally at a tag); remove deletes one; update re-installs from the
+// recorded source. Each returns a text result the UI shows as notices.
+
+import std/string
+import std/env { os_name }
+import std/fs { is_dir, list_dir }
+import std/process { run }
+import "./model" { Plugin, installed_plugins, plugin_path }
+import "./install" { install_plugin, plugin_source }
+
+// Dispatch a /plugins invocation. The argument is what followed the command
+// ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
+fun run_plugins_command(args: String) -> String {
+    let a = args.trim()
+    if a == "" || a == "list" {
+        return list_text()
+    }
+    let verb = a
+    let rest = ""
+    let sp = a.index_of(" ")
+    if sp >= 0 {
+        verb = a.substring(0, sp)
+        rest = a.substring(sp + 1, a.length()).trim()
+    }
+    if verb == "add" {
+        return add(rest)
+    }
+    if verb == "remove" || verb == "rm" {
+        return remove(rest)
+    }
+    if verb == "update" {
+        return update(rest)
+    }
+    return "unknown /plugins command '${verb}'; try: list, add <git-url> [tag], remove <name>, update <name>"
+}
+
+// The installed plugins, one line each with version and contributions.
+fun list_text() -> String {
+    let plugins = installed_plugins()
+    if plugins.len() == 0 {
+        return "no plugins installed. add one with /plugins add <git-url>"
+    }
+    let out = ""
+    let i = 0
+    while i < plugins.len() {
+        let p = plugins[i]
+        let v = p.version
+        if v == "" {
+            v = "unversioned"
+        }
+        let line = "${p.name} ${v}"
+        if p.description != "" {
+            line = "${line} - ${p.description}"
+        }
+        let c = contrib(p.path)
+        if c != "" {
+            line = "${line}  [${c}]"
+        }
+        if i > 0 {
+            out = out.concat("\n")
+        }
+        out = out.concat(line)
+        i = i + 1
+    }
+    return out
+}
+
+// A summary of what a plugin bundle contributes, by counting the entries in
+// its .agents-style subfolders. "" when it contributes nothing.
+fun contrib(path: String) -> String {
+    let parts: List<String> = []
+    _add_count(parts, path, "skills", "skills")
+    _add_count(parts, path, "subagents", "subagents")
+    _add_count(parts, path, "commands", "commands")
+    _add_count(parts, path, "themes", "themes")
+    let out = ""
+    let i = 0
+    while i < parts.len() {
+        if i > 0 {
+            out = out.concat(", ")
+        }
+        out = out.concat(parts[i])
+        i = i + 1
+    }
+    return out
+}
+
+fun add(rest: String) -> String {
+    if rest == "" {
+        return "usage: /plugins add <git-url> [tag]"
+    }
+    let url = rest
+    let ref = ""
+    let sp = rest.index_of(" ")
+    if sp >= 0 {
+        url = rest.substring(0, sp)
+        ref = rest.substring(sp + 1, rest.length()).trim()
+    }
+    return install_plugin(url, ref)
+}
+
+fun remove(name: String) -> String {
+    if name == "" {
+        return "usage: /plugins remove <name>"
+    }
+    let path = plugin_path(name)
+    if path == "" || !is_dir(path) {
+        return "no plugin named ${name}; /plugins list shows what is installed"
+    }
+    _rmtree(path)
+    return "removed plugin ${name}"
+}
+
+fun update(name: String) -> String {
+    if name == "" {
+        return "usage: /plugins update <name>"
+    }
+    let path = plugin_path(name)
+    if path == "" || !is_dir(path) {
+        return "no plugin named ${name}; /plugins list shows what is installed"
+    }
+    // plugin_source stores the url in name and the ref in description.
+    let src = plugin_source(path)
+    if src.name == "" {
+        return "no recorded source for ${name}; remove it and add it again"
+    }
+    return install_plugin(src.name, src.description)
+}
+
+fun _add_count(parts: List<String>, path: String, sub: String, label: String) {
+    let n = _count(path, sub)
+    if n > 0 {
+        parts.push("${n} ${label}")
+    }
+    return
+}
+
+fun _count(path: String, sub: String) -> Int {
+    let d = "${path}/${sub}"
+    if !is_dir(d) {
+        return 0
+    }
+    return match list_dir(d) {
+        Ok(ns) -> ns.len(),
+        Err(e) -> 0,
+    }
+}
+
+// Remove a directory tree, clearing read-only attributes first on Windows
+// so a plugin's git files do not block removal. See install._remove_tree.
+fun _rmtree(path: String) {
+    if os_name() == "windows" {
+        match run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
+        match run("cmd", ["/c", "rmdir", "/s", "/q", path]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
+    } else {
+        match run("rm", ["-rf", path]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
+    }
+    return
+}

@@ -1,0 +1,44 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./manage" { run_plugins_command, contrib }
+
+fun test_router_usage_and_unknown() {
+    assert_true(run_plugins_command("bogus").starts_with("unknown /plugins command"))
+    assert_true(run_plugins_command("add").contains("usage"))
+    assert_true(run_plugins_command("remove").contains("usage"))
+    assert_true(run_plugins_command("update").contains("usage"))
+}
+
+fun test_remove_and_update_of_a_missing_plugin() {
+    assert_true(run_plugins_command("remove not-installed-xyz").starts_with("no plugin named"))
+    assert_true(run_plugins_command("update not-installed-xyz").starts_with("no plugin named"))
+}
+
+fun test_contrib_counts_the_bundle_subfolders() {
+    create_dir_all("_rook_contrib/skills/a")
+    create_dir_all("_rook_contrib/skills/b")
+    create_dir_all("_rook_contrib/commands")
+    write("_rook_contrib/commands/x.md", "cmd")
+    write("_rook_contrib/skills/a/SKILL.md", "s")
+    write("_rook_contrib/skills/b/SKILL.md", "s")
+
+    let c = contrib("_rook_contrib")
+    assert_true(c.contains("2 skills"))
+    assert_true(c.contains("1 commands"))
+    // No subagents or themes folders, so they are omitted.
+    assert_true(!c.contains("subagents"))
+
+    // A path with no bundle folders contributes nothing.
+    assert_eq_str(contrib("_rook_contrib_absent"), "")
+
+    remove_file("_rook_contrib/commands/x.md")
+    remove_file("_rook_contrib/skills/a/SKILL.md")
+    remove_file("_rook_contrib/skills/b/SKILL.md")
+    remove_dir("_rook_contrib/commands")
+    remove_dir("_rook_contrib/skills/a")
+    remove_dir("_rook_contrib/skills/b")
+    remove_dir("_rook_contrib/skills")
+    remove_dir("_rook_contrib")
+    return
+}

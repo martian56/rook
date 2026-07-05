@@ -78,17 +78,20 @@ fun _git(args: List<String>) {
 }
 
 fun _rmtree(path: String) {
-    let shell = "sh"
-    let flag = "-c"
-    let cmd = "rm -rf '${path}'"
     if os_name() == "windows" {
-        shell = "cmd"
-        flag = "/c"
-        cmd = "rmdir /s /q \"${path}\""
-    }
-    match run(shell, [flag, cmd]) {
-        Ok(o) -> {},
-        Err(e) -> {},
+        match run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
+        match run("cmd", ["/c", "rmdir", "/s", "/q", path]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
+    } else {
+        match run("rm", ["-rf", path]) {
+            Ok(o) -> {},
+            Err(e) -> {},
+        }
     }
     return
 }
