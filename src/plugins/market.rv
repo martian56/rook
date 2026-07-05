@@ -1,0 +1,155 @@
+// The plugin marketplace: an optional, git-hosted JSON index of plugins so
+// users can find one without knowing its URL. The index is a JSON array of
+// { name, description, url }. rook fetches it over http; parsing, filtering,
+// and name resolution are pure so they are tested directly. The index URL
+// defaults to a martian56-hosted list and is overridable with
+// ROOK_PLUGIN_INDEX.
+
+import std/string
+import std/env { get_env, has_env }
+import std/http { request_with_timeout }
+import std/json { JsonValue, parse }
+import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
+
+const TIMEOUT_MS: Int = 15000
+const DEFAULT_INDEX: String = "https://raw.githubusercontent.com/martian56/rook-plugins/main/index.json"
+
+struct MarketEntry {
+    name: String,
+    description: String,
+    url: String,
+}
+
+// The index URL: ROOK_PLUGIN_INDEX when set, else the default.
+fun market_url() -> String {
+    if has_env("ROOK_PLUGIN_INDEX") {
+        let v = get_env("ROOK_PLUGIN_INDEX")
+        if v != "" {
+            return v
+        }
+    }
+    return DEFAULT_INDEX
+}
+
+// Browse the index, optionally filtered by a query, as text.
+fun browse_text(query: String) -> String {
+    let headers = "User-Agent: rook/1.0\nAccept: application/json"
+    return match request_with_timeout("GET", market_url(), "", headers, TIMEOUT_MS) {
+        Ok(resp) -> {
+            if resp.status_code >= 400 {
+                "error: the plugin index returned ${resp.status_code}"
+            } else {
+                let entries = filter_entries(parse_index(resp.body), query)
+                if entries.len() == 0 {
+                    "no plugins found in the index${_suffix(query)}"
+                } else {
+                    format_entries(entries)
+                }
+            }
+        },
+        Err(e) -> "error: could not reach the plugin index (${market_url()}): ${e.message}",
+    }
+}
+
+// The git URL for a marketplace plugin by name, or "" when the index has no
+// such name or cannot be reached. Lets /plugins add take a bare name.
+fun resolve_name(name: String) -> String {
+    let headers = "User-Agent: rook/1.0\nAccept: application/json"
+    return match request_with_timeout("GET", market_url(), "", headers, TIMEOUT_MS) {
+        Ok(resp) -> {
+            if resp.status_code >= 400 {
+                ""
+            } else {
+                resolve_in(parse_index(resp.body), name)
+            }
+        },
+        Err(e) -> "",
+    }
+}
+
+// Parse the index JSON into entries; malformed entries (no name or url) are
+// dropped, and bad JSON yields an empty list.
+fun parse_index(text: String) -> List<MarketEntry> {
+    let out: List<MarketEntry> = []
+    match parse(text) {
+        Ok(j) -> {
+            let arr = as_list(j)
+            let i = 0
+            while i < arr.len() {
+                let name = as_str(field(arr[i], "name"))
+                let url = as_str(field(arr[i], "url"))
+                if name != "" && url != "" {
+                    out.push(
+                        MarketEntry {
+                            name,
+                            description: as_str(field(arr[i], "description")),
+                            url,
+                        },
+                    )
+                }
+                i = i + 1
+            }
+        },
+        Err(e) -> {},
+    }
+    return out
+}
+
+// The entries whose name or description contains `query`, ignoring case. An
+// empty query returns them all.
+fun filter_entries(entries: List<MarketEntry>, query: String) -> List<MarketEntry> {
+    let q = query.trim().to_lower()
+    if q == "" {
+        return entries
+    }
+    let out: List<MarketEntry> = []
+    let i = 0
+    while i < entries.len() {
+        let e = entries[i]
+        if e.name.to_lower().contains(q) || e.description.to_lower().contains(q) {
+            out.push(e)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// The url of the entry named `name` (ignoring case), or "".
+fun resolve_in(entries: List<MarketEntry>, name: String) -> String {
+    let want = name.trim().to_lower()
+    let i = 0
+    while i < entries.len() {
+        if entries[i].name.to_lower() == want {
+            return entries[i].url
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// One line per entry: name, description, and url.
+fun format_entries(entries: List<MarketEntry>) -> String {
+    let out = ""
+    let i = 0
+    while i < entries.len() {
+        let e = entries[i]
+        let line = e.name
+        if e.description != "" {
+            line = "${line} - ${e.description}"
+        }
+        line = "${line}\n   ${e.url}"
+        if i > 0 {
+            out = out.concat("\n")
+        }
+        out = out.concat(line)
+        i = i + 1
+    }
+    return out
+}
+
+fun _suffix(query: String) -> String {
+    if query.trim() == "" {
+        return ""
+    }
+    return " for '${query.trim()}'"
+}

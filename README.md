@@ -285,7 +285,10 @@ automatically, with precedence project `.agents` > plugin > global
 `.agents`. Manage them with `/plugins`: `list` shows what is installed
 and what each contributes, `add <git-url> [tag]` installs one, `remove
 <name>` deletes one, and `update <name>` re-installs from the recorded
-source.
+source. `browse [query]` lists plugins from a git-hosted index so you
+can find one without knowing its URL, and `add <name>` then installs a
+plugin by its index name. The index URL defaults to a martian56-hosted
+list and is overridable with `ROOK_PLUGIN_INDEX`.
 
 ## How it is built
 

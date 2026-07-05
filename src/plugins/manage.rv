@@ -9,6 +9,7 @@ import std/fs { is_dir, list_dir }
 import std/process { run }
 import "./model" { Plugin, installed_plugins, plugin_path }
 import "./install" { install_plugin, plugin_source }
+import "./market" { browse_text, resolve_name }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
 // ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
@@ -33,7 +34,10 @@ fun run_plugins_command(args: String) -> String {
     if verb == "update" {
         return update(rest)
     }
-    return "unknown /plugins command '${verb}'; try: list, add <git-url> [tag], remove <name>, update <name>"
+    if verb == "browse" || verb == "search" {
+        return browse_text(rest)
+    }
+    return "unknown /plugins command '${verb}'; try: list, browse [query], add <git-url or name> [tag], remove <name>, update <name>"
 }
 
 // The installed plugins, one line each with version and contributions.
@@ -89,16 +93,29 @@ fun contrib(path: String) -> String {
 
 fun add(rest: String) -> String {
     if rest == "" {
-        return "usage: /plugins add <git-url> [tag]"
+        return "usage: /plugins add <git-url or index-name> [tag]"
     }
-    let url = rest
+    let first = rest
     let ref = ""
     let sp = rest.index_of(" ")
     if sp >= 0 {
-        url = rest.substring(0, sp)
+        first = rest.substring(0, sp)
         ref = rest.substring(sp + 1, rest.length()).trim()
     }
+    // A bare name (no path or scheme) is looked up in the marketplace index;
+    // anything with a slash or scheme is treated as a git URL directly.
+    let url = first
+    if !_is_url(first) {
+        url = resolve_name(first)
+        if url == "" {
+            return "no plugin '${first}' in the index; give a git URL, or try /plugins browse"
+        }
+    }
     return install_plugin(url, ref)
+}
+
+fun _is_url(s: String) -> Bool {
+    return s.contains("/") || s.contains("://") || s.starts_with("git@")
 }
 
 fun remove(name: String) -> String {

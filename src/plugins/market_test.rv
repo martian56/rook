@@ -1,0 +1,47 @@
+import std/string
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./market" { MarketEntry, parse_index, filter_entries, resolve_in, format_entries, market_url }
+
+const INDEX: String = "[{\"name\": \"fmt\", \"description\": \"formats on save\", \"url\": \"github.com/u/rook-fmt\"}, {\"name\": \"lint\", \"description\": \"runs the linter\", \"url\": \"github.com/u/rook-lint\"}, {\"name\": \"bad\"}]"
+
+fun test_parse_index_drops_incomplete_entries() {
+    let entries = parse_index(INDEX)
+    // "bad" has no url, so it is dropped.
+    assert_eq_int(entries.len(), 2)
+    assert_eq_str(entries[0].name, "fmt")
+    assert_eq_str(entries[0].url, "github.com/u/rook-fmt")
+    assert_eq_str(entries[1].description, "runs the linter")
+}
+
+fun test_parse_index_tolerates_bad_json() {
+    assert_eq_int(parse_index("not json").len(), 0)
+    assert_eq_int(parse_index("[]").len(), 0)
+}
+
+fun test_filter_by_name_or_description() {
+    let entries = parse_index(INDEX)
+    assert_eq_int(filter_entries(entries, "").len(), 2)
+    assert_eq_int(filter_entries(entries, "fmt").len(), 1)
+    // Matches the description, ignoring case.
+    assert_eq_int(filter_entries(entries, "LINT").len(), 1)
+    assert_eq_int(filter_entries(entries, "nothing").len(), 0)
+}
+
+fun test_resolve_name_returns_the_url() {
+    let entries = parse_index(INDEX)
+    assert_eq_str(resolve_in(entries, "fmt"), "github.com/u/rook-fmt")
+    assert_eq_str(resolve_in(entries, "FMT"), "github.com/u/rook-fmt")
+    assert_eq_str(resolve_in(entries, "missing"), "")
+}
+
+fun test_format_shows_name_and_url() {
+    let entries = parse_index(INDEX)
+    let text = format_entries(entries)
+    assert_true(text.contains("fmt - formats on save"))
+    assert_true(text.contains("github.com/u/rook-fmt"))
+    assert_true(text.contains("lint - runs the linter"))
+}
+
+fun test_market_url_has_a_default() {
+    assert_true(market_url().contains("http"))
+}

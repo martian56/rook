@@ -19,7 +19,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "plan", desc: "toggle plan mode (research and propose, no changes)" },
         CmdInfo { name: "shells", desc: "list background shells" },
         CmdInfo { name: "sessions", desc: "resume a past conversation" },
-        CmdInfo { name: "plugins", desc: "manage plugins (list, add, remove, update)" },
+        CmdInfo { name: "plugins", desc: "manage plugins (list, browse, add, remove, update)" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "clear", desc: "wipe the conversation" },
         CmdInfo { name: "quit", desc: "exit rook" },
