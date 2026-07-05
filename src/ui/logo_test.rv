@@ -1,0 +1,60 @@
+import std/string
+import std/test { assert_true, assert_eq_int }
+import "github.com/martian56/plumage/buffer" { Buffer }
+import "github.com/martian56/plumage/style" { Color }
+import "./logo" { draw_logo, logo_width, logo_height }
+
+fun test_logo_paints_half_blocks() {
+    let buf = Buffer.new(logo_width(), logo_height())
+    draw_logo(buf, 0, 0)
+    // The logo should paint a substantial number of half-block cells (the
+    // bird, the prompt, and the wordmark), leaving the black background as
+    // untouched, transparent cells.
+    let painted = 0
+    let y = 0
+    while y < logo_height() {
+        let x = 0
+        while x < logo_width() {
+            let ch = buf.get(x, y).ch
+            if ch == "▀" || ch == "▄" {
+                painted = painted + 1
+            }
+            x = x + 1
+        }
+        y = y + 1
+    }
+    assert_true(painted > 150)
+}
+
+fun test_logo_has_sensible_dimensions() {
+    assert_eq_int(logo_width(), 64)
+    // Tall enough to be a real logo, short enough to leave room for the input.
+    assert_true(logo_height() >= 8)
+    assert_true(logo_height() <= 16)
+}
+
+fun test_logo_maps_the_violet_accent() {
+    let buf = Buffer.new(logo_width(), logo_height())
+    draw_logo(buf, 0, 0)
+    // The >_ prompt and the eye are a bright violet (~149 blue). Finding it
+    // proves the palette is decoded through to real colors, not just black and
+    // navy, so the color mapping works end to end.
+    let max_blue = 0
+    let y = 0
+    while y < logo_height() {
+        let x = 0
+        while x < logo_width() {
+            match buf.get(x, y).style.fg {
+                Rgb(r, g, b) -> {
+                    if b > max_blue {
+                        max_blue = b
+                    }
+                },
+                _ -> {},
+            }
+            x = x + 1
+        }
+        y = y + 1
+    }
+    assert_true(max_blue > 120)
+}

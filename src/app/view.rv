@@ -13,6 +13,7 @@ import "github.com/martian56/wingspan" { width }
 import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
 import "../ui/transcript" { validate_and_count, window_lines }
 import "../ui/selection" { normalize, is_empty, contains }
+import "../ui/logo" { draw_logo, logo_width, logo_height }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
@@ -855,16 +856,22 @@ fun _theme_picker(m: Chat, f: Frame) {
 }
 
 fun _welcome(m: Chat, area: Rect, f: Frame) {
-    // The ASCII wordmark, styled in the brand accent, with the >_ prompt from
-    // the logo. Pure ASCII so it renders in any terminal.
-    let art = _banner()
     let top = area.y + 1
-    let i = 0
-    while i < art.len() {
-        f.buf.set_string(area.x + 2, top + i, art[i], m.theme.accent.bold())
-        i = i + 1
+    let below = 0
+    // The colored half-block logo when there is room; the ASCII wordmark as a
+    // fallback on a terminal too narrow for it.
+    if area.w >= logo_width() + 4 {
+        draw_logo(f.buf, area.x + 2, top)
+        below = top + logo_height() + 1
+    } else {
+        let art = _banner()
+        let i = 0
+        while i < art.len() {
+            f.buf.set_string(area.x + 2, top + i, art[i], m.theme.accent.bold())
+            i = i + 1
+        }
+        below = top + art.len() + 1
     }
-    let below = top + art.len() + 1
     f.buf.set_string(area.x + 3, below, "a coding agent for your terminal", m.theme.dim)
     f.buf.set_string(area.x + 3, below + 1, "model: ${m.model}", m.theme.dim)
 

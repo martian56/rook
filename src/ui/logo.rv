@@ -1,0 +1,122 @@
+// The rook logo as terminal art: a half-block render of the README banner (the
+// corvid head, the >_ prompt, and the wordmark). Each character is an upper
+// half block whose foreground is the top pixel and background is the bottom
+// pixel, so two image rows fit per text row and the navy-to-violet gradient
+// comes through in truecolor. The banner was cropped, quantized to the palette
+// below, and encoded two characters per cell (top, bottom); a space is a
+// transparent pixel that leaves the terminal background showing. Regenerated
+// from images/rook-2.png by scripts, not edited by hand.
+
+import std/string
+import "github.com/martian56/plumage/buffer" { Buffer }
+import "github.com/martian56/plumage/style" { Style, Color }
+
+const COLS: Int = 64
+const ALPHABET: String = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+
+// The logo's width and height in character cells.
+fun logo_width() -> Int {
+    return COLS
+}
+
+fun logo_height() -> Int {
+    return _rows().len()
+}
+
+// Draw the logo with its top-left corner at (x, y).
+fun draw_logo(buf: Buffer, x: Int, y: Int) {
+    let pal = _palette()
+    let rows = _rows()
+    let ry = 0
+    while ry < rows.len() {
+        let row = rows[ry]
+        let cx = 0
+        while cx < COLS {
+            _cell(buf, x + cx, y + ry, _color(pal, _at(row, cx * 2)), _color(pal, _at(row, cx * 2 + 1)))
+            cx = cx + 1
+        }
+        ry = ry + 1
+    }
+    return
+}
+
+// One cell: an upper half block over both colors, a lower half block when only
+// the bottom is ink, or nothing (transparent) when neither is.
+fun _cell(buf: Buffer, x: Int, y: Int, top: Option<Color>, bot: Option<Color>) {
+    match top {
+        Some(tc) -> {
+            match bot {
+                Some(bc) -> buf.set(x, y, "▀", Style.new().fg(tc).bg(bc)),
+                None -> buf.set(x, y, "▀", Style.new().fg(tc)),
+            }
+        },
+        None -> {
+            match bot {
+                Some(bc) -> buf.set(x, y, "▄", Style.new().fg(bc)),
+                None -> {},
+            }
+        },
+    }
+    return
+}
+
+fun _at(row: String, i: Int) -> String {
+    if i < row.length() {
+        return row.substring(i, i + 1)
+    }
+    return " "
+}
+
+fun _color(pal: List<Color>, ch: String) -> Option<Color> {
+    if ch == " " {
+        return None
+    }
+    let idx = ALPHABET.index_of(ch)
+    if idx < 0 || idx >= pal.len() {
+        return None
+    }
+    return Some(pal[idx])
+}
+
+fun _palette() -> List<Color> {
+    return [
+        Color.Rgb(28, 30, 51),
+        Color.Rgb(42, 46, 78),
+        Color.Rgb(54, 59, 99),
+        Color.Rgb(38, 40, 76),
+        Color.Rgb(14, 14, 25),
+        Color.Rgb(15, 16, 31),
+        Color.Rgb(19, 19, 24),
+        Color.Rgb(19, 20, 38),
+        Color.Rgb(12, 12, 28),
+        Color.Rgb(64, 62, 149),
+        Color.Rgb(32, 31, 75),
+        Color.Rgb(49, 49, 111),
+        Color.Rgb(24, 25, 41),
+        Color.Rgb(85, 83, 106),
+        Color.Rgb(218, 218, 220),
+        Color.Rgb(56, 58, 77),
+        Color.Rgb(108, 107, 110),
+        Color.Rgb(255, 255, 255),
+        Color.Rgb(128, 127, 130),
+        Color.Rgb(248, 247, 250),
+        Color.Rgb(40, 40, 50),
+        Color.Rgb(173, 172, 176),
+    ]
+}
+
+fun _rows() -> List<String> {
+    return [
+        "                 0 1 2021212123202 2 3",
+        "            3 242322212122251 152 262312 2 3 0 7",
+        "             101111111113   8 9 9AB7  C 0 132122221272 1",
+        "          C 0C131313110               0 1 1 1 2 2 242 2 255",
+        "          7A30A0A33CC                                                                                          D E F",
+        "       C0000000CC                        7                                                                    GGHHDD",
+        "    500C00077                           00 5             6IHGE EIHIJ   KCJIHLEEELHFH I       LDHLJEELJDH L    GGHHDD     EIHLIK",
+        "  77C7CCC5         9 A                  C700 5          66EJHJEKD K  DEHJID     K EFHHFL  LJHEI       L HEIJ  GGHHFD LEHHGG",
+        " 4755577          9 9AB9 9 5              0500 5          JJLL      IGHHFD          JJLLKCHHLL          LLHH6 GGHHEDHLLH G",
+        "  555855           8 9B99AA                 C CC 4        JJLL      K HLLH E D D LIHHEI   EDJHKJ G D IKJJHEF  GGHHFD  EKHJDJ F",
+        "                  909 8     AA9999999955      7 55        JFLK          I JCHDHDHKL C       D E HFHDHFE D     G6HFD     F JKEFFK",
+    ]
+}
