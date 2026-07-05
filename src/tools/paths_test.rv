@@ -1,0 +1,31 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import "./paths" { resolve_path, display_path }
+
+fun test_resolve_path_normalizes_relative_paths() {
+    let r = resolve_path("./src\\app/../main.rv", "")
+    assert_true(r.ok)
+    assert_eq_str(r.path, "src/main.rv")
+}
+
+fun test_resolve_path_rejects_parent_escape() {
+    let r = resolve_path("../outside.txt", "")
+    assert_true(!r.ok)
+    assert_true(r.error.contains("escapes the workspace"))
+}
+
+fun test_resolve_path_rejects_absolute_and_drive_paths() {
+    assert_true(!resolve_path("/tmp/outside.txt", "").ok)
+    assert_true(!resolve_path("C:\\tmp\\outside.txt", "").ok)
+    assert_true(!resolve_path("\\\\server\\share\\file.txt", "").ok)
+}
+
+fun test_resolve_path_uses_fallback() {
+    let r = resolve_path("", ".")
+    assert_true(r.ok)
+    assert_eq_str(r.path, ".")
+}
+
+fun test_display_path_shows_normalized_form() {
+    assert_eq_str(display_path("src\\app/../main.rv", ""), "src\\app/../main.rv -> src/main.rv")
+}

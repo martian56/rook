@@ -76,6 +76,14 @@ fun test_multi_edit_needs_a_path_and_edits() {
     )
 }
 
+fun test_multi_edit_rejects_workspace_escape() {
+    assert_true(
+        multi_edit(
+            "{\"path\": \"../outside.txt\", \"edits\": [{\"old_text\": \"a\", \"new_text\": \"b\"}]}",
+        ).contains("workspace"),
+    )
+}
+
 fun _read(path: String) -> String {
     return match read(path) {
         Ok(s) -> s,

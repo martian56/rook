@@ -52,3 +52,8 @@ fun test_other_tools_and_misses_have_no_preview() {
     remove_file("_rook_pv_m.txt")
     return
 }
+
+fun test_preview_rejects_workspace_escape() {
+    let p = change_preview(call("write_file", "{\"path\":\"../outside.txt\",\"content\":\"x\"}"))
+    assert_true(p.contains("workspace"))
+}

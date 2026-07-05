@@ -7,7 +7,8 @@
 // the picker, and the attachment on send).
 
 import std/string
-import std/fs { read, exists, is_file, is_dir, list_dir }
+import std/fs { read, exists, is_file, is_dir, is_symlink, list_dir }
+import "./paths" { resolve_path }
 
 // The @token being typed at the end of the input, if any. `at` is the index
 // of the @, for completing the reference in place.
@@ -71,10 +72,12 @@ fun _walk_files(dir: String, out: List<String>) {
             if rel.starts_with("./") {
                 rel = rel.substring(2, rel.length())
             }
-            if is_dir(full) {
-                _walk_files(full, out)
-            } else {
-                out.push(rel)
+            if !is_symlink(full) {
+                if is_dir(full) {
+                    _walk_files(full, out)
+                } else {
+                    out.push(rel)
+                }
             }
         }
         i = i + 1
@@ -156,9 +159,9 @@ fun mentioned_paths(text: String) -> List<String> {
     while i < tokens.len() {
         let t = tokens[i]
         if t.starts_with("@") && t.length() > 1 {
-            let path = t.substring(1, t.length())
-            if exists(path) && is_file(path) && !_contains(out, path) {
-                out.push(path)
+            let r = resolve_path(t.substring(1, t.length()), "")
+            if r.ok && exists(r.path) && is_file(r.path) && !_contains(out, r.path) {
+                out.push(r.path)
             }
         }
         i = i + 1

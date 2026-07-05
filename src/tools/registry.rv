@@ -9,6 +9,7 @@ import "github.com/martian56/aviary/jsonutil" { Obj }
 import "./args" { arg }
 import "./files" { read_file, list_dir, write_file, edit_file }
 import "./multiedit" { multi_edit }
+import "./paths" { display_path }
 import "./search" { grep }
 import "./shell" { run_command_cancelable }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
@@ -293,8 +294,11 @@ fun label(call: ToolCall) -> String {
     if is_resource_tool(call.name) {
         return "mcp_read_resource(${arg(a, "uri")})"
     }
-    if call.name == "read_file" || call.name == "list_dir" {
-        return "${call.name}(${arg(a, "path")})"
+    if call.name == "read_file" {
+        return "read_file(${display_path(arg(a, "path"), "")})"
+    }
+    if call.name == "list_dir" {
+        return "list_dir(${display_path(arg(a, "path"), ".")})"
     }
     if call.name == "grep" {
         return "grep(${arg(a, "pattern")})"
@@ -309,10 +313,10 @@ fun label(call: ToolCall) -> String {
         return "git_commit(${_first_line(arg(a, "message"))})"
     }
     if call.name == "file_tree" {
-        return "file_tree(${arg(a, "path")})"
+        return "file_tree(${display_path(arg(a, "path"), ".")})"
     }
     if call.name == "write_file" || call.name == "edit_file" || call.name == "multi_edit" {
-        return "${call.name}(${arg(a, "path")})"
+        return "${call.name}(${display_path(arg(a, "path"), "")})"
     }
     if call.name == "run_command" {
         return "run_command(${arg(a, "command")})"

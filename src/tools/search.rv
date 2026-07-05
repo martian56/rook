@@ -6,7 +6,8 @@
 
 import std/string
 import std/regex { compile, Regex }
-import std/fs { walk, read, is_file, basename }
+import std/fs { walk, read, is_file, is_symlink, basename }
+import "./paths" { resolve_path }
 
 const MAX_MATCHES: Int = 50
 
@@ -18,8 +19,12 @@ fun grep(pattern: String, path: String, glob: String) -> String {
     if root == "" {
         root = "."
     }
+    let resolved = resolve_path(root, ".")
+    if !resolved.ok {
+        return resolved.error
+    }
     return match compile(pattern) {
-        Ok(re) -> _grep_with_pattern(re, root, pattern, glob),
+        Ok(re) -> _grep_with_pattern(re, resolved.path, pattern, glob),
         Err(e) -> "error: invalid pattern: ${e.message}",
     }
 }
@@ -58,7 +63,7 @@ fun _grep_with_regexes(
         let i = 0
         while i < files.len() && count < MAX_MATCHES {
             let f = files[i]
-            if is_file(f) && (!has_glob || name_re.is_match(basename(f))) {
+            if is_file(f) && !is_symlink(f) && (!has_glob || name_re.is_match(basename(f))) {
                 let content = ""
                 let rok = true
                 match read(f) {

@@ -3,7 +3,8 @@
 // Depth-limited, noise directories skipped, entry count capped.
 
 import std/string
-import std/fs { list_dir, is_dir }
+import std/fs { list_dir, is_dir, is_symlink }
+import "./paths" { resolve_path }
 
 // Directories that are dependency or build noise, never part of the shape
 // a reader needs.
@@ -24,10 +25,11 @@ const DEFAULT_DEPTH: Int = 3
 // Render the tree under `path` (default "."), `depth_text` levels deep
 // (default 3). Directories end with "/".
 fun file_tree(path: String, depth_text: String) -> String {
-    let root = path
-    if root.trim() == "" {
-        root = "."
+    let resolved = resolve_path(path, ".")
+    if !resolved.ok {
+        return resolved.error
     }
+    let root = resolved.path
     let depth = DEFAULT_DEPTH
     match depth_text.trim().parse_int() {
         Some(n) -> {
@@ -37,7 +39,7 @@ fun file_tree(path: String, depth_text: String) -> String {
         },
         None -> {},
     }
-    if !is_dir(root) {
+    if !is_dir(root) || is_symlink(root) {
         return "error: ${root} is not a directory"
     }
     let out: List<String> = []
@@ -78,11 +80,13 @@ fun _walk(dir: String, indent: String, depth: Int, out: List<String>) {
         let name = names[i]
         if !_ignored(name) {
             let full = "${dir}/${name}"
-            if is_dir(full) {
-                out.push("${indent}${name}/")
-                _walk(full, "${indent}  ", depth - 1, out)
-            } else {
-                out.push("${indent}${name}")
+            if !is_symlink(full) {
+                if is_dir(full) {
+                    out.push("${indent}${name}/")
+                    _walk(full, "${indent}  ", depth - 1, out)
+                } else {
+                    out.push("${indent}${name}")
+                }
             }
         }
         i = i + 1

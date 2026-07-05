@@ -1,0 +1,104 @@
+// Shared workspace path handling for model-facing file paths. Rook runs in
+// one workspace, so tools accept only relative paths that stay inside it.
+
+import std/string
+import std/path { normalize }
+import std/fs { exists, is_symlink }
+
+struct ResolvedPath {
+    ok: Bool,
+    path: String,
+    error: String,
+}
+
+fun resolve_path(raw: String, fallback: String) -> ResolvedPath {
+    let input = raw.trim()
+    if input == "" {
+        input = fallback
+    }
+    if input == "" {
+        return _err("no path given")
+    }
+    let cleaned = input.replace("\\", "/")
+    if _absolute(cleaned) {
+        return _err("path is outside the workspace: ${raw}")
+    }
+    if _has_symlink_segment(cleaned) {
+        return _err("path crosses a symlink and is not allowed: ${raw}")
+    }
+    let path = normalize(cleaned)
+    if _escapes(path) {
+        return _err("path escapes the workspace: ${raw}")
+    }
+    if _has_symlink_segment(path) {
+        return _err("path crosses a symlink and is not allowed: ${raw}")
+    }
+    return ResolvedPath { ok: true, path, error: "" }
+}
+
+fun display_path(raw: String, fallback: String) -> String {
+    let r = resolve_path(raw, fallback)
+    if !r.ok {
+        return raw
+    }
+    let cleaned = raw.trim().replace("\\", "/")
+    if cleaned == "" || cleaned == r.path {
+        return r.path
+    }
+    return "${raw} -> ${r.path}"
+}
+
+fun _err(message: String) -> ResolvedPath {
+    return ResolvedPath { ok: false, path: "", error: "error: ${message}" }
+}
+
+fun _absolute(path: String) -> Bool {
+    if path.starts_with("/") {
+        return true
+    }
+    if path.length() >= 2 && path.byte_at(1) == 58 {
+        return _is_alpha(path.byte_at(0))
+    }
+    return false
+}
+
+fun _is_alpha(b: Int) -> Bool {
+    return (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+}
+
+fun _escapes(path: String) -> Bool {
+    return path == ".." || path.starts_with("../")
+}
+
+fun _has_symlink_segment(path: String) -> Bool {
+    if path == "." {
+        return false
+    }
+    let cur = ""
+    let parts = path.split("/")
+    let i = 0
+    while i < parts.len() {
+        if parts[i] == ".." {
+            cur = _parent(cur)
+        } else if parts[i] != "" && parts[i] != "." {
+            if cur == "" {
+                cur = parts[i]
+            } else {
+                cur = "${cur}/${parts[i]}"
+            }
+            if exists(cur) && is_symlink(cur) {
+                return true
+            }
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _parent(path: String) -> String {
+    let slash = path.last_index_of("/")
+    if slash < 0 {
+        return ""
+    }
+    return path.substring(0, slash)
+}

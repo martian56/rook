@@ -4,48 +4,52 @@
 
 import std/string
 import std/fs { read, write, exists, list_dir as fs_list }
+import "./paths" { resolve_path }
 
 fun read_file(path: String) -> String {
-    if path == "" {
-        return "error: no path given"
+    let r = resolve_path(path, "")
+    if !r.ok {
+        return r.error
     }
-    return match read(path) {
+    return match read(r.path) {
         Ok(s) -> s,
         Err(e) -> "error: ${e.message}",
     }
 }
 
 fun list_dir(path: String) -> String {
-    let p = path
-    if p == "" {
-        p = "."
+    let r = resolve_path(path, ".")
+    if !r.ok {
+        return r.error
     }
-    return match fs_list(p) {
+    return match fs_list(r.path) {
         Ok(names) -> _join_lines(names),
         Err(e) -> "error: ${e.message}",
     }
 }
 
 fun write_file(path: String, content: String) -> String {
-    if path == "" {
-        return "error: no path given"
+    let r = resolve_path(path, "")
+    if !r.ok {
+        return r.error
     }
-    return _write_result(path, content, "wrote ${content.length()} bytes to ${path}")
+    return _write_result(r.path, content, "wrote ${content.length()} bytes to ${r.path}")
 }
 
 fun edit_file(path: String, old_text: String, new_text: String) -> String {
-    if path == "" {
-        return "error: no path given"
+    let r = resolve_path(path, "")
+    if !r.ok {
+        return r.error
     }
     if old_text == "" {
         return "error: old_text is empty"
     }
-    if !exists(path) {
-        return "error: no such file: ${path}"
+    if !exists(r.path) {
+        return "error: no such file: ${r.path}"
     }
     let ok = true
     let content = ""
-    match read(path) {
+    match read(r.path) {
         Ok(s) -> {
             content = s
         },
@@ -59,12 +63,12 @@ fun edit_file(path: String, old_text: String, new_text: String) -> String {
     }
     let idx = content.index_of(old_text)
     if idx < 0 {
-        return "error: old_text not found in ${path}"
+        return "error: old_text not found in ${r.path}"
     }
     let before = content.substring(0, idx)
     let after = content.substring(idx + old_text.length(), content.length())
     let updated = "${before}${new_text}${after}"
-    return _write_result(path, updated, "edited ${path}")
+    return _write_result(r.path, updated, "edited ${r.path}")
 }
 
 fun _write_result(path: String, content: String, ok_msg: String) -> String {

@@ -93,6 +93,10 @@ single call, in order and all or nothing: if any `old_text` is missing,
 nothing is written. A multi-spot change is one approval, and the prompt
 shows the combined diff before you allow it.
 
+File paths accepted by tools and `@` mentions are normalized inside the
+workspace. Absolute paths, paths that escape with `..`, and symlinked path
+segments are rejected.
+
 `run_background` starts a long-running command (a dev server, a
 watcher, an app rook just built) and returns a shell id immediately
 instead of blocking; the output collects in the background. The model

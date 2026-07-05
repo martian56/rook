@@ -7,6 +7,7 @@ import std/fs { read, exists }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./args" { arg }
 import "./multiedit" { apply_edits, parse_edits }
+import "./paths" { resolve_path }
 import "../ui/diff" { unified }
 
 // The unified diff for a mutating file call, or the message for a commit,
@@ -16,13 +17,19 @@ fun change_preview(call: ToolCall) -> String {
         return arg(call.arguments, "message")
     }
     if call.name == "write_file" {
-        let path = arg(call.arguments, "path")
-        let old = _read_opt(path)
+        let r = resolve_path(arg(call.arguments, "path"), "")
+        if !r.ok {
+            return r.error
+        }
+        let old = _read_opt(r.path)
         return unified(old, arg(call.arguments, "content"))
     }
     if call.name == "edit_file" {
-        let path = arg(call.arguments, "path")
-        let old = _read_opt(path)
+        let r = resolve_path(arg(call.arguments, "path"), "")
+        if !r.ok {
+            return r.error
+        }
+        let old = _read_opt(r.path)
         let from = arg(call.arguments, "old_text")
         if old == "" || from == "" {
             return ""
@@ -36,8 +43,11 @@ fun change_preview(call: ToolCall) -> String {
         return unified(old, "${before}${arg(call.arguments, "new_text")}${after}")
     }
     if call.name == "multi_edit" {
-        let path = arg(call.arguments, "path")
-        let old = _read_opt(path)
+        let r = resolve_path(arg(call.arguments, "path"), "")
+        if !r.ok {
+            return r.error
+        }
+        let old = _read_opt(r.path)
         let outcome = apply_edits(old, parse_edits(call.arguments))
         if !outcome.ok {
             return ""

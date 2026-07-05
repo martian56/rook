@@ -45,6 +45,10 @@ fun test_label_reads_arguments() {
         label(call("multi_edit", "{\"path\":\"src/main.rv\",\"edits\":[]}")),
         "multi_edit(src/main.rv)",
     )
+    assert_eq_str(
+        label(call("write_file", "{\"path\":\"src\\\\app/../main.rv\",\"content\":\"x\"}")),
+        "write_file(src\\app/../main.rv -> src/main.rv)",
+    )
 }
 
 fun test_dispatch_routes_read_command() {
