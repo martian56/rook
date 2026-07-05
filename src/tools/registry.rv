@@ -16,7 +16,7 @@ import "./git" { git_status, git_diff, git_commit }
 import "./web" { web_fetch, web_search }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
-import "../mcp/manager" { mcp_tools, is_mcp_tool, call_mcp_tool }
+import "../mcp/manager" { mcp_tools, is_mcp_tool, call_mcp_tool, resource_tools, is_resource_tool, read_resource }
 
 // One schema field: a string property and its description.
 struct Prop {
@@ -186,6 +186,12 @@ fun tools() -> List<ToolDef> {
         base.push(mcp[i])
         i = i + 1
     }
+    let extra = resource_tools()
+    let k = 0
+    while k < extra.len() {
+        base.push(extra[k])
+        k = k + 1
+    }
     return base
 }
 
@@ -203,6 +209,9 @@ fun dispatch(call: ToolCall) -> String {
     let a = call.arguments
     if is_mcp_tool(call.name) {
         return call_mcp_tool(call.name, a)
+    }
+    if is_resource_tool(call.name) {
+        return read_resource(arg(a, "server"), arg(a, "uri"))
     }
     if call.name == "read_file" {
         return read_file(arg(a, "path"))
@@ -265,6 +274,9 @@ fun label(call: ToolCall) -> String {
     let a = call.arguments
     if is_mcp_tool(call.name) {
         return _mcp_label(call.name)
+    }
+    if is_resource_tool(call.name) {
+        return "mcp_read_resource(${arg(a, "uri")})"
     }
     if call.name == "read_file" || call.name == "list_dir" {
         return "${call.name}(${arg(a, "path")})"

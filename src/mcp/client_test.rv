@@ -1,7 +1,7 @@
 import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./client" { McpTool, parse_tools }
+import "./client" { McpTool, McpResource, McpPrompt, parse_tools, parse_resources, parse_prompts }
 
 const TOOLS: String = "{\"tools\": [{\"name\": \"echo\", \"description\": \"echoes input\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}}, {\"description\": \"no name, dropped\"}, {\"name\": \"add\", \"inputSchema\": {\"type\": \"object\"}}]}"
 
@@ -19,6 +19,30 @@ fun test_parse_tools_reads_name_desc_and_schema() {
 
 fun test_parse_tools_tolerates_a_missing_tools_array() {
     assert_eq_int(parse_tools(_json("{}")).len(), 0)
+}
+
+fun test_parse_resources_reads_uri_and_metadata() {
+    let rs = parse_resources(
+        _json(
+            "{\"resources\": [{\"uri\": \"file:///readme\", \"name\": \"readme\", \"description\": \"the readme\", \"mimeType\": \"text/plain\"}, {\"name\": \"no uri, dropped\"}]}",
+        ),
+    )
+    // The entry without a uri is dropped.
+    assert_eq_int(rs.len(), 1)
+    assert_eq_str(rs[0].uri, "file:///readme")
+    assert_eq_str(rs[0].name, "readme")
+    assert_eq_str(rs[0].mime, "text/plain")
+}
+
+fun test_parse_prompts_reads_name_and_arguments() {
+    let ps = parse_prompts(
+        _json(
+            "{\"prompts\": [{\"name\": \"review\", \"description\": \"review code\", \"arguments\": [{\"name\": \"path\", \"required\": true}]}, {\"description\": \"no name, dropped\"}]}",
+        ),
+    )
+    assert_eq_int(ps.len(), 1)
+    assert_eq_str(ps[0].name, "review")
+    assert_true(ps[0].arguments.contains("path"))
 }
 
 fun _json(text: String) -> JsonValue {

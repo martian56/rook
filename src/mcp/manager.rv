@@ -16,7 +16,7 @@ import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/message" { ToolDef }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
 import "./config" { ServerSpec, configured_servers }
-import "./client" { McpClient, McpTool, connect }
+import "./client" { McpClient, McpTool, McpResource, connect }
 import "./transport" { enc_str }
 
 const CALL_TIMEOUT: Int = 120000
@@ -117,6 +117,170 @@ fun call_mcp_tool(name: String, arguments: String) -> String {
 fun connected_clients() -> List<McpClient> {
     ensure_started()
     return _clients()
+}
+
+// The read-resource tool, offered only when a connected server exposes at
+// least one resource so the model does not see a dead tool.
+fun resource_tools() -> List<ToolDef> {
+    ensure_started()
+    let out: List<ToolDef> = []
+    if _any_resources(_clients()) {
+        out.push(
+            ToolDef.new(
+                "mcp_read_resource",
+                "Read a resource an MCP server exposes: readable context such as a file, record, or document, named by a uri. server is optional when the uri is unique across servers.",
+                _resource_schema(),
+            ),
+        )
+    }
+    return out
+}
+
+fun is_resource_tool(name: String) -> Bool {
+    return name == "mcp_read_resource"
+}
+
+// Read a resource by uri, from `server` when given, else from whichever
+// connected server lists it. Returns its text (or an error string).
+fun read_resource(server: String, uri: String) -> String {
+    if uri.trim() == "" {
+        return "error: a resource uri is required"
+    }
+    ensure_started()
+    let clients = _clients()
+    return match _resource_owner(clients, server, uri) {
+        Some(c) -> {
+            let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT)
+            if resp.ok {
+                format_resource(resp.result)
+            } else {
+                "error: ${resp.error}"
+            }
+        },
+        None -> "error: no connected MCP server exposes the resource '${uri}'",
+    }
+}
+
+// Invoke a prompt template: expand `name` on `server` with `args_json` into a
+// text prompt. Used by the /mcp command.
+fun get_prompt(server: String, name: String, args_json: String) -> String {
+    ensure_started()
+    let clients = _clients()
+    return match _find(clients, server) {
+        Some(c) -> {
+            let args = args_json
+            if args.trim() == "" {
+                args = "{}"
+            }
+            let params = "{\"name\":${enc_str(name)},\"arguments\":${args}}"
+            let resp = c.call("prompts/get", params, CALL_TIMEOUT)
+            if resp.ok {
+                format_prompt(resp.result)
+            } else {
+                "error: ${resp.error}"
+            }
+        },
+        None -> "error: MCP server '${server}' is not connected",
+    }
+}
+
+// The text of a resources/read result: its text contents joined. Pure.
+fun format_resource(result: JsonValue) -> String {
+    let contents = as_list(field(result, "contents"))
+    let out = ""
+    let i = 0
+    while i < contents.len() {
+        let t = as_str(field(contents[i], "text"))
+        if t != "" {
+            if out != "" {
+                out = out.concat("\n")
+            }
+            out = out.concat(t)
+        }
+        i = i + 1
+    }
+    if out == "" {
+        return "(the resource has no text contents)"
+    }
+    return out
+}
+
+// The text of a prompts/get result: each message's text, blank-line joined.
+// A message's content is an object with a text field, or a bare string. Pure.
+fun format_prompt(result: JsonValue) -> String {
+    let msgs = as_list(field(result, "messages"))
+    let out = ""
+    let i = 0
+    while i < msgs.len() {
+        let text = _msg_text(msgs[i])
+        if text != "" {
+            if out != "" {
+                out = out.concat("\n\n")
+            }
+            out = out.concat(text)
+        }
+        i = i + 1
+    }
+    if out == "" {
+        return "(the prompt produced no text)"
+    }
+    return out
+}
+
+fun _msg_text(m: JsonValue) -> String {
+    let content = field(m, "content")
+    let t = as_str(field(content, "text"))
+    if t != "" {
+        return t
+    }
+    return as_str(content)
+}
+
+fun _resource_owner(clients: List<McpClient>, server: String, uri: String) -> Option<McpClient> {
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        if server != "" {
+            if c.name == server {
+                return Some(c)
+            }
+        } else {
+            let j = 0
+            while j < c.resources.len() {
+                if c.resources[j].uri == uri {
+                    return Some(c)
+                }
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return None
+}
+
+fun _any_resources(clients: List<McpClient>) -> Bool {
+    let i = 0
+    while i < clients.len() {
+        if clients[i].resources.len() > 0 {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _resource_schema() -> JsonValue {
+    let uri = Obj.new().str("type", "string").str("description", "the resource uri to read").build()
+    let server = Obj.new().str("type", "string").str(
+        "description",
+        "the MCP server name; optional when the uri is unique",
+    ).build()
+    let props = Obj.new().set("uri", uri).set("server", server).build()
+    let required: List<JsonValue> = [JsonValue.Str("uri")]
+    return Obj.new().str("type", "object").set("properties", props).set(
+        "required",
+        JsonValue.Array(required),
+    ).build()
 }
 
 fun _do_call(c: McpClient, tool: String, arguments: String) -> String {

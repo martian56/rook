@@ -1,19 +1,23 @@
 import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./client" { McpClient, McpTool }
-import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool }
+import "./client" { McpClient, McpTool, McpResource, McpPrompt }
+import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt }
 
 fun _client() -> McpClient {
     let tools = [
         McpTool { name: "read_file", description: "read a file", schema: "{\"type\": \"object\"}" },
         McpTool { name: "weird name!", description: "", schema: "null" },
     ]
+    let resources: List<McpResource> = []
+    let prompts: List<McpPrompt> = []
     return McpClient {
         name: "fs",
         server_name: "filesystem",
         server_version: "1.0",
         tools,
+        resources,
+        prompts,
         ok: true,
         error: "",
         conn: None,
@@ -37,16 +41,44 @@ fun test_tools_from_builds_a_def_per_tool() {
 
 fun test_tools_from_skips_a_failed_client() {
     let empty: List<McpTool> = []
+    let no_res: List<McpResource> = []
+    let no_pr: List<McpPrompt> = []
     let dead = McpClient {
         name: "down",
         server_name: "",
         server_version: "",
         tools: empty,
+        resources: no_res,
+        prompts: no_pr,
         ok: false,
         error: "boom",
         conn: None,
     }
     assert_eq_int(tools_from([dead]).len(), 0)
+}
+
+fun test_format_resource_joins_text_contents() {
+    assert_eq_str(
+        format_resource(
+            _json(
+                "{\"contents\": [{\"uri\": \"file:///a\", \"text\": \"line one\"}, {\"uri\": \"file:///a\", \"text\": \"line two\"}]}",
+            ),
+        ),
+        "line one\nline two",
+    )
+    assert_true(format_resource(_json("{\"contents\": []}")).contains("no text contents"))
+}
+
+fun test_format_prompt_flattens_messages() {
+    // Content may be an object with a text field, or a bare string.
+    assert_eq_str(
+        format_prompt(
+            _json(
+                "{\"messages\": [{\"role\": \"user\", \"content\": {\"type\": \"text\", \"text\": \"do the thing\"}}, {\"role\": \"assistant\", \"content\": \"okay\"}]}",
+            ),
+        ),
+        "do the thing\n\nokay",
+    )
 }
 
 fun test_route_in_maps_the_exposed_name_back() {
