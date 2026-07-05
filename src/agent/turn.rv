@@ -6,13 +6,13 @@
 import std/string
 import std/sync { Mutex, mutex, sleep_millis }
 import "github.com/martian56/aviary" { complete_stream }
-import "github.com/martian56/aviary/request" { ChatRequest }
+import "github.com/martian56/aviary/request" { ChatRequest, CancelToken }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
 import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
-import "../tools/registry" { tools, needs_approval, dispatch, label }
+import "../tools/registry" { tools, needs_approval, dispatch_cancelable, label }
 import "../tools/preview" { change_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
@@ -289,29 +289,29 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or ask the user."
     }
     if !needs_approval(call.name) {
-        return _do(call, "")
+        return _do(st.token(), call, "")
     }
     // The diff this call would make, shown in the approval prompt and, on
     // success, under the tool row.
     let preview = change_preview(call)
     if pre_allowed || _contains(allowed, call.name) {
-        return _do(call, preview)
+        return _do(st.token(), call, preview)
     }
     let decision = st.ask_detail(label(call), preview)
     if decision == 2 {
         allowed.push(call.name)
-        return _do(call, preview)
+        return _do(st.token(), call, preview)
     }
     if decision == 1 {
-        return _do(call, preview)
+        return _do(st.token(), call, preview)
     }
     return "The user denied this action. Do not retry it; ask what they would prefer."
 }
 
 // Run the tool, then fire the post-tool hooks so they observe what ran. The
 // diff (when any) is appended for the transcript and the model.
-fun _do(call: ToolCall, preview: String) -> String {
-    let result = _with_preview(dispatch(call), preview)
+fun _do(token: CancelToken, call: ToolCall, preview: String) -> String {
+    let result = _with_preview(dispatch_cancelable(call, token), preview)
     fire_hooks("post-tool", call.name, call.arguments)
     return result
 }

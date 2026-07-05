@@ -11,7 +11,7 @@ import "github.com/martian56/aviary" { complete }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message, ToolCall }
 import "./state" { AgentState, DisplayEvent }
-import "../tools/registry" { tools, needs_approval, dispatch, label }
+import "../tools/registry" { tools, needs_approval, dispatch_cancelable, label }
 import "../tools/permissions" { Verdict, check_permission }
 import "../agents/subagents" { Subagent }
 import "../config/config" { resolve_key }
@@ -124,18 +124,18 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or report back."
     }
     if !needs_approval(call.name) {
-        return dispatch(call)
+        return dispatch_cancelable(call, st.token())
     }
     if pre_allowed || _contains(allowed, call.name) {
-        return dispatch(call)
+        return dispatch_cancelable(call, st.token())
     }
     let decision = st.ask("${agent.name}: ${label(call)}")
     if decision == 2 {
         allowed.push(call.name)
-        return dispatch(call)
+        return dispatch_cancelable(call, st.token())
     }
     if decision == 1 {
-        return dispatch(call)
+        return dispatch_cancelable(call, st.token())
     }
     return "The user denied this action. Do not retry it; try another way or report back."
 }

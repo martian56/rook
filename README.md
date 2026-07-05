@@ -121,8 +121,10 @@ its options, arrows pick, Enter answers, Esc declines. The pick goes
 back to the model as text.
 
 `run_command` runs through the platform shell in the working directory and
-returns stdout, stderr, and the exit code. Tool output is truncated so a
-noisy command cannot bury the answer.
+returns stdout, stderr, and the exit code. Foreground commands time out after
+120000 ms by default, and Esc interrupts the active command as well as the
+model stream. Tool output is truncated so a noisy command cannot bury the
+answer.
 
 ## Commands
 
@@ -210,17 +212,22 @@ refine it.
   "theme": "Nord",
   "base_url": "",
   "permissions": {},
-  "tools": {},
+  "tools": {
+    "run_command": { "timeout_ms": 120000 }
+  },
   "mcp": {}
 }
 ```
 
 The string fields join the resolution chain (a root's `rook.json` wins
-over the same root's settings, and project beats global). Global user
-settings and installed plugins are trusted roots. Project `.agents`
-settings are read more carefully: deny rules apply, but allow rules,
-hooks, and MCP server commands are ignored unless you opt in from your
-global `~/.agents/settings.json`:
+over the same root's settings, and project beats global). The `tools`
+section configures built-in tool behavior, and the `mcp` section configures
+MCP servers.
+
+Global user settings and installed plugins are trusted roots. Project
+`.agents` settings are read more carefully: deny rules apply, but allow
+rules, hooks, and MCP server commands are ignored unless you opt in from
+your global `~/.agents/settings.json`:
 
 ```json
 {

@@ -3,13 +3,14 @@
 
 import std/string
 import std/json { JsonValue }
+import "github.com/martian56/aviary/request" { CancelToken }
 import "github.com/martian56/aviary/message" { ToolDef, ToolCall }
 import "github.com/martian56/aviary/jsonutil" { Obj }
 import "./args" { arg }
 import "./files" { read_file, list_dir, write_file, edit_file }
 import "./multiedit" { multi_edit }
 import "./search" { grep }
-import "./shell" { run_command }
+import "./shell" { run_command_cancelable }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
 import "./tree" { file_tree }
 import "./todos" { set_todos }
@@ -122,7 +123,7 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "run_command",
-            "Run a shell command in the working directory and return its stdout, stderr, and exit code.",
+            "Run a foreground shell command in the working directory and return stdout, stderr, and exit code. It has a timeout; use run_background for long-running commands.",
             _schema([Prop { name: "command", desc: "the shell command to run" }]),
         ),
         ToolDef.new(
@@ -212,6 +213,11 @@ fun needs_approval(name: String) -> Bool {
 
 // Run a tool call and return its result string.
 fun dispatch(call: ToolCall) -> String {
+    return dispatch_cancelable(call, CancelToken.new())
+}
+
+// Run a tool call with the current turn's cancellation token.
+fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
     let a = call.arguments
     if is_mcp_tool(call.name) {
         return call_mcp_tool(call.name, a)
@@ -238,7 +244,7 @@ fun dispatch(call: ToolCall) -> String {
         return multi_edit(a)
     }
     if call.name == "run_command" {
-        return run_command(arg(a, "command"))
+        return run_command_cancelable(arg(a, "command"), token)
     }
     if call.name == "run_background" {
         return run_background(arg(a, "command"))
