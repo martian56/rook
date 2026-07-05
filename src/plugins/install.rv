@@ -37,11 +37,11 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
     if name == "" {
         return "error: could not derive a plugin name from ${u}"
     }
-    if !valid_plugin_name(name) {
+    let target = plugin_target_path(plugins_dir, name)
+    if target == "" {
         return "error: unsafe plugin name derived from ${u}: ${name}"
     }
     create_dir_all(plugins_dir)
-    let target = "${plugins_dir}/${name}"
     if exists(target) {
         _remove_tree(target)
     }
@@ -113,6 +113,15 @@ fun valid_plugin_name(name: String) -> Bool {
         i = i + 1
     }
     return true
+}
+
+// The target directory for a safe plugin name. An invalid name returns ""
+// instead of a path, so callers never join untrusted path fragments directly.
+fun plugin_target_path(plugins_dir: String, name: String) -> String {
+    if !valid_plugin_name(name) {
+        return ""
+    }
+    return "${plugins_dir}/${name}"
 }
 
 fun _plugin_name_byte(b: Int) -> Bool {
