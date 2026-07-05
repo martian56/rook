@@ -52,8 +52,10 @@ fun test_commit_preview_shows_untracked_file_contents() {
     // as untracked and exercises the added-file preview.
     write("preview_untracked_tmp.txt", "a brand new line")
     let p = commit_preview("preview_untracked_tmp.txt")
+    // Remove the temp file before asserting so a failed assertion cannot leave
+    // it behind (the language has no defer/finally).
+    remove_file("preview_untracked_tmp.txt")
     assert_true(p.contains("preview_untracked_tmp.txt"))
     assert_true(p.contains("a brand new line"))
-    remove_file("preview_untracked_tmp.txt")
     return
 }
