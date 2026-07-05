@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- Required approval before `web_fetch` can read hostnames, localhost, private network, link-local, shared-address, benchmark, or metadata targets.
+
 ## 0.3.5
 
 - Failed closed for permission checks when an existing `.agents/settings.json` file is invalid or unreadable.

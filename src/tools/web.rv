@@ -6,26 +6,364 @@
 
 import std/string
 import std/http { request_with_timeout, HttpResponse }
+import std/net { dns_lookup }
 
 const TIMEOUT_MS: Int = 15000
 const MAX_TEXT: Int = 6000
 const MAX_RESULTS: Int = 8
 
+// The URL web_fetch will request, after matching web_fetch's input rules.
+fun web_fetch_url(url: String) -> String {
+    let u = url.trim()
+    if u == "" {
+        return ""
+    }
+    if !u.starts_with("http://") && !u.starts_with("https://") {
+        return "https://${u}"
+    }
+    return u
+}
+
+// Whether fetching this URL crosses from the public web into local, private,
+// link-local, or metadata-address space and therefore needs user approval.
+fun web_fetch_needs_approval(url: String) -> Bool {
+    return web_fetch_approval_detail(url) != ""
+}
+
+// Detail shown under the approval prompt for sensitive web_fetch targets.
+fun web_fetch_approval_detail(url: String) -> String {
+    let u = web_fetch_url(url)
+    if u == "" {
+        return ""
+    }
+    let host = _url_host(u)
+    if host == "" {
+        return ""
+    }
+    let kind = _sensitive_host_kind(host)
+    if kind == "" {
+        kind = _resolved_sensitive_host_kind(host)
+    }
+    if kind == "" {
+        return ""
+    }
+    return "target: ${kind}\nurl: ${u}\nhost: ${host}"
+}
+
 // Fetch `url` and return its readable text, truncated. HTML is stripped to
 // text; other bodies come back as-is.
 fun web_fetch(url: String) -> String {
-    let u = url.trim()
+    let u = web_fetch_url(url)
     if u == "" {
         return "error: web_fetch needs a url"
-    }
-    if !u.starts_with("http://") && !u.starts_with("https://") {
-        u = "https://${u}"
     }
     let headers = "User-Agent: rook/1.0\nAccept: text/html,text/plain"
     return match request_with_timeout("GET", u, "", headers, TIMEOUT_MS) {
         Ok(resp) -> _readable(resp),
         Err(e) -> "error: could not fetch ${u}: ${e.message}",
     }
+}
+
+fun _url_host(url: String) -> String {
+    let rest = url.trim()
+    let scheme = rest.index_of("://")
+    if scheme >= 0 {
+        rest = rest.substring(scheme + 3, rest.length())
+    }
+    let sep = _first_url_separator(rest)
+    if sep >= 0 {
+        rest = rest.substring(0, sep)
+    }
+    let at = rest.index_of("@")
+    if at >= 0 {
+        rest = rest.substring(at + 1, rest.length())
+    }
+    rest = rest.trim()
+    if rest.starts_with("[") {
+        let close = rest.index_of("]")
+        if close > 1 {
+            return _strip_trailing_dots(rest.substring(1, close).to_lower())
+        }
+        return ""
+    }
+    let colon = rest.index_of(":")
+    if colon >= 0 {
+        let tail = rest.substring(colon + 1, rest.length())
+        if tail.index_of(":") < 0 {
+            rest = rest.substring(0, colon)
+        }
+    }
+    return _strip_trailing_dots(rest.to_lower())
+}
+
+fun _first_url_separator(s: String) -> Int {
+    let best = 0 - 1
+    let i = 0
+    while i < s.length() {
+        let b = s.byte_at(i)
+        if b == 47 || b == 63 || b == 35 {
+            if best < 0 {
+                best = i
+            }
+        }
+        i = i + 1
+    }
+    return best
+}
+
+fun _strip_trailing_dots(host: String) -> String {
+    let h = host.trim()
+    while h.ends_with(".") && h.length() > 0 {
+        h = h.substring(0, h.length() - 1)
+    }
+    return h
+}
+
+fun _sensitive_host_kind(host: String) -> String {
+    let h = host.to_lower()
+    if h == "" {
+        return ""
+    }
+    if h == "localhost" || h.ends_with(".localhost") {
+        return "localhost"
+    }
+    if h == "metadata.google.internal" || h.ends_with(".metadata.google.internal") {
+        return "metadata hostname"
+    }
+    let ipv4 = _sensitive_ipv4_kind(h)
+    if ipv4 != "" {
+        return ipv4
+    }
+    return _sensitive_ipv6_kind(h)
+}
+
+fun _resolved_sensitive_host_kind(host: String) -> String {
+    if _looks_like_ip_literal(host) {
+        return ""
+    }
+    return match dns_lookup(host) {
+        Ok(addrs) -> {
+            let i = 0
+            while i < addrs.len() {
+                let addr = _strip_trailing_dots(addrs[i].trim().to_lower())
+                let kind = _sensitive_host_kind(addr)
+                if kind != "" {
+                    return "hostname resolving to ${kind} ${addr}"
+                }
+                i = i + 1
+            }
+            ""
+        },
+        Err(e) -> "",
+    }
+}
+
+fun _looks_like_ip_literal(host: String) -> Bool {
+    if host.contains(":") {
+        return true
+    }
+    let parts = host.split(".")
+    if parts.len() != 4 {
+        return false
+    }
+    let i = 0
+    while i < parts.len() {
+        if _ipv4_octet(parts[i]) < 0 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _sensitive_ipv4_kind(host: String) -> String {
+    let parts = host.split(".")
+    if parts.len() != 4 {
+        return ""
+    }
+    let a = _ipv4_octet(parts[0])
+    let b = _ipv4_octet(parts[1])
+    let c = _ipv4_octet(parts[2])
+    let d = _ipv4_octet(parts[3])
+    if a < 0 || b < 0 || c < 0 || d < 0 {
+        return ""
+    }
+    if a == 0 {
+        return "local IPv4"
+    }
+    if a == 10 {
+        return "private IPv4"
+    }
+    if a == 127 {
+        return "loopback IPv4"
+    }
+    if a == 169 && b == 254 {
+        return "link-local IPv4"
+    }
+    if a == 172 && b >= 16 && b <= 31 {
+        return "private IPv4"
+    }
+    if a == 192 && b == 168 {
+        return "private IPv4"
+    }
+    if a == 100 && b >= 64 && b <= 127 {
+        return "shared-address IPv4"
+    }
+    if a == 198 && (b == 18 || b == 19) {
+        return "benchmark IPv4"
+    }
+    return ""
+}
+
+fun _ipv4_octet(s: String) -> Int {
+    let t = s.trim()
+    if t == "" || !_all_digits(t) {
+        return 0 - 1
+    }
+    return match t.parse_int() {
+        Some(n) -> {
+            if n >= 0 && n <= 255 {
+                n
+            } else {
+                0 - 1
+            }
+        },
+        None -> 0 - 1,
+    }
+}
+
+fun _sensitive_ipv6_kind(host: String) -> String {
+    let h = _strip_ipv6_zone(host)
+    if h == "" || !h.contains(":") {
+        return ""
+    }
+    if h == "::" || _is_expanded_unspecified_ipv6(h) {
+        return "unspecified IPv6"
+    }
+    if h == "::1" || _is_expanded_loopback_ipv6(h) {
+        return "loopback IPv6"
+    }
+    if h.contains(".") {
+        let tail = _after_last_colon(h)
+        let kind = _sensitive_ipv4_kind(tail)
+        if kind != "" {
+            return "IPv6-mapped ${kind}"
+        }
+    }
+    let first = _first_hextet(h)
+    let n = _hex_int(first)
+    if n >= 64512 && n <= 65023 {
+        return "private IPv6"
+    }
+    if n >= 65152 && n <= 65215 {
+        return "link-local IPv6"
+    }
+    return ""
+}
+
+fun _strip_ipv6_zone(host: String) -> String {
+    let pct = host.index_of("%")
+    if pct < 0 {
+        return host
+    }
+    return host.substring(0, pct)
+}
+
+fun _first_hextet(host: String) -> String {
+    let colon = host.index_of(":")
+    if colon < 0 {
+        return ""
+    }
+    return host.substring(0, colon)
+}
+
+fun _after_last_colon(host: String) -> String {
+    let last = 0 - 1
+    let i = 0
+    while i < host.length() {
+        if host.byte_at(i) == 58 {
+            last = i
+        }
+        i = i + 1
+    }
+    if last < 0 {
+        return host
+    }
+    return host.substring(last + 1, host.length())
+}
+
+fun _is_expanded_loopback_ipv6(host: String) -> Bool {
+    let parts = host.split(":")
+    if parts.len() != 8 {
+        return false
+    }
+    let i = 0
+    while i < 7 {
+        if !_is_zero_hextet(parts[i]) {
+            return false
+        }
+        i = i + 1
+    }
+    return _hex_int(parts[7]) == 1
+}
+
+fun _is_expanded_unspecified_ipv6(host: String) -> Bool {
+    let parts = host.split(":")
+    if parts.len() != 8 {
+        return false
+    }
+    let i = 0
+    while i < parts.len() {
+        if !_is_zero_hextet(parts[i]) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _is_zero_hextet(s: String) -> Bool {
+    if s == "" {
+        return true
+    }
+    let i = 0
+    while i < s.length() {
+        if s.byte_at(i) != 48 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _hex_int(s: String) -> Int {
+    let t = s.trim()
+    if t == "" || t.length() > 4 {
+        return 0 - 1
+    }
+    let n = 0
+    let i = 0
+    while i < t.length() {
+        let v = _hexval(t.byte_at(i))
+        if v < 0 {
+            return 0 - 1
+        }
+        n = n * 16 + v
+        i = i + 1
+    }
+    return n
+}
+
+fun _all_digits(s: String) -> Bool {
+    let i = 0
+    while i < s.length() {
+        let b = s.byte_at(i)
+        if b < 48 || b > 57 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
 }
 
 fun _readable(resp: HttpResponse) -> String {
