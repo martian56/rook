@@ -1,7 +1,8 @@
 import std/string
-import std/test { assert_eq_str, assert_true }
+import std/test { assert_eq_str, assert_true, assert_eq_int }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./dir" { roots, merged_names, path_of, first_file, existing }
+import "./dir" { roots, merged_names, path_of, first_file, existing, compose_roots }
+import "./skills" { load_skills }
 
 // Two fake roots: a "project" one and a "global" one, with skills/b.md
 // present in both so shadowing is observable.
@@ -78,7 +79,53 @@ fun test_missing_roots_yield_empty_results() {
 }
 
 fun test_discovery_does_not_blow_up() {
-    assert_true(roots().len() <= 2)
+    // Project, plugins, and global; each may be absent, so no fixed cap.
+    assert_true(roots().len() >= 0)
+}
+
+fun test_compose_roots_orders_project_plugins_global() {
+    let ordered = compose_roots(".agents", ["/p/a", "/p/b"], "/home/.agents")
+    assert_eq_int(ordered.len(), 4)
+    assert_eq_str(ordered[0], ".agents")
+    assert_eq_str(ordered[1], "/p/a")
+    assert_eq_str(ordered[2], "/p/b")
+    assert_eq_str(ordered[3], "/home/.agents")
+}
+
+fun test_compose_roots_skips_empties() {
+    let none: List<String> = []
+    assert_eq_int(compose_roots("", none, "").len(), 0)
+    let only_global = compose_roots("", none, "/g")
+    assert_eq_int(only_global.len(), 1)
+    assert_eq_str(only_global[0], "/g")
+    // An empty plugin entry is dropped.
+    assert_eq_int(compose_roots("p", [""], "").len(), 1)
+}
+
+fun test_a_plugin_dir_contributes_its_skills() {
+    // A plugin is just another root, so its skills flow through the real
+    // loader when its directory is in the composed roots.
+    create_dir_all("_rook_plgroot/skills/hello")
+    write(
+        "_rook_plgroot/skills/hello/SKILL.md",
+        "---\nname: hello\ndescription: greets\n---\nsay hello",
+    )
+    let rs = compose_roots("", ["_rook_plgroot"], "")
+    let skills = load_skills(rs)
+    let found = false
+    let i = 0
+    while i < skills.len() {
+        if skills[i].name == "hello" {
+            found = true
+        }
+        i = i + 1
+    }
+    assert_true(found)
+    remove_file("_rook_plgroot/skills/hello/SKILL.md")
+    remove_dir("_rook_plgroot/skills/hello")
+    remove_dir("_rook_plgroot/skills")
+    remove_dir("_rook_plgroot")
+    return
 }
 
 fun _has(xs: List<String>, x: String) -> Bool {

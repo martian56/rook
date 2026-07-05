@@ -11,18 +11,32 @@
 import std/string
 import std/env { get_env, has_env }
 import std/fs { exists, is_dir, list_dir }
+import "../plugins/model" { plugin_roots }
 
-// The discovered .agents roots, highest precedence first: the project's,
-// then the global one. Either or both may be absent.
+// The discovered roots the loaders read, highest precedence first: the
+// project's .agents, then each installed plugin, then the global .agents.
+// So a project entry shadows a plugin's, which shadows the global one. Any
+// may be absent.
 fun roots() -> List<String> {
+    return compose_roots(project_root(), plugin_roots(), global_root())
+}
+
+// Assemble the root order from its three parts, skipping empties. Pure, so
+// the precedence is tested without touching the filesystem.
+fun compose_roots(project: String, plugins: List<String>, global: String) -> List<String> {
     let out: List<String> = []
-    let p = project_root()
-    if p != "" {
-        out.push(p)
+    if project != "" {
+        out.push(project)
     }
-    let g = global_root()
-    if g != "" {
-        out.push(g)
+    let i = 0
+    while i < plugins.len() {
+        if plugins[i] != "" {
+            out.push(plugins[i])
+        }
+        i = i + 1
+    }
+    if global != "" {
+        out.push(global)
     }
     return out
 }

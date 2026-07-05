@@ -21,7 +21,10 @@ fun test_normalize_url() {
 
 fun test_install_from_a_local_repo() {
     // Build a tiny plugin repo, commit it, then install it into a scratch
-    // plugins dir, all offline.
+    // plugins dir, all offline. Clear any leftover from an interrupted run
+    // first so the test never trips over stale state.
+    _rmtree("_rook_src")
+    _rmtree("_rook_plugins")
     create_dir_all("_rook_src/skills/greet")
     write(
         "_rook_src/plugin.json",

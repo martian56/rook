@@ -279,8 +279,10 @@ A plugin is a shareable `.agents` bundle: a git repo with a
 `plugin.json` (name, version, description) and the same `skills/`,
 `subagents/`, `commands/`, and `themes/` folders rook reads from
 `.agents`. Installed plugins live under `~/.rook/plugins/<name>/`.
-Installing them and merging their contributions into a session are
-coming next.
+An installed plugin is read like another `.agents` root, so its
+skills, subagents, commands, and themes merge into the session
+automatically, with precedence project `.agents` > plugin > global
+`.agents`.
 
 ## How it is built
 
