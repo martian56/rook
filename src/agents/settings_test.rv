@@ -1,7 +1,7 @@
 import std/string
-import std/test { assert_eq_str, assert_true }
+import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./settings" { setting_str, setting_from, setting_section }
+import "./settings" { setting_str, setting_from, setting_section, settings_errors_from }
 
 const DOC: String = "{\"model\": \"openai/gpt-4o\", \"theme\": \"Nord\", \"permissions\": {\"allow\": [\"read_file\"]}}"
 
@@ -51,4 +51,27 @@ fun test_setting_section_finds_objects() {
     remove_file("_rook_sec/settings.json")
     remove_dir("_rook_sec")
     return
+}
+
+fun test_settings_errors_report_invalid_project_and_global_files() {
+    create_dir_all("_rook_bad_project")
+    create_dir_all("_rook_bad_global")
+    write("_rook_bad_project/settings.json", "{\"permissions\":")
+    write("_rook_bad_global/settings.json", "{\"mcp\":")
+    let errors = settings_errors_from(["_rook_bad_project", "_rook_bad_global"])
+    assert_eq_int(errors.len(), 2)
+    assert_true(errors[0].contains("_rook_bad_project/settings.json"))
+    assert_true(errors[0].contains("invalid JSON"))
+    assert_true(errors[1].contains("_rook_bad_global/settings.json"))
+    assert_true(errors[1].contains("invalid JSON"))
+    remove_file("_rook_bad_project/settings.json")
+    remove_file("_rook_bad_global/settings.json")
+    remove_dir("_rook_bad_project")
+    remove_dir("_rook_bad_global")
+    return
+}
+
+fun test_missing_settings_files_are_quiet() {
+    let errors = settings_errors_from(["_rook_missing_settings"])
+    assert_eq_int(errors.len(), 0)
 }

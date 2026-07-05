@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Surfaced invalid or unreadable `.agents/settings.json` files as startup notices instead of silently ignoring them.
+
 ## 0.3.3
 
 - Rejected unsafe plugin names before remove and update commands resolve plugin paths.
