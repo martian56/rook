@@ -61,6 +61,10 @@ or type **`/key`** in the app and paste the key for the current provider. A
 key entered that way is saved to `~/.rook/auth.json` and reused next time.
 OpenRouter is the default provider, since one key there reaches most models.
 
+<div align="center">
+<img src="images/welcome.png" alt="rook's welcome screen" width="840" />
+</div>
+
 ## Talking to it
 
 - Type a message and press Enter. The reply streams in.
