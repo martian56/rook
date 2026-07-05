@@ -63,6 +63,20 @@ fun test_dispatch_unknown_tool() {
     assert_true(dispatch(call("nope", "{}")).starts_with("error:"))
 }
 
+// The git tools are advertised to the model, so dispatch must run them
+// instead of falling through to the unknown-tool error. git_commit with an
+// empty message is rejected before anything is staged or committed, so this
+// is safe against the live checkout.
+fun test_dispatch_routes_git_tools() {
+    // The precise regression is the unknown-tool fall-through; check the error
+    // prefix, not a substring, since a real diff can contain those words.
+    assert_true(!dispatch(call("git_status", "{}")).starts_with("error: unknown tool"))
+    assert_true(!dispatch(call("git_diff", "{}")).starts_with("error: unknown tool"))
+    let c = dispatch(call("git_commit", "{\"message\":\"\"}"))
+    assert_true(!c.starts_with("error: unknown tool"))
+    assert_true(c.starts_with("error:"))
+}
+
 fun test_use_skill_routes_and_labels() {
     // With no .agents folder in the repo, any skill lookup is the
     // no-skills error, proving dispatch reached the skills module.

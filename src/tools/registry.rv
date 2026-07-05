@@ -271,6 +271,15 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
     if call.name == "set_todos" {
         return set_todos(arg(a, "todos"))
     }
+    if call.name == "git_status" {
+        return git_status()
+    }
+    if call.name == "git_diff" {
+        return git_diff(arg(a, "staged"), arg(a, "path"))
+    }
+    if call.name == "git_commit" {
+        return git_commit(arg(a, "message"))
+    }
     if call.name == "dispatch" {
         // The turn loop intercepts dispatch before it reaches here; a
         // subagent asking to dispatch lands on this instead.
