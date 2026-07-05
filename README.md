@@ -311,9 +311,9 @@ read-only and run automatically; output is truncated like other tools.
 ## Git
 
 rook is git-aware. `git_status` and `git_diff` (read-only, auto-run) let
-the model see the branch and the working tree; `git_commit` stages
-everything and commits a message the model drafts, shown in the
-approval prompt for you to allow or deny before it runs.
+the model see the branch and the working tree. `git_commit` commits only
+changes that are already staged, and its approval prompt shows the status
+plus the staged diff before it runs.
 
 ## Plugins
 

@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_true }
-import "./git" { git_status, git_diff, git_commit }
+import "./git" { git_status, git_diff, git_commit, git_commit_preview }
 
 // These run against the real repository the suite executes in, which is a
 // git checkout, so only the read-only tools are exercised for real; the
@@ -22,4 +22,12 @@ fun test_diff_runs_without_error() {
 fun test_commit_rejects_an_empty_message() {
     assert_true(git_commit("").starts_with("error:"))
     assert_true(git_commit("   ").starts_with("error:"))
+}
+
+fun test_commit_preview_shows_message_status_and_staged_diff() {
+    let p = git_commit_preview("test message")
+    assert_true(p.contains("message:"))
+    assert_true(p.contains("test message"))
+    assert_true(p.contains("status:"))
+    assert_true(p.contains("staged diff:"))
 }

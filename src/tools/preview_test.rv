@@ -57,3 +57,11 @@ fun test_preview_rejects_workspace_escape() {
     let p = change_preview(call("write_file", "{\"path\":\"../outside.txt\",\"content\":\"x\"}"))
     assert_true(p.contains("workspace"))
 }
+
+fun test_git_commit_preview_includes_staged_context() {
+    let p = change_preview(call("git_commit", "{\"message\":\"ship it\"}"))
+    assert_true(p.contains("message:"))
+    assert_true(p.contains("ship it"))
+    assert_true(p.contains("status:"))
+    assert_true(p.contains("staged diff:"))
+}

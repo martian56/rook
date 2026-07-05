@@ -1,8 +1,7 @@
 // Git helpers presented as clean tools. git_status and git_diff read the
-// working tree; git_commit stages everything and commits a drafted message
-// (through the approval prompt). Git is invoked directly (not through the
-// shell) so arguments and the multi-line message need no quoting: the
-// message is fed to `git commit -F -` on stdin.
+// working tree; git_commit commits only what is already staged. Git is invoked
+// directly (not through the shell) so arguments and the multi-line message
+// need no quoting: the message is fed to `git commit -F -` on stdin.
 
 import std/string
 import std/process { run, run_with_input, Output }
@@ -53,15 +52,26 @@ fun git_diff(staged: String, path: String) -> String {
     return body
 }
 
-// Stage everything and commit `message`. Mutating: the turn gates it through
-// approval, which shows the message first.
+// A commit approval preview: message, status, and the exact staged diff that
+// git_commit will commit.
+fun git_commit_preview(message: String) -> String {
+    let status = _status_short()
+    let staged = _staged_diff()
+    return "message:\n${message.trim()}\n\nstatus:\n${status}\n\nstaged diff:\n${staged}"
+}
+
+// Commit only the current index. Mutating: the turn gates it through approval,
+// which shows the staged diff first.
 fun git_commit(message: String) -> String {
     if message.trim() == "" {
         return "error: git_commit needs a message"
     }
-    let add = _git(["add", "-A"])
-    if add.code != 0 {
-        return "error: git add failed: ${add.stderr.trim()}"
+    let staged = _git(["diff", "--cached", "--name-only"])
+    if staged.code != 0 {
+        return "error: git diff failed: ${staged.stderr.trim()}"
+    }
+    if staged.stdout.trim() == "" {
+        return "error: no staged changes to commit; stage the intended files first"
     }
     let out = match run_with_input("git", ["commit", "-F", "-"], message) {
         Ok(o) -> o,
@@ -71,6 +81,33 @@ fun git_commit(message: String) -> String {
         return "error: git commit failed: ${out.stdout.trim()} ${out.stderr.trim()}".trim()
     }
     return "committed:\n${out.stdout.trim()}"
+}
+
+fun _status_short() -> String {
+    let st = _git(["status", "--short"])
+    if st.code != 0 {
+        return "error: ${st.stderr.trim()}"
+    }
+    let body = st.stdout.trim()
+    if body == "" {
+        return "(clean working tree)"
+    }
+    return body
+}
+
+fun _staged_diff() -> String {
+    let d = _git(["diff", "--cached"])
+    if d.code != 0 {
+        return "error: ${d.stderr.trim()}"
+    }
+    let body = d.stdout
+    if body.trim() == "" {
+        return "(no staged changes)"
+    }
+    if body.length() > MAX_DIFF {
+        return "${body.substring(0, MAX_DIFF)}\n... (diff truncated)"
+    }
+    return body
 }
 
 fun _git(args: List<String>) -> Output {

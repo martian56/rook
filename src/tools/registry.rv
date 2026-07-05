@@ -74,7 +74,7 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "git_commit",
-            "Stage all changes and commit with a message you draft, following the repository conventions (check AGENTS.md or recent git log). The user approves before it runs.",
+            "Commit the changes that are already staged with a message you draft, following the repository conventions (check AGENTS.md or recent git log). Stage intended files first.",
             _schema([Prop { name: "message", desc: "the full commit message" }]),
         ),
         ToolDef.new(

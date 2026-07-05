@@ -6,6 +6,7 @@ import std/string
 import std/fs { read, exists }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./args" { arg }
+import "./git" { git_commit_preview }
 import "./multiedit" { apply_edits, parse_edits }
 import "./paths" { resolve_path }
 import "../ui/diff" { unified }
@@ -14,7 +15,7 @@ import "../ui/diff" { unified }
 // "" for anything else (or when the change is a no-op).
 fun change_preview(call: ToolCall) -> String {
     if call.name == "git_commit" {
-        return arg(call.arguments, "message")
+        return git_commit_preview(arg(call.arguments, "message"))
     }
     if call.name == "write_file" {
         let r = resolve_path(arg(call.arguments, "path"), "")
