@@ -1,0 +1,142 @@
+// Installing a plugin from a git URL, the rvpm way: no registry, a shallow
+// git clone at an optional tag into the plugins directory, keyed by the
+// repository name. The source URL and ref are recorded in a lock file so an
+// install is reproducible. install_into takes the plugins directory
+// explicitly so it can be driven against a scratch directory in tests; the
+// user-facing install_plugin uses the real one.
+
+import std/string
+import std/env { os_name }
+import std/fs { exists, create_dir_all, read, write }
+import std/process { run, Output }
+import std/json { JsonValue, parse, stringify }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str }
+import "./model" { Plugin, plugins_dir, read_plugin }
+
+const LOCK: String = ".rook-plugin.lock"
+
+// Install from `url` at `ref` (a tag or branch; "" for the default branch)
+// into ~/.rook/plugins. Returns a status or error string.
+fun install_plugin(url: String, ref: String) -> String {
+    let dir = plugins_dir()
+    if dir == "" {
+        return "error: no home directory for plugins"
+    }
+    return install_into(dir, url, ref)
+}
+
+// The mechanism: clone `url` at `ref` into `plugins_dir`/<name>, validate the
+// manifest, and write the lock file.
+fun install_into(plugins_dir: String, url: String, ref: String) -> String {
+    let u = url.trim()
+    if u == "" {
+        return "error: install needs a git URL"
+    }
+    let name = plugin_name_from_url(u)
+    if name == "" {
+        return "error: could not derive a plugin name from ${u}"
+    }
+    create_dir_all(plugins_dir)
+    let target = "${plugins_dir}/${name}"
+    if exists(target) {
+        _remove_tree(target)
+    }
+    let args = ["clone", "--depth", "1"]
+    if ref.trim() != "" {
+        args.push("--branch")
+        args.push(ref.trim())
+    }
+    args.push(normalize_url(u))
+    args.push(target)
+    let out = match run("git", args) {
+        Ok(o) -> o,
+        Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
+    }
+    if out.code != 0 {
+        return "error: git clone failed: ${out.stderr.trim()}"
+    }
+    let plugin = read_plugin(target, name)
+    if plugin.name == "" {
+        _remove_tree(target)
+        return "error: ${u} has no plugin.json; it is not a rook plugin"
+    }
+    write("${target}/${LOCK}", _lock_json(u, ref.trim(), plugin.version))
+    let v = plugin.version
+    if v == "" {
+        v = "unversioned"
+    }
+    return "installed ${plugin.name} ${v} from ${u}"
+}
+
+// The repository name from a git URL: the last path segment without a
+// trailing slash or .git suffix.
+fun plugin_name_from_url(url: String) -> String {
+    let u = url.trim()
+    while u.ends_with("/") {
+        u = u.substring(0, u.length() - 1)
+    }
+    if u.ends_with(".git") {
+        u = u.substring(0, u.length() - 4)
+    }
+    let slash = u.last_index_of("/")
+    if slash >= 0 {
+        u = u.substring(slash + 1, u.length())
+    }
+    return u
+}
+
+// A bare github.com/user/repo shorthand becomes an https URL, matching how
+// rvpm resolves packages; anything with a scheme or scp-style host is left
+// alone.
+fun normalize_url(url: String) -> String {
+    let u = url.trim()
+    if u.contains("://") || u.starts_with("git@") || u.starts_with("/") || u.starts_with(".") || u.starts_with(
+        "~",
+    ) {
+        return u
+    }
+    return "https://${u}"
+}
+
+// The lock file recorded next to an installed plugin.
+fun _lock_json(url: String, ref: String, version: String) -> String {
+    return stringify(Obj.new().str("url", url).str("ref", ref).str("version", version).build())
+}
+
+// The recorded source of an installed plugin, for management commands: the
+// url, ref, and version from its lock file. Empty strings when absent.
+fun plugin_source(path: String) -> Plugin {
+    let lock = "${path}/${LOCK}"
+    if !exists(lock) {
+        return Plugin { name: "", version: "", description: "", path }
+    }
+    let text = match read(lock) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+    return match parse(text) {
+        Ok(j) -> Plugin {
+            name: as_str(field(j, "url")),
+            version: as_str(field(j, "version")),
+            description: as_str(field(j, "ref")),
+            path,
+        },
+        Err(e) -> Plugin { name: "", version: "", description: "", path },
+    }
+}
+
+fun _remove_tree(path: String) {
+    let shell = "sh"
+    let flag = "-c"
+    let cmd = "rm -rf '${path}'"
+    if os_name() == "windows" {
+        shell = "cmd"
+        flag = "/c"
+        cmd = "rmdir /s /q \"${path}\""
+    }
+    match run(shell, [flag, cmd]) {
+        Ok(o) -> {},
+        Err(e) -> {},
+    }
+    return
+}
