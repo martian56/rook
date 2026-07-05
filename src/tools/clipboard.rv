@@ -9,15 +9,28 @@ import std/io { print }
 import std/encoding { base64_encode }
 import std/process { run_with_input, Output }
 
-// Copy `text` to the clipboard. Returns true when a copy path succeeded.
-fun copy_to_clipboard(text: String) -> Bool {
+// How a copy went. Copied is a confirmed local clipboard write; Sent means
+// the text was handed to the terminal over OSC 52, which has no acknowledgement
+// (it may or may not land, depending on the terminal), so the caller should
+// phrase its confirmation accordingly.
+enum ClipResult {
+    Copied,
+    Sent,
+    Failed,
+}
+
+// Copy `text` to the clipboard.
+fun copy_to_clipboard(text: String) -> ClipResult {
     if text == "" {
-        return false
+        return ClipResult.Failed
     }
     if _platform_copy(text) {
-        return true
+        return ClipResult.Copied
     }
-    return _osc52_copy(text)
+    if _osc52_copy(text) {
+        return ClipResult.Sent
+    }
+    return ClipResult.Failed
 }
 
 fun _platform_copy(text: String) -> Bool {

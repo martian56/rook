@@ -14,7 +14,7 @@ import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
 import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
-import "../tools/clipboard" { copy_to_clipboard }
+import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions, load_session }
@@ -145,14 +145,23 @@ fun _sel_finish(m: Chat) {
     if text.trim() == "" {
         return
     }
-    if copy_to_clipboard(text) {
-        let n = text.lines().len()
-        let unit = "lines"
-        if n == 1 {
-            unit = "line"
-        }
-        m.flash = "copied ${n} ${unit} to the clipboard"
-        m.flash_until = m.tick + 60
+    let n = text.lines().len()
+    let unit = "lines"
+    if n == 1 {
+        unit = "line"
+    }
+    // A local clipboard write is confirmed; OSC 52 is not (no ack), so word it
+    // as "sent" rather than claiming it definitely copied.
+    match copy_to_clipboard(text) {
+        Copied -> {
+            m.flash = "copied ${n} ${unit} to the clipboard"
+            m.flash_until = m.tick + 60
+        },
+        Sent -> {
+            m.flash = "sent ${n} ${unit} to the terminal clipboard"
+            m.flash_until = m.tick + 60
+        },
+        Failed -> {},
     }
     return
 }
