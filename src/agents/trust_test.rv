@@ -1,0 +1,33 @@
+import std/json { parse, JsonValue }
+import std/test { assert_true }
+import "github.com/martian56/aviary/jsonutil" { field }
+import "./trust" { is_project_root, settings_root_trusted_with_project, trust_flag }
+
+fun _json(text: String) -> JsonValue {
+    return match parse(text) {
+        Ok(j) -> j,
+        Err(e) -> JsonValue.Null,
+    }
+}
+
+fun test_project_root_detection() {
+    assert_true(is_project_root(".agents"))
+    assert_true(!is_project_root("/home/me/.agents"))
+    assert_true(!is_project_root("/home/me/.rook/plugins/x"))
+}
+
+fun test_project_settings_need_trust() {
+    assert_true(!settings_root_trusted_with_project(".agents", false))
+    assert_true(settings_root_trusted_with_project(".agents", true))
+    assert_true(settings_root_trusted_with_project("/home/me/.agents", false))
+    assert_true(settings_root_trusted_with_project("/home/me/.rook/plugins/x", false))
+}
+
+fun test_trust_flag_accepts_bool_or_string() {
+    let yes = _json("{\"v\": true}")
+    let no = _json("{\"v\": false}")
+    let str_yes = _json("{\"v\": \"true\"}")
+    assert_true(trust_flag(field(yes, "v")))
+    assert_true(!trust_flag(field(no, "v")))
+    assert_true(trust_flag(field(str_yes, "v")))
+}

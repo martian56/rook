@@ -216,8 +216,20 @@ refine it.
 ```
 
 The string fields join the resolution chain (a root's `rook.json` wins
-over the same root's settings, and project beats global). The `tools`
-and `mcp` sections are reserved for the features that will read them.
+over the same root's settings, and project beats global). Global user
+settings and installed plugins are trusted roots. Project `.agents`
+settings are read more carefully: deny rules apply, but allow rules,
+hooks, and MCP server commands are ignored unless you opt in from your
+global `~/.agents/settings.json`:
+
+```json
+{
+  "trust": { "project_settings": true }
+}
+```
+
+That switch trusts project settings for every project, so only enable it
+when that is the behavior you want.
 
 `permissions` is live: allow rules skip the approval prompt for calls
 you always trust, deny rules block calls outright (for any tool, even
@@ -233,9 +245,11 @@ name with a glob matched against the call's command or path:
 }
 ```
 
-Rules from the project and global `.agents` both apply, and they bind
-subagents the same way. Anything not covered falls through to the
-normal approval prompt.
+Deny rules from the project and global `.agents` both apply, and they
+bind subagents the same way. Allow rules from global settings and
+installed plugins can skip approval. Project allow rules only skip
+approval after project settings are trusted. Anything not covered falls
+through to the normal approval prompt.
 
 Custom slash commands live in `.agents/commands/<name>.md`: optional
 frontmatter with a `description` (shown by `/help`), then a prompt
@@ -319,6 +333,9 @@ under a `hooks` key in a `settings.json` at any root rook reads (project
 }
 ```
 
+Project hooks run only after project settings are trusted. Hooks from
+global settings and installed plugins can run without that extra opt-in.
+
 The events are `session-start`, `pre-tool`, `post-tool`, `pre-prompt`,
 and `turn-end`. `match` is a glob on the tool name (default `*`); it
 only applies to the tool events. Each hook's command runs through the
@@ -355,8 +372,9 @@ under an `mcp` key in a `settings.json` at any root rook reads (project
 ```
 
 Each entry is `{ name, command, args, env }`, where `env` is a list of
-`"KEY=value"` strings. rook connects on first use, or when you run
-`/mcp connect`.
+`"KEY=value"` strings. Project MCP servers are ignored until project
+settings are trusted. Servers from global settings and installed plugins
+connect on first use, or when you run `/mcp connect`.
 
 - **Tools** a server exposes reach the model as `mcp__<server>__<tool>`.
   Being external, they always ask for approval.

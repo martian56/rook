@@ -10,6 +10,7 @@ import std/json { JsonValue }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "../agents/dir" { roots }
 import "../agents/settings" { setting_section }
+import "../agents/trust" { project_settings_trusted, settings_root_trusted_with_project }
 
 struct ServerSpec {
     name: String,
@@ -20,24 +21,39 @@ struct ServerSpec {
 
 // The configured servers across all roots, de-duplicated by name.
 fun configured_servers() -> List<ServerSpec> {
+    return configured_servers_from_with_project_trust(roots(), project_settings_trusted())
+}
+
+// Test helper and pure core over a supplied root list. Project settings are
+// untrusted by default.
+fun configured_servers_from(rs: List<String>) -> List<ServerSpec> {
+    return configured_servers_from_with_project_trust(rs, false)
+}
+
+// The configured servers across supplied roots, de-duplicated by name.
+fun configured_servers_from_with_project_trust(
+    rs: List<String>,
+    project_trusted: Bool,
+) -> List<ServerSpec> {
     let out: List<ServerSpec> = []
     let seen: List<String> = []
-    let rs = roots()
     let r = 0
     while r < rs.len() {
-        match setting_section(rs[r], "mcp") {
-            Some(section) -> {
-                let specs = parse_servers(section)
-                let i = 0
-                while i < specs.len() {
-                    if !_contains(seen, specs[i].name) {
-                        seen.push(specs[i].name)
-                        out.push(specs[i])
+        if settings_root_trusted_with_project(rs[r], project_trusted) {
+            match setting_section(rs[r], "mcp") {
+                Some(section) -> {
+                    let specs = parse_servers(section)
+                    let i = 0
+                    while i < specs.len() {
+                        if !_contains(seen, specs[i].name) {
+                            seen.push(specs[i].name)
+                            out.push(specs[i])
+                        }
+                        i = i + 1
                     }
-                    i = i + 1
-                }
-            },
-            None -> {},
+                },
+                None -> {},
+            }
         }
         r = r + 1
     }

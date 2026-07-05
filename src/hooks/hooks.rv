@@ -13,6 +13,7 @@ import std/process { run_with_input, Output }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
 import "../agents/dir" { roots }
 import "../agents/settings" { setting_section }
+import "../agents/trust" { project_settings_trusted, settings_root_trusted_with_project }
 import "../tools/permissions" { glob_match }
 
 // The lifecycle events a hook can bind to.
@@ -29,20 +30,32 @@ struct Hook {
 // Every hook configured across the active roots (project .agents, installed
 // plugins, global .agents), in root precedence order.
 fun load_hooks() -> List<Hook> {
+    return load_hooks_from_with_project_trust(roots(), project_settings_trusted())
+}
+
+// Load hooks from an explicit root list. Exported for tests.
+fun load_hooks_from(rs: List<String>) -> List<Hook> {
+    return load_hooks_from_with_project_trust(rs, false)
+}
+
+// Pure trust switch for tests. Runtime code uses load_hooks(), which reads
+// the real global trust setting.
+fun load_hooks_from_with_project_trust(rs: List<String>, project_trusted: Bool) -> List<Hook> {
     let out: List<Hook> = []
-    let rs = roots()
     let r = 0
     while r < rs.len() {
-        match setting_section(rs[r], "hooks") {
-            Some(section) -> {
-                let hs = hooks_from(section)
-                let k = 0
-                while k < hs.len() {
-                    out.push(hs[k])
-                    k = k + 1
-                }
-            },
-            None -> {},
+        if settings_root_trusted_with_project(rs[r], project_trusted) {
+            match setting_section(rs[r], "hooks") {
+                Some(section) -> {
+                    let hs = hooks_from(section)
+                    let k = 0
+                    while k < hs.len() {
+                        out.push(hs[k])
+                        k = k + 1
+                    }
+                },
+                None -> {},
+            }
         }
         r = r + 1
     }

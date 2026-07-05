@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import "github.com/martian56/aviary/message" { ToolCall }
-import "./permissions" { Verdict, verdict, rule_matches, glob_match, subject_of }
+import "./permissions" { Verdict, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of }
 
 fun tag(v: Verdict) -> String {
     return match v {
@@ -41,6 +41,28 @@ fun test_deny_beats_allow_and_default_asks() {
     assert_eq_str(tag(verdict(allow, deny, "run_command", "cargo test")), "ask")
     let none: List<String> = []
     assert_eq_str(tag(verdict(none, none, "write_file", "a.txt")), "ask")
+}
+
+fun test_untrusted_allow_rules_do_not_skip_approval() {
+    let allow = ["write_file(*)"]
+    let deny: List<String> = []
+    assert_eq_str(
+        tag(verdict_with_allow_trust(false, allow, deny, "write_file", "src/main.rv")),
+        "ask",
+    )
+    assert_eq_str(
+        tag(verdict_with_allow_trust(true, allow, deny, "write_file", "src/main.rv")),
+        "allow",
+    )
+}
+
+fun test_untrusted_deny_rules_still_block() {
+    let allow: List<String> = []
+    let deny = ["run_command(rm *)"]
+    assert_eq_str(
+        tag(verdict_with_allow_trust(false, allow, deny, "run_command", "rm -rf target")),
+        "deny:run_command(rm *)",
+    )
 }
 
 fun test_subjects_per_tool() {

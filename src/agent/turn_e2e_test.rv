@@ -45,7 +45,7 @@ fun write_handler(req: Request) -> Response {
     )
 }
 
-// Round 1: ask to write a file an allow rule covers. Round 2: confirm.
+// Round 1: ask to write a file a deny rule blocks. Round 2: confirm.
 fun perm_handler(req: Request) -> Response {
     perm_hits = perm_hits + 1
     if perm_hits == 1 {
@@ -54,7 +54,7 @@ fun perm_handler(req: Request) -> Response {
         )
     }
     return Response.text(
-        "data: {\"choices\":[{\"delta\":{\"content\":\"Done, wrote the file.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"The permission rule blocked the write.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
     )
 }
 
@@ -364,13 +364,13 @@ fun test_ask_user_round_trips_the_pick() {
     return
 }
 
-fun test_an_allow_rule_skips_the_approval_prompt() {
-    // The settings allow writes to this path, so the turn completes with
-    // nobody around to answer an approval prompt.
+fun test_a_project_deny_rule_blocks_without_approval() {
+    // Deny rules from project settings still apply even though project
+    // allow rules cannot skip the approval prompt without trust.
     create_dir_all(".agents")
     fs_write(
         ".agents/settings.json",
-        "{\"permissions\": {\"allow\": [\"write_file(_rook_e2e_perm*)\"]}}",
+        "{\"permissions\": {\"deny\": [\"write_file(_rook_e2e_perm*)\"]}}",
     )
     spawn(fun() -> Unit {
         serve_perm()
@@ -383,9 +383,9 @@ fun test_an_allow_rule_skips_the_approval_prompt() {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8468/v1")
     })
     let got = e2e_drain(st)
-    assert_true(got.contains("write_file(_rook_e2e_perm.txt)"))
-    assert_true(got.contains("Done, wrote the file."))
-    remove_file("_rook_e2e_perm.txt")
+    assert_true(got.contains("blocked by the permission rule"))
+    assert_true(got.contains("The permission rule blocked the write."))
+    assert_true(!exists("_rook_e2e_perm.txt"))
     remove_file(".agents/settings.json")
     remove_dir(".agents")
     return

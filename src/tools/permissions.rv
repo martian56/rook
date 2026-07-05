@@ -19,6 +19,7 @@ import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
 import "../agents/dir" { roots }
 import "../agents/settings" { setting_section }
+import "../agents/trust" { settings_root_trusted }
 
 // What the rules say about one call. Deny carries the rule that fired so
 // the refusal can name it.
@@ -38,7 +39,9 @@ fun check_permission(call: ToolCall) -> Verdict {
         match setting_section(rs[i], "permissions") {
             Some(section) -> {
                 _collect(field(section, "deny"), deny)
-                _collect(field(section, "allow"), allow)
+                if settings_root_trusted(rs[i]) {
+                    _collect(field(section, "allow"), allow)
+                }
             },
             None -> {},
         }
@@ -49,12 +52,26 @@ fun check_permission(call: ToolCall) -> Verdict {
 
 // The pure decision: deny rules first, then allow, else ask.
 fun verdict(allow: List<String>, deny: List<String>, tool: String, subject: String) -> Verdict {
+    return verdict_with_allow_trust(true, allow, deny, tool, subject)
+}
+
+// Same decision, but with a switch for whether allow rules are trusted.
+fun verdict_with_allow_trust(
+    allow_trusted: Bool,
+    allow: List<String>,
+    deny: List<String>,
+    tool: String,
+    subject: String,
+) -> Verdict {
     let i = 0
     while i < deny.len() {
         if rule_matches(deny[i], tool, subject) {
             return Verdict.Deny(deny[i])
         }
         i = i + 1
+    }
+    if !allow_trusted {
+        return Verdict.Ask
     }
     i = 0
     while i < allow.len() {

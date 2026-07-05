@@ -1,0 +1,53 @@
+// Trust policy for project-owned configuration. Global user settings and
+// installed plugins are user-controlled, but the project .agents directory
+// can arrive with a cloned repository. Project settings therefore cannot
+// grant approvals or launch commands unless the user opts in globally.
+
+import std/string
+import std/json { JsonValue }
+import "github.com/martian56/aviary/jsonutil" { field, as_str }
+import "./dir" { global_root }
+import "./settings" { setting_section }
+
+const PROJECT_ROOT: String = ".agents"
+
+// True when `root` is the current project's .agents directory.
+fun is_project_root(root: String) -> Bool {
+    return root == PROJECT_ROOT
+}
+
+// Whether this root may grant approval bypasses or run configured commands.
+fun settings_root_trusted(root: String) -> Bool {
+    return settings_root_trusted_with_project(root, project_settings_trusted())
+}
+
+// Pure half for tests and callers that already know the project trust flag.
+fun settings_root_trusted_with_project(root: String, project_trusted: Bool) -> Bool {
+    if is_project_root(root) {
+        return project_trusted
+    }
+    return true
+}
+
+// Global opt-in. Add this to ~/.agents/settings.json to trust project
+// settings for every project:
+//
+// { "trust": { "project_settings": true } }
+fun project_settings_trusted() -> Bool {
+    let root = global_root()
+    if root == "" {
+        return false
+    }
+    return match setting_section(root, "trust") {
+        Some(section) -> trust_flag(field(section, "project_settings")),
+        None -> false,
+    }
+}
+
+// Accept a real JSON boolean, or "true" for hand-written config files.
+fun trust_flag(j: JsonValue) -> Bool {
+    return match j {
+        Bool(b) -> b,
+        _ -> as_str(j).to_lower() == "true",
+    }
+}

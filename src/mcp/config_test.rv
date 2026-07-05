@@ -1,7 +1,8 @@
 import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./config" { ServerSpec, parse_servers }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./config" { ServerSpec, parse_servers, configured_servers_from_with_project_trust }
 
 const SECTION: String = "{\"servers\": [{\"name\": \"fs\", \"command\": \"npx\", \"args\": [\"-y\", \"server-fs\", \".\"], \"env\": [\"K=v\"]}, {\"name\": \"nocmd\"}, {\"command\": \"noname\"}, {\"name\": \"git\", \"command\": \"mcp-git\"}]}"
 
@@ -22,6 +23,21 @@ fun test_parse_servers_reads_valid_entries() {
 
 fun test_parse_servers_tolerates_a_missing_array() {
     assert_eq_int(parse_servers(_json("{}")).len(), 0)
+}
+
+fun test_project_mcp_servers_are_ignored_until_trusted() {
+    create_dir_all(".agents")
+    write(
+        ".agents/settings.json",
+        "{\"mcp\": {\"servers\": [{\"name\": \"fs\", \"command\": \"mcp-fs\"}]}}",
+    )
+
+    assert_eq_int(configured_servers_from_with_project_trust([".agents"], false).len(), 0)
+    assert_eq_int(configured_servers_from_with_project_trust([".agents"], true).len(), 1)
+
+    remove_file(".agents/settings.json")
+    remove_dir(".agents")
+    return
 }
 
 fun _json(text: String) -> JsonValue {
