@@ -10,8 +10,8 @@ import "github.com/martian56/plumage/widgets/paragraph" { Paragraph }
 import "github.com/martian56/plumage/widgets/list" { ListView }
 import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
-import "./model" { Chat }
-import "../ui/transcript" { build_lines }
+import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
+import "../ui/transcript" { assemble_cached }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
@@ -793,7 +793,15 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
 }
 
 fun _transcript(m: Chat, area: Rect, f: Frame) {
-    let lines = build_lines(m.entries, area.w, m.theme)
+    // The cache is wrapped for a given width and theme; a change to either
+    // invalidates it so everything re-wraps once at the new size or palette.
+    if area.w != m.cache_width || m.theme.name != m.cache_theme {
+        invalidate_all_cache(m)
+        m.cache_width = area.w
+        m.cache_theme = m.theme.name
+    }
+    ensure_cache_len(m)
+    let lines = assemble_cached(m.entries, m.line_cache, area.w, m.theme)
     let max_up = lines.len() - area.h
     if max_up < 0 {
         max_up = 0

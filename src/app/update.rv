@@ -6,12 +6,13 @@ import std/string
 import "github.com/martian56/perch/keys" { Key }
 import "github.com/martian56/plumage" { Event, Step, next, quit }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
-import "./model" { Chat, set_model }
+import "./model" { Chat, set_model, set_entry, replace_entries, ensure_cache_len }
 import "../agent/state" { DisplayEvent, Snapshot }
 import "../ui/transcript" { AgentBlock }
 import "../agent/turn" { run_turn }
 import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
+import "../ui/transcript" { EntryLines, empty_entry_lines }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions, load_session }
@@ -113,7 +114,7 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
             Chunk(d) -> {
                 m.stream_text = m.stream_text.concat(d)
                 if m.cur_bubble >= 0 && m.cur_bubble < m.entries.len() {
-                    m.entries[m.cur_bubble] = Entry.BotMsg(m.stream_text)
+                    set_entry(m, m.cur_bubble, Entry.BotMsg(m.stream_text))
                 }
             },
             ToolRan(name, result) -> {
@@ -149,7 +150,7 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
                     if used == 1 {
                         word = "tool"
                     }
-                    m.entries[head] = Entry.AgentHeader(name, "done · ${used} ${word}")
+                    set_entry(m, head, Entry.AgentHeader(name, "done · ${used} ${word}"))
                     _shift_blocks(m, head + 1, 0 - count, b)
                     _drop_block(m, b)
                 }
@@ -172,35 +173,47 @@ fun _find_block(m: Chat, name: String) -> Int {
     return 0 - 1
 }
 
-// Insert an entry at `at`, shifting the rest down.
+// Insert an entry at `at`, shifting the rest down. The line cache moves with
+// the entries (an invalid slot for the new row) so unchanged rows keep their
+// cached lines.
 fun _insert_entry(m: Chat, at: Int, e: Entry) {
+    ensure_cache_len(m)
     let out: List<Entry> = []
+    let cache: List<EntryLines> = []
     let i = 0
     while i < m.entries.len() {
         if i == at {
             out.push(e)
+            cache.push(empty_entry_lines())
         }
         out.push(m.entries[i])
+        cache.push(m.line_cache[i])
         i = i + 1
     }
     if at >= m.entries.len() {
         out.push(e)
+        cache.push(empty_entry_lines())
     }
     m.entries = out
+    m.line_cache = cache
     return
 }
 
-// Remove `count` entries starting at `from`.
+// Remove `count` entries starting at `from`, dropping their cache slots too.
 fun _remove_entries(m: Chat, from: Int, count: Int) {
+    ensure_cache_len(m)
     let out: List<Entry> = []
+    let cache: List<EntryLines> = []
     let i = 0
     while i < m.entries.len() {
         if i < from || i >= from + count {
             out.push(m.entries[i])
+            cache.push(m.line_cache[i])
         }
         i = i + 1
     }
     m.entries = out
+    m.line_cache = cache
     return
 }
 
@@ -557,7 +570,7 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
 // that session's file.
 fun _resume(m: Chat, id: String) {
     let loaded = load_session(id)
-    m.entries = loaded.entries
+    replace_entries(m, loaded.entries)
     if loaded.model != "" {
         set_model(m, loaded.model)
     }
@@ -773,7 +786,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         },
         Clear -> {
             let e: List<Entry> = []
-            m.entries = e
+            replace_entries(m, e)
             let blocks: List<AgentBlock> = []
             m.open_agents = blocks
             clear_todos()
