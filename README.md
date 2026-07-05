@@ -290,6 +290,31 @@ can find one without knowing its URL, and `add <name>` then installs a
 plugin by its index name. The index URL defaults to a martian56-hosted
 list and is overridable with `ROOK_PLUGIN_INDEX`.
 
+## Hooks
+
+A hook runs a command when something happens in a session. Declare them
+under a `hooks` key in a `settings.json` at any root rook reads (project
+`.agents`, an installed plugin, or global `~/.agents`), keyed by event:
+
+```json
+{
+  "hooks": {
+    "pre-tool": [{ "match": "write_file", "command": "./deny-secrets.sh" }],
+    "post-tool": [{ "command": "git add -A" }],
+    "turn-end": [{ "command": "notify-send 'rook is done'" }]
+  }
+}
+```
+
+The events are `session-start`, `pre-tool`, `post-tool`, `pre-prompt`,
+and `turn-end`. `match` is a glob on the tool name (default `*`); it
+only applies to the tool events. Each hook's command runs through the
+platform shell with a small JSON context on stdin: `{ "event", "tool",
+"args" }`, where `args` is the tool call's raw arguments. A `pre-tool`
+hook that exits non-zero blocks the tool, and its output is fed back to
+the model as the reason; every other event is observe-only. Because
+plugins are just another root, a plugin can ship hooks the same way.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

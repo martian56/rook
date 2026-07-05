@@ -1,0 +1,152 @@
+// The hook system: user or plugin scripts that fire on lifecycle events.
+// Each root's settings.json may carry a "hooks" object keyed by event, whose
+// value is an array of { match, command }. On an event rook runs every hook
+// whose match glob matches the tool name, handing it a small JSON context on
+// stdin ({ event, tool, args }). A pre-tool hook that exits non-zero blocks
+// the tool; every other event is observe-only. This is the mechanism plugins
+// build on to extend rook.
+
+import std/string
+import std/env { os_name }
+import std/json { JsonValue, stringify }
+import std/process { run_with_input, Output }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
+import "../agents/dir" { roots }
+import "../agents/settings" { setting_section }
+import "../tools/permissions" { glob_match }
+
+// The lifecycle events a hook can bind to.
+fun events() -> List<String> {
+    return ["session-start", "pre-tool", "post-tool", "pre-prompt", "turn-end"]
+}
+
+struct Hook {
+    event: String,
+    match_glob: String,
+    command: String,
+}
+
+// Every hook configured across the active roots (project .agents, installed
+// plugins, global .agents), in root precedence order.
+fun load_hooks() -> List<Hook> {
+    let out: List<Hook> = []
+    let rs = roots()
+    let r = 0
+    while r < rs.len() {
+        match setting_section(rs[r], "hooks") {
+            Some(section) -> {
+                let hs = hooks_from(section)
+                let k = 0
+                while k < hs.len() {
+                    out.push(hs[k])
+                    k = k + 1
+                }
+            },
+            None -> {},
+        }
+        r = r + 1
+    }
+    return out
+}
+
+// The hooks declared in one root's "hooks" object: for each known event key
+// (JsonValue has no key iteration), an array of { match, command }. A missing
+// match defaults to "*", and an entry with no command is skipped.
+fun hooks_from(section: JsonValue) -> List<Hook> {
+    let out: List<Hook> = []
+    let evs = events()
+    let e = 0
+    while e < evs.len() {
+        let arr = as_list(field(section, evs[e]))
+        let i = 0
+        while i < arr.len() {
+            let command = as_str(field(arr[i], "command"))
+            if command != "" {
+                let m = as_str(field(arr[i], "match"))
+                if m == "" {
+                    m = "*"
+                }
+                out.push(Hook { event: evs[e], match_glob: m, command })
+            }
+            i = i + 1
+        }
+        e = e + 1
+    }
+    return out
+}
+
+// The hooks bound to `event` whose glob matches `tool`. A "*" match (or an
+// empty tool with a match-all hook) always applies.
+fun hooks_for(hooks: List<Hook>, event: String, tool: String) -> List<Hook> {
+    let out: List<Hook> = []
+    let i = 0
+    while i < hooks.len() {
+        let h = hooks[i]
+        if h.event == event {
+            if h.match_glob == "*" || glob_match(h.match_glob, tool) {
+                out.push(h)
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Run every pre-tool hook matching `tool`. A non-zero exit blocks the tool:
+// the returned reason (empty when nothing blocks) is fed back to the model in
+// place of running the tool. A hook that fails to launch does not block, so a
+// misconfigured hook cannot wedge every tool.
+fun run_pre_tool_hooks(tool: String, args_json: String) -> String {
+    return run_pre_tool(hooks_for(load_hooks(), "pre-tool", tool), tool, args_json)
+}
+
+// Run an already-filtered list of pre-tool hooks; the first non-zero exit
+// blocks and its reason (stderr, else stdout, else the code) is returned.
+fun run_pre_tool(hooks: List<Hook>, tool: String, args_json: String) -> String {
+    let i = 0
+    while i < hooks.len() {
+        let out = _run(hooks[i], "pre-tool", tool, args_json)
+        if out.code != 0 {
+            let why = out.stderr.trim()
+            if why == "" {
+                why = out.stdout.trim()
+            }
+            if why == "" {
+                why = "exit ${out.code}"
+            }
+            return "blocked by a pre-tool hook: ${why}"
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+// Fire every hook bound to `event` for `tool`, ignoring exit codes. Used for
+// the observe-only events (session start, post tool, prompt, turn end).
+fun fire_hooks(event: String, tool: String, args_json: String) {
+    let hooks = hooks_for(load_hooks(), event, tool)
+    let i = 0
+    while i < hooks.len() {
+        let out = _run(hooks[i], event, tool, args_json)
+        i = i + 1
+    }
+    return
+}
+
+// Run one hook's command through the platform shell with the event context
+// on stdin. A launch failure comes back as exit 0 so it never blocks.
+fun _run(hook: Hook, event: String, tool: String, args_json: String) -> Output {
+    let ctx = stringify(
+        Obj.new().str("event", event).str("tool", tool).str("args", args_json).build(),
+    )
+    let shell = "sh"
+    let flag = "-c"
+    if os_name() == "windows" {
+        shell = "cmd"
+        flag = "/c"
+    }
+    return match run_with_input(shell, [flag, hook.command], ctx) {
+        Ok(out) -> out,
+        Err(e) -> Output { code: 0, stdout: "", stderr: e.message },
+    }
+}

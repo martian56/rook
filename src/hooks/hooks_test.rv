@@ -1,0 +1,62 @@
+import std/string
+import std/json { parse, JsonValue }
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./hooks" { Hook, hooks_from, hooks_for, run_pre_tool }
+
+const CONFIG: String = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\"}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
+
+fun _section() -> JsonValue {
+    return match parse(CONFIG) {
+        Ok(j) -> j,
+        Err(e) -> JsonValue.Null,
+    }
+}
+
+fun test_hooks_from_reads_events_and_defaults_match() {
+    let hs = hooks_from(_section())
+    // Two pre-tool (one with a match, one defaulting to *) and one turn-end;
+    // the post-tool entry has no command, so it is dropped.
+    assert_eq_int(hs.len(), 3)
+    let i = 0
+    let starred = 0
+    while i < hs.len() {
+        if hs[i].command == "b" {
+            assert_eq_str(hs[i].match_glob, "*")
+        }
+        if hs[i].match_glob == "*" {
+            starred = starred + 1
+        }
+        i = i + 1
+    }
+    assert_eq_int(starred, 2)
+}
+
+fun test_hooks_for_filters_by_event_and_match() {
+    let hooks = [
+        Hook { event: "pre-tool", match_glob: "write_file", command: "a" },
+        Hook { event: "pre-tool", match_glob: "*", command: "b" },
+        Hook { event: "post-tool", match_glob: "*", command: "c" },
+    ]
+    // write_file matches the exact glob and the wildcard.
+    assert_eq_int(hooks_for(hooks, "pre-tool", "write_file").len(), 2)
+    // read_file matches only the wildcard.
+    assert_eq_int(hooks_for(hooks, "pre-tool", "read_file").len(), 1)
+    // A different event.
+    assert_eq_int(hooks_for(hooks, "post-tool", "read_file").len(), 1)
+    // No hook is bound to turn-end.
+    assert_eq_int(hooks_for(hooks, "turn-end", "").len(), 0)
+}
+
+fun test_pre_tool_hook_blocks_on_nonzero_exit() {
+    // A non-zero exit blocks; exit 0 does not. "exit N" runs in both sh and
+    // cmd, so this holds on every platform.
+    let blocker = [Hook { event: "pre-tool", match_glob: "*", command: "exit 7" }]
+    assert_true(run_pre_tool(blocker, "write_file", "{}").starts_with("blocked by a pre-tool hook"))
+
+    let passer = [Hook { event: "pre-tool", match_glob: "*", command: "exit 0" }]
+    assert_eq_str(run_pre_tool(passer, "write_file", "{}"), "")
+
+    // With no hooks, nothing ever blocks.
+    let none: List<Hook> = []
+    assert_eq_str(run_pre_tool(none, "write_file", "{}"), "")
+}
