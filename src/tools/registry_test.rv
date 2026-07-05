@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
 import "github.com/martian56/aviary/message" { ToolCall }
-import "./registry" { tools, needs_approval, dispatch, label }
+import "./registry" { tools, needs_approval, call_needs_approval, dispatch, label }
 
 fun call(name: String, args: String) -> ToolCall {
     return ToolCall { id: "1", name, arguments: args }
@@ -32,6 +32,13 @@ fun test_approval_policy() {
     assert_false(needs_approval("list_dir"))
     assert_false(needs_approval("grep"))
     assert_false(needs_approval("use_skill"))
+}
+
+fun test_call_approval_policy_gates_sensitive_web_fetches() {
+    assert_false(call_needs_approval(call("web_fetch", "{\"url\":\"https://8.8.8.8/dns-query\"}")))
+    assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://127.0.0.1:11434\"}")))
+    assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://169.254.169.254/\"}")))
+    assert_true(call_needs_approval(call("run_command", "{\"command\":\"rvpm test\"}")))
 }
 
 fun test_label_reads_arguments() {

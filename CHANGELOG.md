@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.4
+
+- Required approval before `web_fetch` can read localhost, private network, link-local, shared-address, benchmark, metadata, or hostnames resolving to those targets.
+
 ## 0.3.3
 
 - Rejected unsafe plugin names before remove and update commands resolve plugin paths.

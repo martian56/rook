@@ -12,7 +12,7 @@ import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
 import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
-import "../tools/registry" { tools, needs_approval, dispatch_cancelable, label }
+import "../tools/registry" { tools, needs_approval, call_needs_approval, dispatch_cancelable, label }
 import "../tools/preview" { change_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
@@ -263,7 +263,7 @@ fun _ask_user(st: AgentState, call: ToolCall) -> String {
 fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
     // Plan mode blocks every mutating tool outright, even if one slips into
     // a request; the model should propose the change, not make it.
-    if st.plan() && needs_approval(call.name) {
+    if st.plan() && call_needs_approval(call) {
         return "Plan mode is on, so ${call.name} is unavailable. Describe this change as part of your plan instead; the user will turn plan mode off to carry it out."
     }
     // A pre-tool hook may veto the call before anything runs; its reason goes
@@ -288,7 +288,7 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
     if denied != "" {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or ask the user."
     }
-    if !needs_approval(call.name) {
+    if !call_needs_approval(call) {
         return _do(st.token(), call, "")
     }
     // The diff this call would make, shown in the approval prompt and, on

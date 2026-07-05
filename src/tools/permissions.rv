@@ -157,6 +157,12 @@ fun subject_of(call: ToolCall) -> String {
     if n == "use_skill" {
         return arg(a, "name")
     }
+    if n == "web_fetch" {
+        return arg(a, "url")
+    }
+    if n == "web_search" {
+        return arg(a, "query")
+    }
     return ""
 }
 

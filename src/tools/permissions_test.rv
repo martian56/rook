@@ -81,4 +81,16 @@ fun test_subjects_per_tool() {
     assert_eq_str(subject_of(ks), "4")
     let au = ToolCall { id: "4", name: "ask_user", arguments: "{\"question\":\"q\"}" }
     assert_eq_str(subject_of(au), "")
+    let fetch = ToolCall {
+        id: "5",
+        name: "web_fetch",
+        arguments: "{\"url\":\"http://127.0.0.1:11434/api/tags\"}",
+    }
+    assert_eq_str(subject_of(fetch), "http://127.0.0.1:11434/api/tags")
+    let search = ToolCall {
+        id: "6",
+        name: "web_search",
+        arguments: "{\"query\":\"rook docs\"}",
+    }
+    assert_eq_str(subject_of(search), "rook docs")
 }

@@ -9,6 +9,7 @@ import "./args" { arg }
 import "./git" { git_commit_preview }
 import "./multiedit" { apply_edits, parse_edits }
 import "./paths" { resolve_path }
+import "./web" { web_fetch_approval_detail }
 import "../ui/diff" { unified }
 
 // The unified diff for a mutating file call, or the message for a commit,
@@ -54,6 +55,9 @@ fun change_preview(call: ToolCall) -> String {
             return ""
         }
         return unified(old, outcome.text)
+    }
+    if call.name == "web_fetch" {
+        return web_fetch_approval_detail(arg(call.arguments, "url"))
     }
     return ""
 }
