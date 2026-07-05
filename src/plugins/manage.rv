@@ -8,7 +8,7 @@ import std/env { os_name }
 import std/fs { is_dir, list_dir }
 import std/process { run }
 import "./model" { Plugin, installed_plugins, plugin_path }
-import "./install" { install_plugin, plugin_source }
+import "./install" { install_plugin, plugin_source, valid_plugin_name }
 import "./market" { browse_text, resolve_name }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
@@ -122,6 +122,9 @@ fun remove(name: String) -> String {
     if name == "" {
         return "usage: /plugins remove <name>"
     }
+    if !valid_plugin_name(name) {
+        return "error: unsafe plugin name: ${name}"
+    }
     let path = plugin_path(name)
     if path == "" || !is_dir(path) {
         return "no plugin named ${name}; /plugins list shows what is installed"
@@ -133,6 +136,9 @@ fun remove(name: String) -> String {
 fun update(name: String) -> String {
     if name == "" {
         return "usage: /plugins update <name>"
+    }
+    if !valid_plugin_name(name) {
+        return "error: unsafe plugin name: ${name}"
     }
     let path = plugin_path(name)
     if path == "" || !is_dir(path) {

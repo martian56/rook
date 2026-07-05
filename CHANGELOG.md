@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- Rejected unsafe plugin names before remove and update commands resolve plugin paths.
+
 ## 0.3.2
 
 - Rejected unsafe plugin install directory names before cloning or deleting plugin paths.
