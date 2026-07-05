@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.4
+
+- Added a `/permissions` menu for toggling common tool grants in global user settings.
+
 ## 0.2.3
 
 - Changed `git_commit` to commit only staged changes, and show the status, any untracked files (which are never committed), and the exact staged diff in the approval preview.

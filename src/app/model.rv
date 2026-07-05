@@ -76,6 +76,9 @@ struct Chat {
     // The /help overlay: open, and the highlighted command.
     help_open: Bool,
     help_sel: Int,
+    // The /permissions panel: open, and the highlighted grant.
+    permissions_open: Bool,
+    permissions_sel: Int,
     // Running subagent blocks in the transcript (name, header index, tool
     // count), so their rows group and collapse.
     open_agents: List<AgentBlock>,
@@ -148,6 +151,8 @@ fun chat_init() -> Chat {
         slash_dismissed: false,
         help_open: false,
         help_sel: 0,
+        permissions_open: false,
+        permissions_sel: 0,
         open_agents,
         shells_open: false,
         shells_sel: 0,

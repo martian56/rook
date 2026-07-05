@@ -1,0 +1,56 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import "./permission_menu" { permission_grants, permission_states_from_allow, toggle_grant_rules, allow_rules_from_settings, settings_with_allow }
+
+fun test_permission_grants_cover_common_mutating_tools() {
+    let grants = permission_grants()
+    assert_true(grants.len() == 5)
+    assert_eq_str(grants[0].name, "File edits")
+    assert_true(_has(grants[0].rules, "write_file"))
+    assert_true(_has(grants[0].rules, "edit_file"))
+    assert_true(_has(grants[0].rules, "multi_edit"))
+    assert_true(_has(grants[4].rules, "mcp__*"))
+}
+
+fun test_states_mark_a_grant_enabled_only_when_all_rules_exist() {
+    let states = permission_states_from_allow(["write_file", "edit_file", "multi_edit"])
+    assert_true(states[0].enabled)
+    assert_true(!states[1].enabled)
+}
+
+fun test_toggle_grant_adds_missing_rules_and_removes_enabled_grant() {
+    let grant = permission_grants()[0]
+    let on = toggle_grant_rules(["read_shell", "write_file"], grant)
+    assert_true(_has(on, "read_shell"))
+    assert_true(_has(on, "write_file"))
+    assert_true(_has(on, "edit_file"))
+    assert_true(_has(on, "multi_edit"))
+    let off = toggle_grant_rules(on, grant)
+    assert_true(_has(off, "read_shell"))
+    assert_true(!_has(off, "write_file"))
+    assert_true(!_has(off, "edit_file"))
+    assert_true(!_has(off, "multi_edit"))
+}
+
+fun test_settings_merge_preserves_other_sections_and_deny_rules() {
+    let existing = "{\"model\":\"openrouter/x\",\"permissions\":{\"deny\":[\"run_command(rm *)\"],\"allow\":[\"read_shell\"]},\"mcp\":{\"servers\":[]}}"
+    let text = settings_with_allow(existing, ["write_file", "edit_file"])
+    let allow = allow_rules_from_settings(text)
+    assert_true(_has(allow, "write_file"))
+    assert_true(_has(allow, "edit_file"))
+    assert_true(!_has(allow, "read_shell"))
+    assert_true(text.contains("\"model\":\"openrouter/x\""))
+    assert_true(text.contains("run_command(rm *)"))
+    assert_true(text.contains("\"mcp\""))
+}
+
+fun _has(xs: List<String>, x: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == x {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}

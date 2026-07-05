@@ -19,6 +19,7 @@ import "../config/catalog" { catalog, filter_catalog }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
+import "../tools/permission_menu" { permission_grant_states }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
 import "../config/sessions" { SessionMeta }
@@ -61,7 +62,7 @@ fun chat_view(m: Chat, f: Frame) {
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[3 + off], f)
-    let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.shells_open && !m.sessions_open
+    let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.permissions_open && !m.shells_open && !m.sessions_open
     if idle && !m.mention_dismissed && m.mention_matches.len() > 0 && current_mention(m.entry.value).active {
         _mention_menu(m, input_area, f)
     } else {
@@ -83,6 +84,9 @@ fun chat_view(m: Chat, f: Frame) {
     }
     if m.help_open {
         _help_menu(m, f)
+    }
+    if m.permissions_open {
+        _permissions_panel(m, f)
     }
     if m.shells_open {
         if m.shells_focus > 0 {
@@ -501,6 +505,92 @@ fun _help_menu(m: Chat, f: Frame) {
         inner.x + 1,
         inner.y + count + 1,
         "esc interrupts a turn · ctrl+c twice quits · pageup/pagedown scroll",
+        m.theme.dim,
+    )
+    return
+}
+
+// The /permissions overlay: common allow rules written to global user
+// settings. Deny rules stay untouched and still win at runtime.
+fun _permissions_panel(m: Chat, f: Frame) {
+    let full = f.area()
+    let items = permission_grant_states()
+    let count = items.len()
+    if count < 1 {
+        count = 1
+    }
+    if count > full.h - 6 {
+        count = full.h - 6
+    }
+    let h = count + 4
+    let w = 78
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Permissions  (space or enter, esc)").style(m.theme.modal).title_style(
+        m.theme.modal.bold(),
+    )
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    if items.len() == 0 {
+        f.buf.set_string(inner.x + 1, inner.y, "(no permission grants)", m.theme.dim)
+        return
+    }
+    let sel = m.permissions_sel
+    if sel >= items.len() {
+        sel = items.len() - 1
+    }
+    let top = 0
+    if sel >= count {
+        top = sel - count + 1
+    }
+    let r = 0
+    while r < count && top + r < items.len() {
+        let it = items[top + r]
+        let mark = "[ ]"
+        if it.enabled {
+            mark = "[x]"
+        }
+        let name = "${mark} ${it.name}"
+        while name.length() < 24 {
+            name = name.concat(" ")
+        }
+        let desc = it.desc
+        let avail = inner.w - name.length() - 3
+        if avail <= 0 {
+            desc = ""
+        } else {
+            if desc.length() > avail {
+                desc = desc.substring(0, avail)
+            }
+        }
+        let row = "${name}  ${desc}"
+        if top + r == sel {
+            while row.length() < inner.w - 1 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+        } else {
+            let sty = m.theme.text
+            if it.enabled {
+                sty = m.theme.accent
+            }
+            let cx = f.buf.set_string(inner.x + 1, inner.y + r, name, sty)
+            f.buf.set_string(cx + 2, inner.y + r, desc, m.theme.dim)
+        }
+        r = r + 1
+    }
+    f.buf.set_string(
+        inner.x + 1,
+        inner.y + count + 1,
+        "saved in ~/.agents/settings.json; deny rules stay in place",
         m.theme.dim,
     )
     return

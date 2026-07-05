@@ -24,6 +24,7 @@ import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
 import "../tools/shells" { list_shells, kill_all_shells }
 import "../tools/todos" { clear_todos }
+import "../tools/permission_menu" { permission_grant_states, toggle_permission_grant }
 import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt }
 import "../mcp/command" { McpInvoke, parse_invoke }
@@ -271,6 +272,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     if m.help_open {
         return _help_key(m, k)
+    }
+    if m.permissions_open {
+        return _permissions_key(m, k)
     }
     if m.sessions_open {
         return _sessions_key(m, k)
@@ -659,6 +663,56 @@ fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
+// Navigate the /permissions panel. Space or enter toggles the highlighted
+// grant in the user's global ~/.agents/settings.json file.
+fun _permissions_key(m: Chat, k: Key) -> Step<Chat> {
+    let items = permission_grant_states()
+    if items.len() == 0 {
+        match k {
+            Esc -> {
+                m.permissions_open = false
+            },
+            _ -> {},
+        }
+        return next(m)
+    }
+    if m.permissions_sel >= items.len() {
+        m.permissions_sel = items.len() - 1
+    }
+    match k {
+        Up -> {
+            if m.permissions_sel > 0 {
+                m.permissions_sel = m.permissions_sel - 1
+            }
+        },
+        Down -> {
+            if m.permissions_sel < items.len() - 1 {
+                m.permissions_sel = m.permissions_sel + 1
+            }
+        },
+        Enter -> {
+            _toggle_permission(m)
+        },
+        Char(c) -> {
+            if c == " " {
+                _toggle_permission(m)
+            }
+        },
+        Esc -> {
+            m.permissions_open = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
+fun _toggle_permission(m: Chat) {
+    let msg = toggle_permission_grant(m.permissions_sel)
+    m.entries.push(Entry.Notice(msg))
+    m.scroll_up = 0
+    return
+}
+
 // Navigate the /help menu: arrows move over every command, enter runs the
 // highlighted one, esc closes.
 fun _help_key(m: Chat, k: Key) -> Step<Chat> {
@@ -836,6 +890,11 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         Shells -> {
             m.shells_open = true
             m.shells_sel = 0
+            return next(m)
+        },
+        Permissions -> {
+            m.permissions_open = true
+            m.permissions_sel = 0
             return next(m)
         },
         Sessions -> {

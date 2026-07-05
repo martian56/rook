@@ -25,7 +25,10 @@ fun test_glob_matching() {
 fun test_rule_shapes() {
     assert_true(rule_matches("run_command", "run_command", "anything"))
     assert_true(rule_matches("run_command(rvpm *)", "run_command", "rvpm build"))
+    assert_true(rule_matches("mcp__*", "mcp__fs__write", ""))
+    assert_true(rule_matches("mcp__fs__*(delete *)", "mcp__fs__remove", "delete a"))
     assert_true(!rule_matches("run_command(rvpm *)", "run_command", "rm -rf x"))
+    assert_true(!rule_matches("mcp__fs__*", "mcp__git__status", ""))
     assert_true(!rule_matches("run_command(rvpm *)", "write_file", "rvpm build"))
     assert_true(!rule_matches("broken(", "broken", "x"))
 }
