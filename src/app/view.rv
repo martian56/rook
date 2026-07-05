@@ -868,7 +868,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     f.buf.set_string(area.x + 3, below, "a coding agent for your terminal", m.theme.dim)
     f.buf.set_string(area.x + 3, below + 1, "model: ${m.model}", m.theme.dim)
 
-    let tips = "Ask anything below and I will stream the answer.\n  /model switch model · /key set an API key · /clear start over · /help every command\n  Esc interrupts a turn · ctrl+c twice to quit."
+    let tips = "Esc interrupts a turn · ctrl+c twice to quit."
     if m.api_key == "" && provider_of(m.model) != "ollama" {
         let env = key_env(provider_of(m.model))
         let hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
