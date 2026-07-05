@@ -4,7 +4,7 @@
 
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
-import "../ui/transcript" { Entry, AgentBlock }
+import "../ui/transcript" { Entry, AgentBlock, EntryLines, empty_entry_lines }
 import "../ui/theme" { Theme }
 import "../ui/themes" { startup_theme }
 import "../ui/depth" { themed }
@@ -16,6 +16,13 @@ import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_th
 
 struct Chat {
     entries: List<Entry>,
+    // Per-entry rendered-line cache, index-aligned with entries. Kept aligned
+    // by set_entry/replace_entries and the insert/remove helpers; padded by
+    // ensure_cache_len before each render. cache_width/cache_theme are what it
+    // was built for, so a resize or theme change invalidates it wholesale.
+    line_cache: List<EntryLines>,
+    cache_width: Int,
+    cache_theme: String,
     entry: TextInput,
     agent: AgentState,
     // A turn is in flight (the goroutine is streaming).
@@ -98,12 +105,16 @@ struct Chat {
 fun chat_init() -> Chat {
     let model = resolve_model()
     let entries: List<Entry> = []
+    let line_cache: List<EntryLines> = []
     let open_agents: List<AgentBlock> = []
     let no_choices: List<String> = []
     let no_matches: List<String> = []
     let no_sessions: List<SessionMeta> = []
     return Chat {
         entries,
+        line_cache,
+        cache_width: 0,
+        cache_theme: "",
         entry: TextInput.new(),
         agent: AgentState.new(),
         active: false,
@@ -160,5 +171,51 @@ fun set_model(m: Chat, model: String) {
     m.model = model
     m.api_key = resolve_key(model)
     save_model(model)
+    return
+}
+
+// Pad the line cache to the number of entries, so appended entries (which go
+// straight onto m.entries) get an invalid slot before the next render. Called
+// on every render path and by the mutation helpers.
+fun ensure_cache_len(m: Chat) {
+    while m.line_cache.len() < m.entries.len() {
+        m.line_cache.push(empty_entry_lines())
+    }
+    return
+}
+
+// Mark every cache slot invalid: used when the width or theme changes, so the
+// whole transcript is re-wrapped once at the new size or palette.
+fun invalidate_all_cache(m: Chat) {
+    let i = 0
+    while i < m.line_cache.len() {
+        m.line_cache[i] = empty_entry_lines()
+        i = i + 1
+    }
+    return
+}
+
+// Replace an entry in place and invalidate just its cache slot (the streaming
+// bubble and a finishing agent header take this path).
+fun set_entry(m: Chat, i: Int, e: Entry) {
+    m.entries[i] = e
+    ensure_cache_len(m)
+    if i >= 0 && i < m.line_cache.len() {
+        m.line_cache[i] = empty_entry_lines()
+    }
+    return
+}
+
+// Swap the whole transcript (session resume, /clear) and reset the cache to a
+// matching run of invalid slots.
+fun replace_entries(m: Chat, es: List<Entry>) {
+    m.entries = es
+    let cache: List<EntryLines> = []
+    let i = 0
+    while i < es.len() {
+        cache.push(empty_entry_lines())
+        i = i + 1
+    }
+    m.line_cache = cache
     return
 }

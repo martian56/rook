@@ -26,75 +26,130 @@ struct AgentBlock {
     tools: Int,
 }
 
+// One entry's laid-out lines, cached so a finished entry is wrapped once and
+// reused every frame instead of re-wrapped ~22x/second. `valid` false means
+// the slot must be recomputed (a fresh, changed, or invalidated entry).
+struct EntryLines {
+    valid: Bool,
+    lines: List<Line>,
+}
+
+// An empty, invalid cache slot.
+fun empty_entry_lines() -> EntryLines {
+    let none: List<Line> = []
+    return EntryLines { valid: false, lines: none }
+}
+
 // Lay the conversation out as lines wrapped to w columns, styled by the theme.
+// Recomputes everything; assemble_cached is the per-frame path.
 fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
     let out: List<Line> = []
-    let body = w - 2
-    if body < 8 {
-        body = 8
-    }
     let i = 0
     while i < entries.len() {
-        match entries[i] {
-            UserMsg(t) -> {
-                _push_wrapped(out, t, body, "> ", theme.user, theme.user)
-            },
-            BotMsg(t) -> {
-                _push_wrapped(out, t, body, "● ", theme.assistant, theme.text)
-            },
-            ToolMsg(name, result) -> {
-                out.push(
-                    Line.from_spans([Span.styled("● ", theme.tool), Span.styled(name, theme.text.bold())]),
-                )
-                // The first line sits behind the elbow; any further lines
-                // are a diff, colored by their -/+ prefix.
-                let rows = result.lines()
-                let first = ""
-                if rows.len() > 0 {
-                    first = rows[0]
-                }
-                out.push(
-                    Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(first, theme.result)]),
-                )
-                let r = 1
-                while r < rows.len() {
-                    out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
-                    r = r + 1
-                }
-            },
-            Notice(t) -> {
-                out.push(Line.styled("  ${t}", theme.error))
-            },
-            AgentHeader(name, status) -> {
-                out.push(
-                    Line.from_spans(
-                        [
-                            Span.styled("◆ ", theme.assistant),
-                            Span.styled("${name} agent", theme.text.bold()),
-                            Span.styled("  ${status}", theme.dim),
-                        ],
-                    ),
-                )
-            },
-            AgentTool(agent, name, result) -> {
-                out.push(
-                    Line.from_spans([Span.styled("  ● ", theme.tool), Span.styled(name, theme.text.bold())]),
-                )
-                out.push(
-                    Line.from_spans(
-                        [Span.styled("    ⎿  ", theme.result), Span.styled(result, theme.result)],
-                    ),
-                )
-            },
-        }
-        // Rows inside an agent block sit tight; everything else gets a blank
-        // separator.
+        _append(out, entry_lines(entries[i], w, theme))
         if !_binds_to_next(entries, i) {
             out.push(Line.raw(""))
         }
         i = i + 1
     }
     return out
+}
+
+// Assemble the transcript from a per-entry line cache: recompute only the
+// slots marked invalid (a new or changed entry), reuse the rest. `cache` is
+// index-aligned with `entries` (the caller keeps it so) and is filled in
+// place. Separators are applied here, not cached, so a neighbor changing type
+// costs only the O(1) _binds_to_next check, not a re-wrap.
+fun assemble_cached(
+    entries: List<Entry>,
+    cache: List<EntryLines>,
+    w: Int,
+    theme: Theme,
+) -> List<Line> {
+    let out: List<Line> = []
+    let i = 0
+    while i < entries.len() {
+        if !cache[i].valid {
+            cache[i] = EntryLines { valid: true, lines: entry_lines(entries[i], w, theme) }
+        }
+        _append(out, cache[i].lines)
+        if !_binds_to_next(entries, i) {
+            out.push(Line.raw(""))
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// The styled lines for one entry, without the trailing separator.
+fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
+    let out: List<Line> = []
+    let body = w - 2
+    if body < 8 {
+        body = 8
+    }
+    match entry {
+        UserMsg(t) -> {
+            _push_wrapped(out, t, body, "> ", theme.user, theme.user)
+        },
+        BotMsg(t) -> {
+            _push_wrapped(out, t, body, "● ", theme.assistant, theme.text)
+        },
+        ToolMsg(name, result) -> {
+            out.push(
+                Line.from_spans([Span.styled("● ", theme.tool), Span.styled(name, theme.text.bold())]),
+            )
+            // The first line sits behind the elbow; any further lines are a
+            // diff, colored by their -/+ prefix.
+            let rows = result.lines()
+            let first = ""
+            if rows.len() > 0 {
+                first = rows[0]
+            }
+            out.push(
+                Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(first, theme.result)]),
+            )
+            let r = 1
+            while r < rows.len() {
+                out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
+                r = r + 1
+            }
+        },
+        Notice(t) -> {
+            out.push(Line.styled("  ${t}", theme.error))
+        },
+        AgentHeader(name, status) -> {
+            out.push(
+                Line.from_spans(
+                    [
+                        Span.styled("◆ ", theme.assistant),
+                        Span.styled("${name} agent", theme.text.bold()),
+                        Span.styled("  ${status}", theme.dim),
+                    ],
+                ),
+            )
+        },
+        AgentTool(agent, name, result) -> {
+            out.push(
+                Line.from_spans([Span.styled("  ● ", theme.tool), Span.styled(name, theme.text.bold())]),
+            )
+            out.push(
+                Line.from_spans(
+                    [Span.styled("    ⎿  ", theme.result), Span.styled(result, theme.result)],
+                ),
+            )
+        },
+    }
+    return out
+}
+
+fun _append(out: List<Line>, more: List<Line>) {
+    let i = 0
+    while i < more.len() {
+        out.push(more[i])
+        i = i + 1
+    }
+    return
 }
 
 // The style of one diff line: removals in the error color, additions in

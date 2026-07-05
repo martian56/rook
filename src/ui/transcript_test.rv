@@ -1,7 +1,7 @@
 import std/string
-import std/test { assert_eq_str, assert_true }
+import std/test { assert_eq_str, assert_true, assert_eq_int }
 import "github.com/martian56/plumage/text" { Line }
-import "./transcript" { Entry, build_lines }
+import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached }
 import "./theme" { default_theme }
 
 fun line_text(lines: List<Line>, i: Int) -> String {
@@ -41,4 +41,38 @@ fun test_entries_are_separated_by_blank_lines() {
     let lines = build_lines([Entry.UserMsg("a"), Entry.BotMsg("b")], 40, default_theme())
     assert_eq_str(line_text(lines, 1), "")
     assert_eq_str(line_text(lines, 2), "● b")
+}
+
+fun test_cached_assembly_matches_build_lines_and_fills_the_cache() {
+    let entries = [
+        Entry.UserMsg("a question with several words to wrap"),
+        Entry.BotMsg("an answer with several words to wrap too"),
+        Entry.ToolMsg("Bash(ls)", "one\ntwo"),
+    ]
+    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines(), empty_entry_lines()]
+
+    // The cached path produces exactly the same lines as the direct build.
+    let direct = build_lines(entries, 20, default_theme())
+    let cached = assemble_cached(entries, cache, 20, default_theme())
+    assert_eq_int(cached.len(), direct.len())
+    assert_eq_str(line_text(cached, 0), line_text(direct, 0))
+    assert_eq_str(line_text(cached, 2), line_text(direct, 2))
+
+    // Every slot is now valid, so a second assembly reuses them and matches.
+    assert_true(cache[0].valid)
+    assert_true(cache[2].valid)
+    let again = assemble_cached(entries, cache, 20, default_theme())
+    assert_eq_int(again.len(), direct.len())
+    assert_eq_str(line_text(again, 1), line_text(direct, 1))
+}
+
+fun test_invalid_slot_is_recomputed() {
+    let entries = [Entry.UserMsg("first"), Entry.BotMsg("second")]
+    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines()]
+    let first = assemble_cached(entries, cache, 40, default_theme())
+    // Invalidate one slot; the next assembly recomputes it and stays correct.
+    cache[1] = empty_entry_lines()
+    let redo = assemble_cached(entries, cache, 40, default_theme())
+    assert_eq_int(redo.len(), first.len())
+    assert_true(cache[1].valid)
 }
