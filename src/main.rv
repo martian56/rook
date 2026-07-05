@@ -10,8 +10,11 @@ import "github.com/martian56/plumage" { App, run }
 import "./app/model" { Chat, chat_init }
 import "./app/update" { chat_update }
 import "./app/view" { chat_view }
+import "./hooks/hooks" { fire_hooks }
 
 fun main() {
+    // Let session-start hooks run before the UI takes over the terminal.
+    fire_hooks("session-start", "", "")
     let app = App { init: chat_init, update: chat_update, view: chat_view, tick_ms: 45 }
     if !run<Chat>(app) {
         println("rook needs an interactive terminal; run it from a real console")
