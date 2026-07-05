@@ -312,8 +312,9 @@ read-only and run automatically; output is truncated like other tools.
 
 rook is git-aware. `git_status` and `git_diff` (read-only, auto-run) let
 the model see the branch and the working tree. `git_commit` commits only
-changes that are already staged, and its approval prompt shows the status
-plus the staged diff before it runs.
+changes that are already staged, and its approval prompt shows the
+status, any untracked files (which it never commits), and the exact
+staged diff before it runs.
 
 ## Plugins
 

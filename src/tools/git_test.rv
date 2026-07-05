@@ -1,4 +1,6 @@
 import std/string
+import std/fs { write, remove_file }
+import std/process { run }
 import std/test { assert_true }
 import "./git" { git_status, git_diff, git_commit, git_commit_preview }
 
@@ -30,4 +32,39 @@ fun test_commit_preview_shows_message_status_and_staged_diff() {
     assert_true(p.contains("test message"))
     assert_true(p.contains("status:"))
     assert_true(p.contains("staged diff:"))
+}
+
+// Stage a scratch file and leave another untracked, then confirm the preview
+// reflects exactly what would be committed. The index and files are restored
+// BEFORE any assertion, so a failed assertion never leaves the repo dirty,
+// and git_commit is never called with a real message (which would commit).
+// The scratch names avoid the _rook_* gitignore so they are visible to git.
+fun test_preview_reflects_staged_and_surfaces_untracked() {
+    write("zz_rook_staged_probe.txt", "STAGED_PROBE")
+    write("zz_rook_untracked_probe.txt", "UNTRACKED_PROBE")
+    _run_git(["add", "--", "zz_rook_staged_probe.txt"])
+
+    let staged_diff = git_diff("true", "")
+    let preview = git_commit_preview("scratch")
+
+    _run_git(["reset", "-q", "HEAD", "--", "zz_rook_staged_probe.txt"])
+    remove_file("zz_rook_staged_probe.txt")
+    remove_file("zz_rook_untracked_probe.txt")
+
+    // The staged file is in the staged diff; the untracked one is not.
+    assert_true(staged_diff.contains("zz_rook_staged_probe.txt"))
+    assert_true(!staged_diff.contains("zz_rook_untracked_probe.txt"))
+    // The preview shows the staged file and surfaces the untracked one as
+    // something that will not be committed.
+    assert_true(preview.contains("zz_rook_staged_probe.txt"))
+    assert_true(preview.contains("untracked"))
+    assert_true(preview.contains("zz_rook_untracked_probe.txt"))
+}
+
+fun _run_git(args: List<String>) {
+    match run("git", args) {
+        Ok(o) -> {},
+        Err(e) -> {},
+    }
+    return
 }

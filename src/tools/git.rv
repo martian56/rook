@@ -1,7 +1,10 @@
 // Git helpers presented as clean tools. git_status and git_diff read the
 // working tree; git_commit commits only what is already staged. Git is invoked
 // directly (not through the shell) so arguments and the multi-line message
-// need no quoting: the message is fed to `git commit -F -` on stdin.
+// need no quoting: the message is fed to `git commit -F -` on stdin. The
+// commit approval preview shows the staged diff that will be committed and
+// surfaces any untracked files, which are never committed, so nothing is a
+// surprise at approval time.
 
 import std/string
 import std/process { run, run_with_input, Output }
@@ -15,16 +18,11 @@ fun git_status() -> String {
     if br.code != 0 {
         return "error: not a git repository (or git is unavailable): ${br.stderr.trim()}"
     }
-    let branch = br.stdout.trim()
-    let st = _git(["status", "--short"])
-    if st.code != 0 {
-        return "error: ${st.stderr.trim()}"
+    let body = _status_body()
+    if body.starts_with("error:") {
+        return body
     }
-    let body = st.stdout.trim()
-    if body == "" {
-        return "On branch ${branch}\n(clean working tree)"
-    }
-    return "On branch ${branch}\n${body}"
+    return "On branch ${br.stdout.trim()}\n${body}"
 }
 
 // The working-tree diff. staged "true" diffs the index; a non-empty path
@@ -38,26 +36,16 @@ fun git_diff(staged: String, path: String) -> String {
         args.push("--")
         args.push(path)
     }
-    let d = _git(args)
-    if d.code != 0 {
-        return "error: ${d.stderr.trim()}"
-    }
-    let body = d.stdout
-    if body.trim() == "" {
-        return "(no changes)"
-    }
-    if body.length() > MAX_DIFF {
-        return "${body.substring(0, MAX_DIFF)}\n… (diff truncated)"
-    }
-    return body
+    return _render_diff(args, "(no changes)")
 }
 
-// A commit approval preview: message, status, and the exact staged diff that
-// git_commit will commit.
+// A commit approval preview: the message, the working-tree status, a note of
+// any untracked files (which will not be committed), and the exact staged
+// diff that git_commit will commit.
 fun git_commit_preview(message: String) -> String {
-    let status = _status_short()
-    let staged = _staged_diff()
-    return "message:\n${message.trim()}\n\nstatus:\n${status}\n\nstaged diff:\n${staged}"
+    let status = _status_body()
+    let staged = _render_diff(["diff", "--cached"], "(no staged changes)")
+    return "message:\n${message.trim()}\n\nstatus:\n${status}${_untracked_note()}\n\nstaged diff:\n${staged}"
 }
 
 // Commit only the current index. Mutating: the turn gates it through approval,
@@ -83,7 +71,10 @@ fun git_commit(message: String) -> String {
     return "committed:\n${out.stdout.trim()}"
 }
 
-fun _status_short() -> String {
+// The porcelain status body, shared by git_status (which adds the branch
+// line) and the commit preview: an error, the clean-tree message, or the
+// short status.
+fun _status_body() -> String {
     let st = _git(["status", "--short"])
     if st.code != 0 {
         return "error: ${st.stderr.trim()}"
@@ -95,19 +86,37 @@ fun _status_short() -> String {
     return body
 }
 
-fun _staged_diff() -> String {
-    let d = _git(["diff", "--cached"])
+// Render a diff for `args`: an error, `empty_msg` when there is nothing, or
+// the diff truncated at MAX_DIFF. Shared by git_diff and the staged preview
+// so the truncation marker and empty handling stay consistent.
+fun _render_diff(args: List<String>, empty_msg: String) -> String {
+    let d = _git(args)
     if d.code != 0 {
         return "error: ${d.stderr.trim()}"
     }
     let body = d.stdout
     if body.trim() == "" {
-        return "(no staged changes)"
+        return empty_msg
     }
     if body.length() > MAX_DIFF {
-        return "${body.substring(0, MAX_DIFF)}\n... (diff truncated)"
+        return "${body.substring(0, MAX_DIFF)}\n… (diff truncated)"
     }
     return body
+}
+
+// A note listing untracked files, when any. git_commit only commits the
+// index, so these are never committed; surfacing them lets the user notice a
+// new file they meant to stage rather than have it silently left out.
+fun _untracked_note() -> String {
+    let u = _git(["ls-files", "--others", "--exclude-standard"])
+    if u.code != 0 {
+        return ""
+    }
+    let body = u.stdout.trim()
+    if body == "" {
+        return ""
+    }
+    return "\n\nuntracked (not committed; stage them to include):\n${body}"
 }
 
 fun _git(args: List<String>) -> Output {
