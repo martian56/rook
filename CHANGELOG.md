@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- Rejected unsafe plugin install directory names before cloning or deleting plugin paths.
+
 ## 0.3.1
 
 - Replaced the welcome screen's ASCII wordmark with the rook logo drawn as colored terminal art, sized to the terminal.
