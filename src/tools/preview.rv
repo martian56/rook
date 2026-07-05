@@ -6,6 +6,7 @@ import std/string
 import std/fs { read, exists }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./args" { arg }
+import "./multiedit" { apply_edits, parse_edits }
 import "../ui/diff" { unified }
 
 // The unified diff for a mutating file call, or the message for a commit,
@@ -33,6 +34,15 @@ fun change_preview(call: ToolCall) -> String {
         let before = old.substring(0, at)
         let after = old.substring(at + from.length(), old.length())
         return unified(old, "${before}${arg(call.arguments, "new_text")}${after}")
+    }
+    if call.name == "multi_edit" {
+        let path = arg(call.arguments, "path")
+        let old = _read_opt(path)
+        let outcome = apply_edits(old, parse_edits(call.arguments))
+        if !outcome.ok {
+            return ""
+        }
+        return unified(old, outcome.text)
     }
     return ""
 }

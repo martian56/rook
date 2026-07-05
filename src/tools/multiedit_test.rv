@@ -1,0 +1,84 @@
+import std/string
+import std/fs { write, read, exists, remove_file }
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./multiedit" { Edit, EditOutcome, apply_edits, parse_edits, multi_edit }
+
+fun test_apply_edits_applies_in_order() {
+    let edits = [Edit { old_text: "one", new_text: "1" }, Edit { old_text: "two", new_text: "2" }]
+    let out = apply_edits("one two three", edits)
+    assert_true(out.ok)
+    assert_eq_str(out.text, "1 2 three")
+    assert_eq_int(out.applied, 2)
+}
+
+fun test_apply_edits_sees_earlier_edits() {
+    // The second edit matches text the first produced.
+    let edits = [Edit { old_text: "a", new_text: "b" }, Edit { old_text: "b", new_text: "c" }]
+    let out = apply_edits("a", edits)
+    assert_true(out.ok)
+    assert_eq_str(out.text, "c")
+}
+
+fun test_apply_edits_is_atomic_on_a_miss() {
+    let edits = [
+        Edit { old_text: "here", new_text: "HERE" },
+        Edit { old_text: "absent", new_text: "X" },
+    ]
+    let out = apply_edits("here it is", edits)
+    // The second edit misses, so the whole batch fails and nothing is kept.
+    assert_true(!out.ok)
+    assert_eq_int(out.applied, 1)
+    assert_true(out.text.contains("edit 2"))
+    assert_true(out.text.contains("not found"))
+}
+
+fun test_parse_edits_reads_the_array() {
+    let edits = parse_edits(
+        "{\"path\": \"f.txt\", \"edits\": [{\"old_text\": \"x\", \"new_text\": \"y\"}, {\"old_text\": \"p\", \"new_text\": \"q\"}]}",
+    )
+    assert_eq_int(edits.len(), 2)
+    assert_eq_str(edits[0].old_text, "x")
+    assert_eq_str(edits[1].new_text, "q")
+}
+
+fun test_parse_edits_tolerates_a_missing_array() {
+    assert_eq_int(parse_edits("{\"path\": \"f.txt\"}").len(), 0)
+}
+
+fun test_multi_edit_writes_only_on_full_success() {
+    write("_rook_medit.txt", "alpha beta gamma")
+
+    // A batch with a miss leaves the file untouched.
+    let bad = multi_edit(
+        "{\"path\": \"_rook_medit.txt\", \"edits\": [{\"old_text\": \"alpha\", \"new_text\": \"A\"}, {\"old_text\": \"zzz\", \"new_text\": \"Z\"}]}",
+    )
+    assert_true(bad.starts_with("error:"))
+    assert_eq_str(_read("_rook_medit.txt"), "alpha beta gamma")
+
+    // A batch that all matches is applied and written.
+    let ok = multi_edit(
+        "{\"path\": \"_rook_medit.txt\", \"edits\": [{\"old_text\": \"alpha\", \"new_text\": \"A\"}, {\"old_text\": \"gamma\", \"new_text\": \"G\"}]}",
+    )
+    assert_true(ok.starts_with("applied 2 edits"))
+    assert_eq_str(_read("_rook_medit.txt"), "A beta G")
+
+    remove_file("_rook_medit.txt")
+    return
+}
+
+fun test_multi_edit_needs_a_path_and_edits() {
+    assert_true(multi_edit("{\"edits\": []}").starts_with("error: no path"))
+    assert_true(multi_edit("{\"path\": \"_rook_absent.txt\", \"edits\": []}").contains("no edits"))
+    assert_true(
+        multi_edit(
+            "{\"path\": \"_rook_absent.txt\", \"edits\": [{\"old_text\": \"a\", \"new_text\": \"b\"}]}",
+        ).starts_with("error: no such file"),
+    )
+}
+
+fun _read(path: String) -> String {
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "error: ${e.message}",
+    }
+}

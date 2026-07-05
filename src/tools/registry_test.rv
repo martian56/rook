@@ -8,12 +8,13 @@ fun call(name: String, args: String) -> ToolCall {
 }
 
 fun test_all_tools_are_defined() {
-    assert_eq_int(tools().len(), 20)
+    assert_eq_int(tools().len(), 21)
 }
 
 fun test_approval_policy() {
     assert_true(needs_approval("write_file"))
     assert_true(needs_approval("edit_file"))
+    assert_true(needs_approval("multi_edit"))
     assert_true(needs_approval("run_command"))
     assert_true(needs_approval("run_background"))
     assert_true(needs_approval("kill_shell"))
@@ -40,6 +41,10 @@ fun test_label_reads_arguments() {
         "run_command(rvpm test)",
     )
     assert_eq_str(label(call("grep", "{\"pattern\":\"needle\"}")), "grep(needle)")
+    assert_eq_str(
+        label(call("multi_edit", "{\"path\":\"src/main.rv\",\"edits\":[]}")),
+        "multi_edit(src/main.rv)",
+    )
 }
 
 fun test_dispatch_routes_read_command() {

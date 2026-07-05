@@ -85,8 +85,13 @@ The model can call:
 
 - `read_file`, `list_dir`, `file_tree`, `grep` (read-only, run
   automatically)
-- `write_file`, `edit_file`, `run_command`, `run_background` (mutating,
-  approved by you)
+- `write_file`, `edit_file`, `multi_edit`, `run_command`,
+  `run_background` (mutating, approved by you)
+
+`multi_edit` applies several find-and-replace edits to one file in a
+single call, in order and all or nothing: if any `old_text` is missing,
+nothing is written. A multi-spot change is one approval, and the prompt
+shows the combined diff before you allow it.
 
 `run_background` starts a long-running command (a dev server, a
 watcher, an app rook just built) and returns a shell id immediately

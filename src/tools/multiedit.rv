@@ -1,0 +1,114 @@
+// The multi_edit tool: apply a batch of find-and-replace edits to one file
+// atomically. Each edit replaces the first occurrence of old_text with
+// new_text, in order, so a later edit sees the earlier ones' effects. If any
+// edit's old_text is missing, nothing is written, so a multi-spot change is
+// one approval instead of many, all or nothing.
+//
+// apply_edits and parse_edits are pure so the diff preview and the tool share
+// them and they are tested without touching the filesystem.
+
+import std/string
+import std/fs { read, write, exists }
+import std/json { JsonValue, parse }
+import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
+import "./args" { arg }
+
+struct Edit {
+    old_text: String,
+    new_text: String,
+}
+
+// Apply a batch of edits to the file at `path`, all or nothing. `args_json`
+// is the raw tool arguments: { path, edits: [{ old_text, new_text }, ...] }.
+fun multi_edit(args_json: String) -> String {
+    let path = arg(args_json, "path")
+    if path == "" {
+        return "error: no path given"
+    }
+    let edits = parse_edits(args_json)
+    if edits.len() == 0 {
+        return "error: no edits given; provide an 'edits' array of {old_text, new_text}"
+    }
+    if !exists(path) {
+        return "error: no such file: ${path}"
+    }
+    let content = ""
+    let ok = true
+    match read(path) {
+        Ok(s) -> {
+            content = s
+        },
+        Err(e) -> {
+            ok = false
+            content = e.message
+        },
+    }
+    if !ok {
+        return "error: ${content}"
+    }
+    let outcome = apply_edits(content, edits)
+    if !outcome.ok {
+        return "error: ${outcome.text} in ${path}; no changes written"
+    }
+    let word = "edits"
+    if outcome.applied == 1 {
+        word = "edit"
+    }
+    return match write(path, outcome.text) {
+        Ok(b) -> "applied ${outcome.applied} ${word} to ${path}",
+        Err(e) -> "error: ${e.message}",
+    }
+}
+
+// The outcome of applying edits in memory: on success `text` is the new file
+// content; on failure it is the reason and `applied` is how many succeeded.
+struct EditOutcome {
+    ok: Bool,
+    text: String,
+    applied: Int,
+}
+
+// Apply the edits in order to `content`. Pure: builds the result in memory so
+// the caller only writes on success.
+fun apply_edits(content: String, edits: List<Edit>) -> EditOutcome {
+    let cur = content
+    let i = 0
+    while i < edits.len() {
+        let e = edits[i]
+        if e.old_text == "" {
+            return EditOutcome { ok: false, text: "edit ${i + 1}: old_text is empty", applied: i }
+        }
+        let idx = cur.index_of(e.old_text)
+        if idx < 0 {
+            return EditOutcome { ok: false, text: "edit ${i + 1}: old_text not found", applied: i }
+        }
+        let before = cur.substring(0, idx)
+        let after = cur.substring(idx + e.old_text.length(), cur.length())
+        cur = "${before}${e.new_text}${after}"
+        i = i + 1
+    }
+    return EditOutcome { ok: true, text: cur, applied: edits.len() }
+}
+
+// Read the "edits" array out of a tool call's JSON arguments. An entry needs
+// an old_text; a missing new_text just deletes. Non-array or absent yields [].
+fun parse_edits(args_json: String) -> List<Edit> {
+    let out: List<Edit> = []
+    match parse(args_json) {
+        Ok(j) -> {
+            let arr = as_list(field(j, "edits"))
+            let i = 0
+            while i < arr.len() {
+                out.push(
+                    Edit {
+                        old_text: as_str(field(arr[i], "old_text")),
+                        new_text: as_str(field(arr[i], "new_text")),
+                    },
+                )
+                i = i + 1
+            }
+        },
+        Err(e) -> {},
+    }
+    return out
+}

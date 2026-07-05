@@ -7,6 +7,7 @@ import "github.com/martian56/aviary/message" { ToolDef, ToolCall }
 import "github.com/martian56/aviary/jsonutil" { Obj }
 import "./args" { arg }
 import "./files" { read_file, list_dir, write_file, edit_file }
+import "./multiedit" { multi_edit }
 import "./search" { grep }
 import "./shell" { run_command }
 import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
@@ -115,6 +116,11 @@ fun tools() -> List<ToolDef> {
             ),
         ),
         ToolDef.new(
+            "multi_edit",
+            "Apply several find-and-replace edits to one file in a single call, in order and all-or-nothing (if any old_text is missing, nothing is written). Prefer this over multiple edit_file calls on the same file: it is one approval.",
+            _multi_edit_schema(),
+        ),
+        ToolDef.new(
             "run_command",
             "Run a shell command in the working directory and return its stdout, stderr, and exit code.",
             _schema([Prop { name: "command", desc: "the shell command to run" }]),
@@ -199,7 +205,7 @@ fun tools() -> List<ToolDef> {
 // Every MCP tool is approved, since an external server is not assumed to be
 // read-only.
 fun needs_approval(name: String) -> Bool {
-    return name == "write_file" || name == "edit_file" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit" || is_mcp_tool(
+    return name == "write_file" || name == "edit_file" || name == "multi_edit" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit" || is_mcp_tool(
         name,
     )
 }
@@ -227,6 +233,9 @@ fun dispatch(call: ToolCall) -> String {
     }
     if call.name == "edit_file" {
         return edit_file(arg(a, "path"), arg(a, "old_text"), arg(a, "new_text"))
+    }
+    if call.name == "multi_edit" {
+        return multi_edit(a)
     }
     if call.name == "run_command" {
         return run_command(arg(a, "command"))
@@ -296,7 +305,7 @@ fun label(call: ToolCall) -> String {
     if call.name == "file_tree" {
         return "file_tree(${arg(a, "path")})"
     }
-    if call.name == "write_file" || call.name == "edit_file" {
+    if call.name == "write_file" || call.name == "edit_file" || call.name == "multi_edit" {
         return "${call.name}(${arg(a, "path")})"
     }
     if call.name == "run_command" {
@@ -355,6 +364,34 @@ fun _first_line(msg: String) -> String {
 fun _schema(props: List<Prop>) -> JsonValue {
     let no_optional: List<Prop> = []
     return _schema2(props, no_optional)
+}
+
+// The multi_edit schema: a path plus an array of { old_text, new_text }
+// edits. Built out separately because the array-of-objects shape is beyond
+// the flat string-property schema the other tools use.
+fun _multi_edit_schema() -> JsonValue {
+    let old = Obj.new().str("type", "string").str(
+        "description",
+        "exact text to find; the first occurrence is replaced",
+    ).build()
+    let repl = Obj.new().str("type", "string").str("description", "replacement text").build()
+    let edit_props = Obj.new().set("old_text", old).set("new_text", repl).build()
+    let edit_req: List<JsonValue> = [JsonValue.Str("old_text"), JsonValue.Str("new_text")]
+    let edit_item = Obj.new().str("type", "object").set("properties", edit_props).set(
+        "required",
+        JsonValue.Array(edit_req),
+    ).build()
+    let path = Obj.new().str("type", "string").str("description", "file path to edit").build()
+    let edits = Obj.new().str("type", "array").str("description", "the edits to apply in order").set(
+        "items",
+        edit_item,
+    ).build()
+    let props = Obj.new().set("path", path).set("edits", edits).build()
+    let req: List<JsonValue> = [JsonValue.Str("path"), JsonValue.Str("edits")]
+    return Obj.new().str("type", "object").set("properties", props).set(
+        "required",
+        JsonValue.Array(req),
+    ).build()
 }
 
 // Like _schema, but props in `optional` are added to the schema without

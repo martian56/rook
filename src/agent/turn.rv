@@ -346,7 +346,7 @@ fun _contains(xs: List<String>, name: String) -> Bool {
 // a file change so the transcript displays what changed.
 fun _display(call: ToolCall, result: String) -> String {
     let head = _short(result)
-    if call.name != "write_file" && call.name != "edit_file" {
+    if call.name != "write_file" && call.name != "edit_file" && call.name != "multi_edit" {
         return head
     }
     let nl = result.index_of("\n")
