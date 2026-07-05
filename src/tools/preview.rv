@@ -7,13 +7,14 @@ import std/fs { read, exists }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./args" { arg }
 import "./multiedit" { apply_edits, parse_edits }
+import "./git" { commit_preview }
 import "../ui/diff" { unified }
 
 // The unified diff for a mutating file call, or the message for a commit,
 // "" for anything else (or when the change is a no-op).
 fun change_preview(call: ToolCall) -> String {
     if call.name == "git_commit" {
-        return arg(call.arguments, "message")
+        return "${arg(call.arguments, "message")}\n\n${commit_preview(arg(call.arguments, "paths"))}"
     }
     if call.name == "write_file" {
         let path = arg(call.arguments, "path")

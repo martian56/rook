@@ -42,6 +42,11 @@ fun test_edit_preview_shows_the_replacement_in_place() {
     return
 }
 
+fun test_commit_preview_leads_with_the_message() {
+    let p = change_preview(call("git_commit", "{\"message\":\"my draft message\"}"))
+    assert_true(p.contains("my draft message"))
+}
+
 fun test_other_tools_and_misses_have_no_preview() {
     assert_eq_str(change_preview(call("run_command", "{\"command\":\"ls\"}")), "")
     write("_rook_pv_m.txt", "abc")

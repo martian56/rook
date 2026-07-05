@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_true }
-import "./git" { git_status, git_diff, git_commit }
+import "./git" { git_status, git_diff, git_commit, commit_preview }
 
 // These run against the real repository the suite executes in, which is a
 // git checkout, so only the read-only tools are exercised for real; the
@@ -20,6 +20,25 @@ fun test_diff_runs_without_error() {
 }
 
 fun test_commit_rejects_an_empty_message() {
-    assert_true(git_commit("").starts_with("error:"))
-    assert_true(git_commit("   ").starts_with("error:"))
+    assert_true(git_commit("", "").starts_with("error:"))
+    assert_true(git_commit("   ", "").starts_with("error:"))
+}
+
+// Naming a path that does not exist fails at the staging step and never
+// reaches the commit, so this is safe to run against the live checkout.
+fun test_commit_rejects_unknown_paths() {
+    let r = git_commit("a real message", "definitely_not_a_real_file_zzz")
+    assert_true(r.starts_with("error:"))
+}
+
+// The preview is read-only and describes what a commit would include without
+// running it. Empty paths describes the staged changes; a named path
+// describes that path.
+fun test_commit_preview_is_read_only_and_never_errors() {
+    let staged = commit_preview("")
+    assert_true(!staged.starts_with("error:"))
+    assert_true(staged.length() > 0)
+    let named = commit_preview("definitely_not_a_real_file_zzz")
+    assert_true(!named.starts_with("error:"))
+    assert_true(named.contains("no changes"))
 }

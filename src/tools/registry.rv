@@ -73,8 +73,16 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "git_commit",
-            "Stage all changes and commit with a message you draft, following the repository conventions (check AGENTS.md or recent git log). The user approves before it runs.",
-            _schema([Prop { name: "message", desc: "the full commit message" }]),
+            "Commit with a message you draft, following the repository conventions (check AGENTS.md or recent git log). By default it commits only what is already staged; pass paths to stage exactly those files first. It never stages everything blindly, so untracked or unrelated files are left out unless you name them. The user sees the files and diff and approves before it runs.",
+            _schema2(
+                [Prop { name: "message", desc: "the full commit message" }],
+                [
+                    Prop {
+                        name: "paths",
+                        desc: "comma-separated files to stage and commit; omit to commit the already-staged changes",
+                    },
+                ],
+            ),
         ),
         ToolDef.new(
             "grep",
@@ -269,6 +277,15 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
     }
     if call.name == "set_todos" {
         return set_todos(arg(a, "todos"))
+    }
+    if call.name == "git_status" {
+        return git_status()
+    }
+    if call.name == "git_diff" {
+        return git_diff(arg(a, "staged"), arg(a, "path"))
+    }
+    if call.name == "git_commit" {
+        return git_commit(arg(a, "message"), arg(a, "paths"))
     }
     if call.name == "dispatch" {
         // The turn loop intercepts dispatch before it reaches here; a

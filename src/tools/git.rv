@@ -53,15 +53,28 @@ fun git_diff(staged: String, path: String) -> String {
     return body
 }
 
-// Stage everything and commit `message`. Mutating: the turn gates it through
-// approval, which shows the message first.
-fun git_commit(message: String) -> String {
+// Commit `message`, staging exactly what the caller asked for and nothing
+// more. This never runs `git add -A`: an empty `paths` commits only what is
+// already staged, and a non-empty `paths` (comma-separated) stages just those
+// paths first. Untracked files are included only when named. Mutating: the
+// turn gates it through approval, which shows the message and the files that
+// will be committed.
+fun git_commit(message: String, paths: String) -> String {
     if message.trim() == "" {
         return "error: git_commit needs a message"
     }
-    let add = _git(["add", "-A"])
-    if add.code != 0 {
-        return "error: git add failed: ${add.stderr.trim()}"
+    let want = _split_paths(paths)
+    if want.len() > 0 {
+        let add = _git(_with_paths(["add", "--"], want))
+        if add.code != 0 {
+            return "error: git add failed: ${add.stderr.trim()}"
+        }
+    }
+    // Nothing staged means nothing to commit. Refuse plainly instead of
+    // leaning on a confusing git error, and so an empty `paths` call can
+    // never sweep the whole working tree into a commit.
+    if !_has_staged() {
+        return "error: nothing is staged to commit; stage the changes first or pass paths to git_commit"
     }
     let out = match run_with_input("git", ["commit", "-F", "-"], message) {
         Ok(o) -> o,
@@ -71,6 +84,72 @@ fun git_commit(message: String) -> String {
         return "error: git commit failed: ${out.stdout.trim()} ${out.stderr.trim()}".trim()
     }
     return "committed:\n${out.stdout.trim()}"
+}
+
+// What a git_commit with these paths would actually commit: the file list and
+// a truncated diff, for the approval prompt. Read-only, so it is safe to call
+// before the user approves. An empty `paths` describes the staged changes; a
+// non-empty one describes those paths as they differ from HEAD.
+fun commit_preview(paths: String) -> String {
+    let want = _split_paths(paths)
+    let files = ""
+    let diff = ""
+    if want.len() == 0 {
+        files = _git(["diff", "--cached", "--name-status"]).stdout.trim()
+        if files == "" {
+            return "(nothing staged to commit)"
+        }
+        diff = _git(["diff", "--cached"]).stdout
+    } else {
+        files = _git(_with_paths(["status", "--short", "--"], want)).stdout.trim()
+        if files == "" {
+            return "(no changes in the named paths)"
+        }
+        diff = _git(_with_paths(["diff", "HEAD", "--"], want)).stdout
+    }
+    let head = "Files to commit:\n${files}"
+    let body = diff.trim()
+    if body == "" {
+        return head
+    }
+    if body.length() > MAX_DIFF {
+        body = "${body.substring(0, MAX_DIFF)}\n… (diff truncated)"
+    }
+    return "${head}\n\n${body}"
+}
+
+// True when the index holds staged changes (git diff --cached --quiet exits
+// non-zero when there is something staged).
+fun _has_staged() -> Bool {
+    return _git(["diff", "--cached", "--quiet"]).code != 0
+}
+
+// A comma-separated paths value into clean entries; "" comes back empty.
+fun _split_paths(v: String) -> List<String> {
+    let out: List<String> = []
+    if v.trim() == "" {
+        return out
+    }
+    let parts = v.split(",")
+    let i = 0
+    while i < parts.len() {
+        let p = parts[i].trim()
+        if p != "" {
+            out.push(p)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// `base` followed by each path, as one argument list for git.
+fun _with_paths(base: List<String>, paths: List<String>) -> List<String> {
+    let i = 0
+    while i < paths.len() {
+        base.push(paths[i])
+        i = i + 1
+    }
+    return base
 }
 
 fun _git(args: List<String>) -> Output {
