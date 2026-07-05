@@ -17,6 +17,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "model", desc: "switch model; /model <provider/model> sets one directly" },
         CmdInfo { name: "theme", desc: "switch the color theme" },
         CmdInfo { name: "plan", desc: "toggle plan mode (research and propose, no changes)" },
+        CmdInfo { name: "permissions", desc: "grant common tool permissions" },
         CmdInfo { name: "shells", desc: "list background shells" },
         CmdInfo { name: "sessions", desc: "resume a past conversation" },
         CmdInfo { name: "plugins", desc: "manage plugins (list, browse, add, remove, update)" },
@@ -86,6 +87,7 @@ enum Command {
     ThemePicker,
     ThemeSet(String),
     Shells,
+    Permissions,
     Plan,
     Sessions,
     Plugins(String),
@@ -122,6 +124,9 @@ fun parse_command(text: String) -> Command {
     }
     if text == "/shells" {
         return Command.Shells
+    }
+    if text == "/permissions" {
+        return Command.Permissions
     }
     if text == "/plan" {
         return Command.Plan

@@ -6,11 +6,11 @@
 //       "allow": ["run_command(rvpm *)", "read_shell"],
 //       "deny":  ["run_command(rm *)", "write_file(.github/*)"] } }
 //
-// A rule is a tool name, optionally with a glob in parentheses matched
-// against the call's subject (the command for shell tools, the path for
-// file tools). Deny beats allow; a call neither denies nor allows falls
-// through to the normal approval flow. Rules from the project .agents and
-// the global one both apply.
+// A rule is a tool name, optionally with a glob in the tool name or a glob
+// in parentheses matched against the call's subject (the command for shell
+// tools, the path for file tools). Deny beats allow; a call neither denies
+// nor allows falls through to the normal approval flow. Rules from the
+// project .agents and the global one both apply.
 
 import std/string
 import std/json { JsonValue }
@@ -84,17 +84,18 @@ fun verdict_with_allow_trust(
 }
 
 // Whether one rule covers a call. "tool" alone covers every call of that
-// tool; "tool(glob)" also matches the glob against the subject.
+// tool; "tool(glob)" also matches the glob against the subject. The tool
+// part may contain "*", which is useful for grouped names like mcp__*.
 fun rule_matches(rule: String, tool: String, subject: String) -> Bool {
     let r = rule.trim()
     let open = r.index_of("(")
     if open < 0 {
-        return r == tool
+        return glob_match(r, tool)
     }
     if !r.ends_with(")") {
         return false
     }
-    if r.substring(0, open) != tool {
+    if !glob_match(r.substring(0, open), tool) {
         return false
     }
     let pattern = r.substring(open + 1, r.length() - 1)

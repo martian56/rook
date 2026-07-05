@@ -1,0 +1,338 @@
+// User-facing permission grants for the /permissions menu. The menu writes
+// allow rules only to global user settings, preserving deny rules and the
+// rest of ~/.agents/settings.json.
+
+import std/string
+import std/env { get_env, has_env }
+import std/fs { read, write, exists, create_dir_all }
+import std/json { JsonValue, parse, stringify }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
+
+struct PermissionGrant {
+    name: String,
+    desc: String,
+    rules: List<String>,
+}
+
+struct PermissionGrantState {
+    name: String,
+    desc: String,
+    rules: List<String>,
+    enabled: Bool,
+}
+
+struct SettingsText {
+    text: String,
+    error: String,
+}
+
+fun permission_grants() -> List<PermissionGrant> {
+    return [
+        PermissionGrant {
+            name: "File edits",
+            desc: "write_file, edit_file, and multi_edit",
+            rules: ["write_file", "edit_file", "multi_edit"],
+        },
+        PermissionGrant {
+            name: "Shell commands",
+            desc: "foreground run_command calls",
+            rules: ["run_command"],
+        },
+        PermissionGrant {
+            name: "Background shells",
+            desc: "start and stop long-running commands",
+            rules: ["run_background", "kill_shell"],
+        },
+        PermissionGrant {
+            name: "Git commits",
+            desc: "commit already staged changes",
+            rules: ["git_commit"],
+        },
+        PermissionGrant {
+            name: "MCP tools",
+            desc: "all connected MCP server tools",
+            rules: ["mcp__*"],
+        },
+    ]
+}
+
+fun permission_grant_states() -> List<PermissionGrantState> {
+    return permission_states_from_allow(read_user_allow_rules())
+}
+
+fun permission_states_from_allow(allow: List<String>) -> List<PermissionGrantState> {
+    let out: List<PermissionGrantState> = []
+    let grants = permission_grants()
+    let i = 0
+    while i < grants.len() {
+        out.push(
+            PermissionGrantState {
+                name: grants[i].name,
+                desc: grants[i].desc,
+                rules: grants[i].rules,
+                enabled: grant_enabled(allow, grants[i]),
+            },
+        )
+        i = i + 1
+    }
+    return out
+}
+
+fun toggle_permission_grant(index: Int) -> String {
+    let grants = permission_grants()
+    if index < 0 || index >= grants.len() {
+        return "no permission grant selected"
+    }
+    let loaded = read_user_settings()
+    if loaded.error != "" {
+        return loaded.error
+    }
+    let existing = loaded.text
+    if existing.trim() != "" {
+        match parse(existing) {
+            Ok(j) -> {},
+            Err(e) -> {
+                return "error: ~/.agents/settings.json is not valid JSON"
+            },
+        }
+    }
+    let allow = allow_rules_from_settings(existing)
+    let next_rules = toggle_grant_rules(allow, grants[index])
+    let err = write_user_allow_rules(existing, next_rules)
+    if err != "" {
+        return err
+    }
+    if grant_enabled(next_rules, grants[index]) {
+        return "granted ${grants[index].name}"
+    }
+    return "revoked ${grants[index].name}"
+}
+
+fun read_user_allow_rules() -> List<String> {
+    let loaded = read_user_settings()
+    if loaded.error != "" {
+        let out: List<String> = []
+        return out
+    }
+    return allow_rules_from_settings(loaded.text)
+}
+
+fun allow_rules_from_settings(text: String) -> List<String> {
+    let out: List<String> = []
+    if text.trim() == "" {
+        return out
+    }
+    match parse(text) {
+        Ok(j) -> {
+            return _strings(field(field(j, "permissions"), "allow"))
+        },
+        Err(e) -> {},
+    }
+    return out
+}
+
+fun toggle_grant_rules(allow: List<String>, grant: PermissionGrant) -> List<String> {
+    if grant_enabled(allow, grant) {
+        return _without(allow, grant.rules)
+    }
+    return _with_missing(allow, grant.rules)
+}
+
+fun grant_enabled(allow: List<String>, grant: PermissionGrant) -> Bool {
+    let i = 0
+    while i < grant.rules.len() {
+        if !_contains(allow, grant.rules[i]) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun write_user_allow_rules(existing: String, allow: List<String>) -> String {
+    let root = user_agents_root()
+    if root == "" {
+        return "error: no home directory for ~/.agents/settings.json"
+    }
+    match create_dir_all(root) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "error: could not create ~/.agents: ${e.message}"
+        },
+    }
+    match write("${root}/settings.json", settings_with_allow(existing, allow)) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "error: could not write ~/.agents/settings.json: ${e.message}"
+        },
+    }
+    return ""
+}
+
+fun read_user_settings() -> SettingsText {
+    let path = user_settings_path()
+    if path == "" {
+        return SettingsText { text: "", error: "" }
+    }
+    if !exists(path) {
+        return SettingsText { text: "", error: "" }
+    }
+    return match read(path) {
+        Ok(s) -> SettingsText { text: s, error: "" },
+        Err(e) -> SettingsText {
+            text: "",
+            error: "error: could not read ~/.agents/settings.json: ${e.message}",
+        },
+    }
+}
+
+fun settings_with_allow(existing: String, allow: List<String>) -> String {
+    let doc = Obj.new()
+    let perms = Obj.new()
+    if existing.trim() != "" {
+        match parse(existing) {
+            Ok(j) -> {
+                let ks = j.keys()
+                let i = 0
+                while i < ks.len() {
+                    if ks[i] == "permissions" {
+                        match j.get("permissions") {
+                            Some(p) -> {
+                                let pks = p.keys()
+                                let k = 0
+                                while k < pks.len() {
+                                    if pks[k] != "allow" {
+                                        match p.get(pks[k]) {
+                                            Some(v) -> {
+                                                perms = perms.set(pks[k], v)
+                                            },
+                                            None -> {},
+                                        }
+                                    }
+                                    k = k + 1
+                                }
+                            },
+                            None -> {},
+                        }
+                    } else {
+                        match j.get(ks[i]) {
+                            Some(v) -> {
+                                doc = doc.set(ks[i], v)
+                            },
+                            None -> {},
+                        }
+                    }
+                    i = i + 1
+                }
+            },
+            Err(e) -> {},
+        }
+    }
+    let arr: List<JsonValue> = []
+    let a = 0
+    while a < allow.len() {
+        arr.push(JsonValue.Str(allow[a]))
+        a = a + 1
+    }
+    perms = perms.set("allow", JsonValue.Array(arr))
+    doc = doc.set("permissions", perms.build())
+    return stringify(doc.build())
+}
+
+fun user_agents_root() -> String {
+    let h = _home()
+    if h == "" {
+        return ""
+    }
+    return "${h}/.agents"
+}
+
+fun user_settings_path() -> String {
+    let root = user_agents_root()
+    if root == "" {
+        return ""
+    }
+    return "${root}/settings.json"
+}
+
+fun _read_opt(path: String) -> String {
+    if path == "" {
+        return ""
+    }
+    if !exists(path) {
+        return ""
+    }
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+}
+
+fun _strings(j: JsonValue) -> List<String> {
+    let out: List<String> = []
+    let arr = as_list(j)
+    let i = 0
+    while i < arr.len() {
+        let s = as_str(arr[i])
+        if s != "" {
+            out.push(s)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _with_missing(allow: List<String>, rules: List<String>) -> List<String> {
+    let out: List<String> = []
+    let i = 0
+    while i < allow.len() {
+        if !_contains(out, allow[i]) {
+            out.push(allow[i])
+        }
+        i = i + 1
+    }
+    let r = 0
+    while r < rules.len() {
+        if !_contains(out, rules[r]) {
+            out.push(rules[r])
+        }
+        r = r + 1
+    }
+    return out
+}
+
+fun _without(allow: List<String>, rules: List<String>) -> List<String> {
+    let out: List<String> = []
+    let i = 0
+    while i < allow.len() {
+        if !_contains(rules, allow[i]) && !_contains(out, allow[i]) {
+            out.push(allow[i])
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _contains(xs: List<String>, x: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == x {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}

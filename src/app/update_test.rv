@@ -1,7 +1,10 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
+import "github.com/martian56/perch/keys" { Key }
+import "github.com/martian56/plumage" { Event }
+import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, chat_init }
-import "./update" { apply_events }
+import "./update" { apply_events, chat_update }
 import "../agent/state" { DisplayEvent }
 import "../ui/transcript" { Entry }
 
@@ -75,4 +78,14 @@ fun test_the_dispatch_row_lands_after_the_collapsed_block() {
         ],
     )
     assert_eq_str(tags(m), "|h:explorer:done · 1 tool|t:dispatch(explorer)")
+}
+
+fun test_permissions_command_opens_and_esc_closes_the_panel() {
+    let m = chat_init()
+    m.entry = TextInput.with_value("/permissions")
+    let opened = chat_update(m, Event.KeyPress(Key.Enter)).model
+    assert_true(opened.permissions_open)
+    assert_true(opened.permissions_items.len() == 5)
+    let closed = chat_update(opened, Event.KeyPress(Key.Esc)).model
+    assert_true(!closed.permissions_open)
 }

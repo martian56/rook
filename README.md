@@ -179,6 +179,11 @@ one: the transcript comes back and the model picks up the context.
 Sessions save to `~/.rook/sessions` automatically after each turn;
 `/clear` starts a fresh one and leaves the old one resumable.
 
+`/permissions` opens a toggle menu for common grants like file edits,
+shell commands, background shells, git commits, and MCP tools. Choices
+are saved to your global `~/.agents/settings.json`, not the project, and
+deny rules stay in place.
+
 When a long conversation nears the model's context window, rook
 compacts it: the older turns are summarized into a compact note (by a
 one-off model call) and the recent turns are kept verbatim, so the
@@ -192,7 +197,7 @@ call fails, the conversation is left as is.
 close. The other built-ins: `/clear` (wipe the conversation), `/model`,
 `/theme` (pick a color theme; arrow keys preview it live, and the
 choice is remembered), `/key` (set the current provider's API key),
-`/quit`.
+`/permissions`, `/quit`.
 
 Built-in themes: Rook and Rook Light, Dracula, Gruvbox Dark and Light,
 Nord, Solarized Dark and Light, Catppuccin Mocha and Latte, Tokyo Night.
@@ -275,8 +280,10 @@ when that is the behavior you want.
 
 `permissions` is live: allow rules skip the approval prompt for calls
 you always trust, deny rules block calls outright (for any tool, even
-read-only ones), and deny beats allow. A rule is a tool name, or a tool
-name with a glob matched against the call's command or path:
+read-only ones), and deny beats allow. Type `/permissions` to grant
+common allow rules from the app. A rule is a tool name, a tool-name glob
+such as `mcp__*`, or a tool name with a glob matched against the call's
+command or path:
 
 ```json
 {
