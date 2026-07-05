@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents }
+import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, resolve_tools, read_only_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents }
 import "./front" { parse_front, front_get }
 
 const DOC: String = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."
@@ -16,12 +16,58 @@ fun test_parse_reads_the_full_frontmatter() {
     assert_eq_str(a.prompt, "You are a code reviewer. Find defects.")
 }
 
-fun test_parse_defaults_scope_open() {
+// A missing tools field is read-only by default, never a blank cheque for
+// every tool.
+fun test_parse_defaults_to_read_only_tools() {
     let a = parse_subagent("Just a prompt.", "explorer")
     assert_eq_str(a.name, "explorer")
-    assert_true(a.tools.len() == 0)
+    assert_true(a.tools.len() > 0)
+    assert_true(_has(a.tools, "read_file"))
+    assert_true(_has(a.tools, "grep"))
+    assert_true(!_has(a.tools, "write_file"))
+    assert_true(!_has(a.tools, "edit_file"))
+    assert_true(!_has(a.tools, "run_command"))
+    assert_true(!_has(a.tools, "git_commit"))
+    assert_true(!_has(a.tools, "web_fetch"))
     assert_eq_str(a.model, "")
     assert_eq_str(a.prompt, "Just a prompt.")
+}
+
+// An explicit tools list is honored exactly, and stays read-only when that is
+// what the author wrote.
+fun test_parse_keeps_an_explicit_read_only_list() {
+    let a = parse_subagent("---\ntools: read_file, grep\n---\nBody.", "x")
+    assert_true(a.tools.len() == 2)
+    assert_eq_str(a.tools[0], "read_file")
+    assert_eq_str(a.tools[1], "grep")
+}
+
+// Full tool access is opt-in through an explicit marker, stored as the empty
+// list the runtime reads as unrestricted.
+fun test_parse_all_marker_grants_full_access() {
+    assert_true(parse_subagent("---\ntools: all\n---\nBody.", "x").tools.len() == 0)
+    assert_true(parse_subagent("---\ntools: ALL\n---\nBody.", "x").tools.len() == 0)
+    assert_true(parse_subagent("---\ntools: *\n---\nBody.", "x").tools.len() == 0)
+}
+
+fun test_resolve_tools_covers_each_case() {
+    assert_true(resolve_tools("").len() == read_only_tools().len())
+    assert_true(resolve_tools("all").len() == 0)
+    assert_true(resolve_tools("*").len() == 0)
+    let ex = resolve_tools("read_file, list_dir")
+    assert_true(ex.len() == 2)
+    assert_eq_str(ex[0], "read_file")
+}
+
+fun _has(xs: List<String>, name: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
 
 fun test_split_tools_cleans_the_list() {
@@ -66,7 +112,19 @@ fun test_prompt_lists_agents_for_dispatch() {
     let one = [parse_subagent(DOC, "x")]
     let p = subagents_prompt(one)
     assert_true(p.contains("- reviewer: critique a diff"))
+    // The roster shows each agent's effective tool access.
+    assert_true(p.contains("tools: read_file, grep, list_dir"))
     assert_true(p.contains("dispatch"))
+    // An agent with an omitted tools field shows its read-only default, not
+    // "all tools".
+    let ro = subagents_prompt([parse_subagent("---\ndescription: d\n---\nBody.", "scout")])
+    assert_true(ro.contains("tools: read_file"))
+    assert_true(!ro.contains("all tools"))
+    // An explicit full-access agent shows "all tools".
+    let full = subagents_prompt(
+        [parse_subagent("---\ndescription: d\ntools: all\n---\nBody.", "power")],
+    )
+    assert_true(full.contains("all tools"))
 }
 
 fun test_builtins_are_three_read_only_agents() {

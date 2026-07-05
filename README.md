@@ -273,10 +273,14 @@ and report), **reviewer** (critique code and list real defects), and
 explorer find where X happens" and it delegates.
 
 Define your own in `.agents/subagents/<name>.md`: frontmatter with a
-`description`, an optional `tools` allowlist (comma-separated; omitted
-means every tool), and an optional `model` override, then the agent's
-system prompt as the body. The model sees the roster in its system
-prompt and delegates with the `dispatch` tool; the subagent runs an
+`description`, an optional `tools` allowlist (comma-separated), and an
+optional `model` override, then the agent's system prompt as the body.
+A custom subagent is read-only by default: omit `tools` and it can only
+read and search (`read_file`, `list_dir`, `file_tree`, `grep`,
+`git_status`, `git_diff`). To grant more, name the exact tools it may
+call, or write `tools: all` to give it every tool. The roster the model
+sees lists each subagent's effective access. The model delegates with
+the `dispatch` tool; the subagent runs an
 isolated conversation (its own prompt, tools, and rounds) and only its
 final answer returns to the main conversation. While it works, its
 activity shows as a live nested block in the transcript, a `◆ name

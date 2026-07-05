@@ -13,7 +13,9 @@ import "./front" { Front, parse_front, front_get }
 struct Subagent {
     name: String,
     description: String,
-    // Tool names this agent may call; empty means every tool.
+    // Tool names this agent may call. Empty means every tool, which a custom
+    // definition only gets by asking for it explicitly (tools: all); an
+    // omitted tools field resolves to the read-only default instead.
     tools: List<String>,
     // A "provider/model" override; "" means the session's model.
     model: String,
@@ -55,10 +57,34 @@ fun parse_subagent(text: String, fallback_name: String) -> Subagent {
     return Subagent {
         name,
         description: front_get(fm, "description"),
-        tools: split_tools(front_get(fm, "tools")),
+        tools: resolve_tools(front_get(fm, "tools")),
         model: front_get(fm, "model"),
         prompt: fm.body,
     }
+}
+
+// The tools a custom subagent may call when its definition leaves `tools`
+// out: read and search only, nothing that writes, runs commands, reaches the
+// network, or calls an MCP server. A missing field should be the safe
+// choice, not a blank cheque.
+fun read_only_tools() -> List<String> {
+    return ["read_file", "list_dir", "file_tree", "grep", "git_status", "git_diff"]
+}
+
+// A definition's `tools` frontmatter into the effective allowlist. An omitted
+// field is read-only by default; an explicit "all" (or "*") grants every tool
+// and is stored as the empty list the runtime reads as unrestricted; anything
+// else is the exact comma-separated allowlist the author named.
+fun resolve_tools(v: String) -> List<String> {
+    let t = v.trim()
+    if t == "" {
+        return read_only_tools()
+    }
+    if t.to_lower() == "all" || t == "*" {
+        let unrestricted: List<String> = []
+        return unrestricted
+    }
+    return split_tools(v)
 }
 
 // A comma-separated tools value into clean names; "" means no restriction
@@ -149,10 +175,27 @@ fun subagents_prompt(agents: List<Subagent>) -> String {
         if d == "" {
             d = "no description"
         }
-        out = "${out}\n- ${agents[i].name}: ${d}"
+        out = "${out}\n- ${agents[i].name}: ${d} (${tool_access(agents[i])})"
         i = i + 1
     }
     return "${out}\nDispatch when a self-contained piece of work (a broad search, a review, a plan) can run on its own; give the agent the full context in the task."
+}
+
+// A short description of an agent's effective tool access for the roster, so
+// the model (and the reader) can see what a subagent is allowed to do before
+// delegating: the empty allowlist reads as every tool, otherwise the named
+// tools.
+fun tool_access(agent: Subagent) -> String {
+    if agent.tools.len() == 0 {
+        return "all tools"
+    }
+    let names = agent.tools[0]
+    let i = 1
+    while i < agent.tools.len() {
+        names = "${names}, ${agent.tools[i]}"
+        i = i + 1
+    }
+    return "tools: ${names}"
 }
 
 // The position of `name` in the registry, ignoring case; -1 when unknown.
