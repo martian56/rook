@@ -30,7 +30,7 @@ fun test_save_list_load_round_trip() {
         Entry.ToolMsg("read_file(x)", "ok"),
         Entry.AgentHeader("explorer", "done"),
     ]
-    save_session(id, "openai/gpt-5.5", entries, _no_msgs())
+    save_session(id, "openai/gpt-5.5", entries, _no_msgs(), 0, 0)
 
     // The session appears in the list with its title and model.
     let all = list_sessions()
@@ -55,7 +55,7 @@ fun test_save_list_load_round_trip() {
 
 fun test_title_uses_the_first_user_message() {
     let id = new_session_id()
-    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")], _no_msgs())
+    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")], _no_msgs(), 0, 0)
     assert_eq_str(_find(list_sessions(), id).title, "second line here")
     _cleanup(id)
     return
@@ -64,7 +64,7 @@ fun test_title_uses_the_first_user_message() {
 fun test_empty_session_is_not_saved() {
     let id = new_session_id()
     let none: List<Entry> = []
-    save_session(id, "m", none, _no_msgs())
+    save_session(id, "m", none, _no_msgs(), 0, 0)
     assert_true(_find(list_sessions(), id).id != id)
 }
 
@@ -73,6 +73,8 @@ fun test_unknown_id_loads_empty() {
     assert_eq_int(loaded.entries.len(), 0)
     assert_eq_str(loaded.model, "")
     assert_eq_int(loaded.messages.len(), 0)
+    assert_eq_int(loaded.usage_prompt, 0)
+    assert_eq_int(loaded.usage_completion, 0)
 }
 
 // The model-visible history round-trips with full structure: an assistant
@@ -89,7 +91,7 @@ fun test_model_history_round_trips() {
         Message.tool_result("c1", "read_file", "the file contents"),
         Message.assistant("done"),
     ]
-    save_session(id, "m", entries, msgs)
+    save_session(id, "m", entries, msgs, 1200, 340)
 
     let loaded = load_session(id)
     assert_eq_int(loaded.messages.len(), 4)
@@ -106,6 +108,9 @@ fun test_model_history_round_trips() {
     assert_eq_str(loaded.messages[2].tool_call_id, "c1")
     assert_eq_str(loaded.messages[2].name, "read_file")
     assert_eq_str(loaded.messages[2].content, "the file contents")
+    // The running token totals round-trip too, so a resume keeps the usage.
+    assert_eq_int(loaded.usage_prompt, 1200)
+    assert_eq_int(loaded.usage_completion, 340)
 
     _cleanup(id)
     return

@@ -81,9 +81,16 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.pending_detail = ""
             m.question = ""
             // Persist the conversation now that the turn has landed: the
-            // display transcript and the model-visible history together, so a
-            // resume restores both.
-            save_session(m.session_id, m.model, m.entries, m.agent.messages())
+            // display transcript, the model-visible history, and the running
+            // token totals together, so a resume restores all three.
+            save_session(
+                m.session_id,
+                m.model,
+                m.entries,
+                m.agent.messages(),
+                m.sess_prompt,
+                m.sess_completion,
+            )
         }
         m.scroll_up = 0
     }
@@ -582,6 +589,11 @@ fun _resume(m: Chat, id: String) {
             Entry.Notice("resumed session (older format, model context reduced to visible messages)"),
         )
     }
+    // Restore the session's token totals (clear_convo reset them to zero) so
+    // the usage indicator reflects the resumed session, not a fresh one.
+    m.agent.set_usage(loaded.usage_prompt, loaded.usage_completion)
+    m.sess_prompt = loaded.usage_prompt
+    m.sess_completion = loaded.usage_completion
     m.session_id = id
     m.scroll_up = 0
     return

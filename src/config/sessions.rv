@@ -32,6 +32,10 @@ struct Loaded {
     model: String,
     entries: List<Entry>,
     messages: List<Message>,
+    // The session's running token totals, restored so the usage indicator
+    // reflects the resumed session instead of resetting to zero.
+    usage_prompt: Int,
+    usage_completion: Int,
 }
 
 // A fresh session id, unique to the millisecond.
@@ -43,7 +47,16 @@ fun new_session_id() -> String {
 // resume). Overwrites the same file as the conversation grows. `messages` is
 // the model-visible history, saved alongside the display transcript so a
 // resumed session restores the same model context, not just the visible rows.
-fun save_session(id: String, model: String, entries: List<Entry>, messages: List<Message>) {
+// `usage_prompt`/`usage_completion` are the session's running token totals, so
+// the usage indicator survives a resume.
+fun save_session(
+    id: String,
+    model: String,
+    entries: List<Entry>,
+    messages: List<Message>,
+    usage_prompt: Int,
+    usage_completion: Int,
+) {
     if entries.len() == 0 {
         return
     }
@@ -67,6 +80,7 @@ fun save_session(id: String, model: String, entries: List<Entry>, messages: List
     let doc = Obj.new().str("id", id).str("model", model).str("title", _title(entries))
     doc = doc.str("created", "${now()}").set("entries", JsonValue.Array(arr))
     doc = doc.set("messages", JsonValue.Array(msgs))
+    doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
     write("${dir}/${id}.json", stringify(doc.build()))
     return
 }
@@ -116,7 +130,13 @@ fun load_session(id: String) -> Loaded {
     let no_msgs: List<Message> = []
     let dir = _sessions_dir()
     if dir == "" {
-        return Loaded { model: "", entries: empty, messages: no_msgs }
+        return Loaded {
+            model: "",
+            entries: empty,
+            messages: no_msgs,
+            usage_prompt: 0,
+            usage_completion: 0,
+        }
     }
     let text = _read_opt("${dir}/${id}.json")
     return match parse(text) {
@@ -135,9 +155,30 @@ fun load_session(id: String) -> Loaded {
                 messages.push(_json_msg(marr[k]))
                 k = k + 1
             }
-            Loaded { model: as_str(field(j, "model")), entries, messages }
+            Loaded {
+                model: as_str(field(j, "model")),
+                entries,
+                messages,
+                usage_prompt: _int_field(j, "usage_prompt"),
+                usage_completion: _int_field(j, "usage_completion"),
+            }
         },
-        Err(e) -> Loaded { model: "", entries: empty, messages: no_msgs },
+        Err(e) -> Loaded {
+            model: "",
+            entries: empty,
+            messages: no_msgs,
+            usage_prompt: 0,
+            usage_completion: 0,
+        },
+    }
+}
+
+// An integer stored as a string field, 0 when missing or unparseable (older
+// sessions have no usage totals).
+fun _int_field(j: JsonValue, key: String) -> Int {
+    return match as_str(field(j, key)).parse_int() {
+        Some(n) -> n,
+        None -> 0,
     }
 }
 
