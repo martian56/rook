@@ -1,0 +1,27 @@
+// Caps for text pulled into the model's context from project- or server-
+// controlled sources (skill bodies, subagent prompts, MCP resources, MCP tool
+// results). Without a bound, one oversized source can swallow the context
+// window, bury the recent user intent, slow the UI, or force compaction far
+// earlier than expected. Each cap leaves a source-labeled [truncated] marker
+// so the model, and the reader, can see what was cut and where it came from.
+
+import std/string
+
+// `text` truncated to `max` characters, with a labeled marker when it was
+// cut. `source` names where the text came from, e.g. "skill body".
+fun cap_text(text: String, max: Int, source: String) -> String {
+    if text.length() <= max {
+        return text
+    }
+    return "${text.substring(0, max)}\n[truncated: ${source}]"
+}
+
+// A one-liner clipped to `max` characters with an ellipsis, for index rows
+// (a skill or subagent description) where a newline-marked cap would break the
+// layout.
+fun clip_line(text: String, max: Int) -> String {
+    if text.length() <= max {
+        return text
+    }
+    return "${text.substring(0, max)}…"
+}

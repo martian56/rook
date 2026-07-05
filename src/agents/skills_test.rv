@@ -90,6 +90,45 @@ fun test_skill_body_finds_ignoring_case_and_reports_unknowns() {
     return
 }
 
+// An oversized skill body is capped when use_skill pulls it in, so a large
+// skill cannot swallow the context window.
+fun test_skill_body_caps_an_oversized_body() {
+    create_dir_all("_rook_sk_big/skills/huge")
+    write(
+        "_rook_sk_big/skills/huge/SKILL.md",
+        "---\nname: huge\ndescription: big\n---\n${_repeat("y", 9000)}",
+    )
+
+    let body = skill_body(["_rook_sk_big"], "huge")
+    assert_true(body.contains("[truncated: skill body]"))
+    assert_true(body.length() < 9000)
+
+    remove_file("_rook_sk_big/skills/huge/SKILL.md")
+    remove_dir("_rook_sk_big/skills/huge")
+    remove_dir("_rook_sk_big/skills")
+    remove_dir("_rook_sk_big")
+    return
+}
+
+// A very long description is clipped in the index so one skill cannot bloat
+// the roster the model sees.
+fun test_prompt_clips_a_long_description() {
+    let one = [Skill { name: "big", description: _repeat("d", 500), body: "b", path: "p" }]
+    let p = skills_prompt(one)
+    assert_true(p.contains("…"))
+    assert_true(!p.contains(_repeat("d", 300)))
+}
+
+fun _repeat(s: String, n: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < n {
+        out = out.concat(s)
+        i = i + 1
+    }
+    return out
+}
+
 fun _find(skills: List<Skill>, name: String) -> Skill {
     let i = 0
     while i < skills.len() {

@@ -18,6 +18,11 @@ import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_
 import "./config" { ServerSpec, configured_servers }
 import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect }
 import "./transport" { enc_str }
+import "../agents/limits" { cap_text }
+
+// An external server's resource and tool text is untrusted and unbounded; cap
+// it before it enters a tool result or the model's context.
+const MAX_MCP_CHARS: Int = 8000
 
 const CALL_TIMEOUT: Int = 120000
 
@@ -305,7 +310,7 @@ fun format_resource(result: JsonValue) -> String {
     if out == "" {
         return "(the resource has no text contents)"
     }
-    return out
+    return cap_text(out, MAX_MCP_CHARS, "MCP resource")
 }
 
 // The text of a prompts/get result: each message's text, blank-line joined.
@@ -327,7 +332,7 @@ fun format_prompt(result: JsonValue) -> String {
     if out == "" {
         return "(the prompt produced no text)"
     }
-    return out
+    return cap_text(out, MAX_MCP_CHARS, "MCP prompt")
 }
 
 fun _msg_text(m: JsonValue) -> String {
@@ -454,6 +459,7 @@ fun format_tool_result(result: JsonValue) -> String {
     if out == "" {
         out = "(the tool returned no text content)"
     }
+    out = cap_text(out, MAX_MCP_CHARS, "MCP tool result")
     if _as_bool(field(result, "isError")) {
         return "error: ${out}"
     }

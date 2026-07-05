@@ -1,0 +1,36 @@
+import std/string
+import std/test { assert_true, assert_eq_str }
+import "./limits" { cap_text, clip_line }
+
+fun _repeat(s: String, n: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < n {
+        out = out.concat(s)
+        i = i + 1
+    }
+    return out
+}
+
+fun test_cap_text_leaves_short_text_alone() {
+    assert_eq_str(cap_text("hello", 100, "skill body"), "hello")
+}
+
+fun test_cap_text_truncates_with_a_source_labeled_marker() {
+    let big = _repeat("a", 200)
+    let out = cap_text(big, 10, "skill body")
+    assert_true(out.starts_with("aaaaaaaaaa"))
+    assert_true(out.length() < big.length())
+    assert_true(out.contains("[truncated: skill body]"))
+}
+
+fun test_clip_line_leaves_short_text_alone() {
+    assert_eq_str(clip_line("short", 100), "short")
+}
+
+fun test_clip_line_adds_an_ellipsis_when_long() {
+    let out = clip_line(_repeat("b", 40), 5)
+    assert_true(out.starts_with("bbbbb"))
+    assert_true(out.contains("…"))
+    assert_true(!out.contains("bbbbbb"))
+}
