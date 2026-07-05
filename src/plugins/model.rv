@@ -1,0 +1,156 @@
+// Plugins: shareable .agents bundles. A plugin is a git repo with a
+// plugin.json manifest (name, version, description) and the same subfolders
+// .agents uses (skills, subagents, commands, themes, hooks). Installed
+// plugins live under ~/.rook/plugins/<name>/, and because a plugin's layout
+// matches .agents, the existing loaders read it by treating the plugin
+// directory as another root. This module is only the model and the
+// registry of what is installed; fetching (install) and merging into the
+// session are separate features.
+
+import std/string
+import std/env { get_env, has_env }
+import std/fs { read, exists, is_dir, list_dir }
+import std/json { parse }
+import "github.com/martian56/aviary/jsonutil" { field, as_str }
+
+// One installed plugin. `path` is its directory under the plugins dir.
+struct Plugin {
+    name: String,
+    version: String,
+    description: String,
+    path: String,
+}
+
+const MANIFEST: String = "plugin.json"
+
+// Where plugins install: ~/.rook/plugins. "" when there is no home.
+fun plugins_dir() -> String {
+    let h = _home()
+    if h == "" {
+        return ""
+    }
+    return "${h}/.rook/plugins"
+}
+
+// The directory of a plugin by name.
+fun plugin_path(name: String) -> String {
+    let dir = plugins_dir()
+    if dir == "" {
+        return ""
+    }
+    return "${dir}/${name}"
+}
+
+// Every installed plugin: each subdirectory of the plugins dir with a
+// readable manifest, sorted by name for a stable order.
+fun installed_plugins() -> List<Plugin> {
+    let out: List<Plugin> = []
+    let dir = plugins_dir()
+    if dir == "" || !is_dir(dir) {
+        return out
+    }
+    let names: List<String> = []
+    match list_dir(dir) {
+        Ok(ns) -> {
+            names = ns
+        },
+        Err(e) -> {
+            return out
+        },
+    }
+    let i = 0
+    while i < names.len() {
+        let p = "${dir}/${names[i]}"
+        if is_dir(p) {
+            let plugin = read_plugin(p, names[i])
+            if plugin.name != "" {
+                out.push(plugin)
+            }
+        }
+        i = i + 1
+    }
+    return _sort_by_name(out)
+}
+
+// The install directories of every valid plugin, for the loaders that read
+// the bundle subfolders (skills, subagents, commands, themes) as roots.
+fun plugin_roots() -> List<String> {
+    let out: List<String> = []
+    let plugins = installed_plugins()
+    let i = 0
+    while i < plugins.len() {
+        out.push(plugins[i].path)
+        i = i + 1
+    }
+    return out
+}
+
+// Read the plugin at `path`. A missing or unreadable manifest yields a
+// Plugin whose name is "" (the skip signal); a manifest without a name
+// falls back to the directory name.
+fun read_plugin(path: String, dir_name: String) -> Plugin {
+    let mf = "${path}/${MANIFEST}"
+    if !exists(mf) {
+        return Plugin { name: "", version: "", description: "", path }
+    }
+    let text = match read(mf) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
+    return parse_manifest(text, dir_name, path)
+}
+
+// Parse a plugin manifest. Bad JSON yields an empty-name Plugin; a valid
+// document without a name uses `fallback_name`.
+fun parse_manifest(text: String, fallback_name: String, path: String) -> Plugin {
+    return match parse(text) {
+        Ok(j) -> {
+            let name = as_str(field(j, "name"))
+            if name == "" {
+                name = fallback_name
+            }
+            Plugin {
+                name,
+                version: as_str(field(j, "version")),
+                description: as_str(field(j, "description")),
+                path,
+            }
+        },
+        Err(e) -> Plugin { name: "", version: "", description: "", path },
+    }
+}
+
+fun _sort_by_name(xs: List<Plugin>) -> List<Plugin> {
+    let out = xs
+    let i = 0
+    while i < out.len() {
+        let best = i
+        let j = i + 1
+        while j < out.len() {
+            if out[j].name < out[best].name {
+                best = j
+            }
+            j = j + 1
+        }
+        if best != i {
+            let tmp = out[i]
+            out[i] = out[best]
+            out[best] = tmp
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _home() -> String {
+    if has_env("HOME") {
+        let h = get_env("HOME")
+        if h != "" {
+            return h
+        }
+    }
+    if has_env("USERPROFILE") {
+        return get_env("USERPROFILE")
+    }
+    return ""
+}

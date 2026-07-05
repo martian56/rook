@@ -273,6 +273,15 @@ the model see the branch and the working tree; `git_commit` stages
 everything and commits a message the model drafts, shown in the
 approval prompt for you to allow or deny before it runs.
 
+## Plugins
+
+A plugin is a shareable `.agents` bundle: a git repo with a
+`plugin.json` (name, version, description) and the same `skills/`,
+`subagents/`, `commands/`, and `themes/` folders rook reads from
+`.agents`. Installed plugins live under `~/.rook/plugins/<name>/`.
+Installing them and merging their contributions into a session are
+coming next.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed

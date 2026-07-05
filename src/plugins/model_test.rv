@@ -1,0 +1,59 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
+import "./model" { Plugin, parse_manifest, read_plugin, plugin_path, plugins_dir }
+
+fun test_parse_manifest_reads_the_fields() {
+    let p = parse_manifest(
+        "{\"name\": \"fmt-on-save\", \"version\": \"1.2.0\", \"description\": \"formats files\"}",
+        "dir-name",
+        "/plugins/fmt-on-save",
+    )
+    assert_eq_str(p.name, "fmt-on-save")
+    assert_eq_str(p.version, "1.2.0")
+    assert_eq_str(p.description, "formats files")
+    assert_eq_str(p.path, "/plugins/fmt-on-save")
+}
+
+fun test_parse_manifest_name_falls_back_to_the_directory() {
+    let p = parse_manifest("{\"version\": \"0.1.0\"}", "my-plugin", "/x")
+    assert_eq_str(p.name, "my-plugin")
+    assert_eq_str(p.version, "0.1.0")
+}
+
+fun test_parse_manifest_rejects_bad_json() {
+    assert_eq_str(parse_manifest("not json", "n", "/x").name, "")
+}
+
+fun test_read_plugin_from_a_directory() {
+    create_dir_all("_rook_plg/skills")
+    write(
+        "_rook_plg/plugin.json",
+        "{\"name\": \"demo\", \"version\": \"2.0.0\", \"description\": \"a demo\"}",
+    )
+
+    let p = read_plugin("_rook_plg", "_rook_plg")
+    assert_eq_str(p.name, "demo")
+    assert_eq_str(p.version, "2.0.0")
+    assert_eq_str(p.path, "_rook_plg")
+
+    remove_file("_rook_plg/plugin.json")
+    remove_dir("_rook_plg/skills")
+    remove_dir("_rook_plg")
+    return
+}
+
+fun test_read_plugin_without_a_manifest_is_skipped() {
+    create_dir_all("_rook_noplg")
+    let p = read_plugin("_rook_noplg", "_rook_noplg")
+    assert_eq_str(p.name, "")
+    remove_dir("_rook_noplg")
+    return
+}
+
+fun test_plugin_path_is_under_the_plugins_dir() {
+    let dir = plugins_dir()
+    if dir != "" {
+        assert_true(plugin_path("foo").ends_with("plugins/foo"))
+    }
+}
