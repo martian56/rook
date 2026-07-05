@@ -1,0 +1,266 @@
+// The live MCP manager: it connects to the configured servers once (lazily,
+// on first use) and holds the open connections in a mutex-guarded singleton,
+// the same shape as the background-shell store. From it the tool registry
+// draws the MCP tools it exposes to the model (namespaced mcp__server__tool)
+// and routes a call back to the right server. Every MCP tool needs approval,
+// since an external server is not assumed to be read-only.
+//
+// The pure cores (tools_from, route_in, format_tool_result, exposed_name)
+// take a client list, so they are tested without a live server; only the
+// connect and the tool call touch a subprocess.
+
+import std/string
+import std/sync { Mutex, mutex }
+import std/env { os_name }
+import std/json { JsonValue, parse }
+import "github.com/martian56/aviary/message" { ToolDef }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
+import "./config" { ServerSpec, configured_servers }
+import "./client" { McpClient, McpTool, connect }
+import "./transport" { enc_str }
+
+const CALL_TIMEOUT: Int = 120000
+
+struct McpManager {
+    lock: Mutex,
+    clients: List<McpClient>,
+    started: Bool,
+}
+
+fun _new_manager() -> McpManager {
+    let clients: List<McpClient> = []
+    return McpManager { lock: mutex(), clients, started: false }
+}
+
+let MANAGER: McpManager = _new_manager()
+
+// Where a namespaced tool name routes: which server, and its bare tool name.
+struct Route {
+    server: String,
+    tool: String,
+}
+
+// Connect to every configured server once. Safe to call repeatedly; only the
+// first call connects (the handshakes run outside the lock).
+fun ensure_started() {
+    MANAGER.lock.lock()
+    let already = MANAGER.started
+    if !already {
+        MANAGER.started = true
+    }
+    MANAGER.lock.unlock()
+    if already {
+        return
+    }
+    let specs = configured_servers()
+    let i = 0
+    while i < specs.len() {
+        let c = _connect_spec(specs[i])
+        MANAGER.lock.lock()
+        MANAGER.clients.push(c)
+        MANAGER.lock.unlock()
+        i = i + 1
+    }
+    return
+}
+
+// Launch one server. Per-server env is applied through the `env` command on
+// Unix (clean argv, no quoting); on Windows the child inherits rook's own
+// environment instead, so set the variables there.
+fun _connect_spec(spec: ServerSpec) -> McpClient {
+    if spec.env.len() > 0 && os_name() != "windows" {
+        let argv: List<String> = []
+        let e = 0
+        while e < spec.env.len() {
+            argv.push(spec.env[e])
+            e = e + 1
+        }
+        argv.push(spec.command)
+        let a = 0
+        while a < spec.args.len() {
+            argv.push(spec.args[a])
+            a = a + 1
+        }
+        return connect(spec.name, "env", argv)
+    }
+    return connect(spec.name, spec.command, spec.args)
+}
+
+// The MCP tools across the connected servers, as ToolDefs for the model.
+fun mcp_tools() -> List<ToolDef> {
+    ensure_started()
+    return tools_from(_clients())
+}
+
+// Whether a tool name belongs to an MCP server.
+fun is_mcp_tool(name: String) -> Bool {
+    return name.starts_with("mcp__")
+}
+
+// Invoke an MCP tool by its namespaced name, returning the text result (or an
+// error string). Routes to the owning server's tools/call.
+fun call_mcp_tool(name: String, arguments: String) -> String {
+    ensure_started()
+    let clients = _clients()
+    return match route_in(clients, name) {
+        Some(r) -> {
+            match _find(clients, r.server) {
+                Some(c) -> _do_call(c, r.tool, arguments),
+                None -> "error: MCP server '${r.server}' is not connected",
+            }
+        },
+        None -> "error: no connected MCP tool named '${name}'",
+    }
+}
+
+// A snapshot of the connected clients, for the /mcp command.
+fun connected_clients() -> List<McpClient> {
+    ensure_started()
+    return _clients()
+}
+
+fun _do_call(c: McpClient, tool: String, arguments: String) -> String {
+    let args = arguments
+    if args.trim() == "" {
+        args = "{}"
+    }
+    let params = "{\"name\":${enc_str(tool)},\"arguments\":${args}}"
+    let resp = c.call("tools/call", params, CALL_TIMEOUT)
+    if !resp.ok {
+        return "error: ${resp.error}"
+    }
+    return format_tool_result(resp.result)
+}
+
+// Build ToolDefs from a client list. Pure.
+fun tools_from(clients: List<McpClient>) -> List<ToolDef> {
+    let out: List<ToolDef> = []
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        if c.ok {
+            let j = 0
+            while j < c.tools.len() {
+                let t = c.tools[j]
+                out.push(ToolDef.new(exposed_name(c.name, t.name), _desc(c.name, t), _params(t)))
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+// Find which server and tool a namespaced name routes to. Pure.
+fun route_in(clients: List<McpClient>, name: String) -> Option<Route> {
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        let j = 0
+        while j < c.tools.len() {
+            if exposed_name(c.name, c.tools[j].name) == name {
+                return Some(Route { server: c.name, tool: c.tools[j].name })
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return None
+}
+
+// The text of an MCP tools/call result: its text content parts joined, with
+// an error prefix when the server flagged isError. Pure.
+fun format_tool_result(result: JsonValue) -> String {
+    let content = as_list(field(result, "content"))
+    let out = ""
+    let i = 0
+    while i < content.len() {
+        if as_str(field(content[i], "type")) == "text" {
+            let t = as_str(field(content[i], "text"))
+            if out != "" {
+                out = out.concat("\n")
+            }
+            out = out.concat(t)
+        }
+        i = i + 1
+    }
+    if out == "" {
+        out = "(the tool returned no text content)"
+    }
+    if _as_bool(field(result, "isError")) {
+        return "error: ${out}"
+    }
+    return out
+}
+
+// The provider-facing tool name for a server's tool: mcp__<server>__<tool>,
+// with any character outside [A-Za-z0-9_-] replaced so the name is valid.
+fun exposed_name(server: String, tool: String) -> String {
+    return _sanitize("mcp__${server}__${tool}")
+}
+
+fun _desc(server: String, t: McpTool) -> String {
+    let d = t.description
+    if d == "" {
+        d = "the ${t.name} tool"
+    }
+    return "[MCP ${server}] ${d}"
+}
+
+fun _params(t: McpTool) -> JsonValue {
+    return match parse(t.schema) {
+        Ok(j) -> {
+            if is_null(j) {
+                _empty_schema()
+            } else {
+                j
+            }
+        },
+        Err(e) -> _empty_schema(),
+    }
+}
+
+fun _empty_schema() -> JsonValue {
+    return Obj.new().str("type", "object").build()
+}
+
+fun _sanitize(s: String) -> String {
+    let ok = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    let out = ""
+    let i = 0
+    while i < s.length() {
+        let ch = s.substring(i, i + 1)
+        if ok.contains(ch) {
+            out = out.concat(ch)
+        } else {
+            out = out.concat("_")
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _as_bool(j: JsonValue) -> Bool {
+    return match j {
+        Bool(b) -> b,
+        _ -> false,
+    }
+}
+
+fun _find(clients: List<McpClient>, server: String) -> Option<McpClient> {
+    let i = 0
+    while i < clients.len() {
+        if clients[i].name == server {
+            return Some(clients[i])
+        }
+        i = i + 1
+    }
+    return None
+}
+
+fun _clients() -> List<McpClient> {
+    MANAGER.lock.lock()
+    let c = MANAGER.clients
+    MANAGER.lock.unlock()
+    return c
+}

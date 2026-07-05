@@ -1,0 +1,94 @@
+// MCP server configuration, read from an "mcp" section in any settings.json
+// rook reads (project .agents, an installed plugin, or global ~/.agents). The
+// section holds a "servers" array so the names can vary (JsonValue has no key
+// iteration); each entry is { name, command, args, env }, where env is a list
+// of "KEY=value" strings. Parsing is pure and tested; configured_servers
+// walks the roots and de-duplicates by name (first root wins).
+
+import std/string
+import std/json { JsonValue }
+import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
+import "../agents/dir" { roots }
+import "../agents/settings" { setting_section }
+
+struct ServerSpec {
+    name: String,
+    command: String,
+    args: List<String>,
+    env: List<String>,
+}
+
+// The configured servers across all roots, de-duplicated by name.
+fun configured_servers() -> List<ServerSpec> {
+    let out: List<ServerSpec> = []
+    let seen: List<String> = []
+    let rs = roots()
+    let r = 0
+    while r < rs.len() {
+        match setting_section(rs[r], "mcp") {
+            Some(section) -> {
+                let specs = parse_servers(section)
+                let i = 0
+                while i < specs.len() {
+                    if !_contains(seen, specs[i].name) {
+                        seen.push(specs[i].name)
+                        out.push(specs[i])
+                    }
+                    i = i + 1
+                }
+            },
+            None -> {},
+        }
+        r = r + 1
+    }
+    return out
+}
+
+// The server specs in one "mcp" section. An entry without a name or command
+// is skipped. Pure, so it is tested directly.
+fun parse_servers(section: JsonValue) -> List<ServerSpec> {
+    let out: List<ServerSpec> = []
+    let arr = as_list(field(section, "servers"))
+    let i = 0
+    while i < arr.len() {
+        let name = as_str(field(arr[i], "name"))
+        let command = as_str(field(arr[i], "command"))
+        if name != "" && command != "" {
+            out.push(
+                ServerSpec {
+                    name,
+                    command,
+                    args: _strings(field(arr[i], "args")),
+                    env: _strings(field(arr[i], "env")),
+                },
+            )
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _strings(j: JsonValue) -> List<String> {
+    let out: List<String> = []
+    let arr = as_list(j)
+    let i = 0
+    while i < arr.len() {
+        let s = as_str(arr[i])
+        if s != "" {
+            out.push(s)
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _contains(xs: List<String>, name: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
