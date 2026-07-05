@@ -16,6 +16,7 @@ import "./git" { git_status, git_diff, git_commit }
 import "./web" { web_fetch, web_search }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
+import "../mcp/manager" { mcp_tools, is_mcp_tool, call_mcp_tool }
 
 // One schema field: a string property and its description.
 struct Prop {
@@ -23,10 +24,11 @@ struct Prop {
     desc: String,
 }
 
-// The tool definitions offered to the model.
+// The tool definitions offered to the model: the built-ins, plus any tools
+// discovered from connected MCP servers.
 fun tools() -> List<ToolDef> {
     let no_props: List<Prop> = []
-    return [
+    let base: List<ToolDef> = [
         ToolDef.new(
             "read_file",
             "Read a UTF-8 text file and return its contents.",
@@ -178,16 +180,30 @@ fun tools() -> List<ToolDef> {
             ),
         ),
     ]
+    let mcp = mcp_tools()
+    let i = 0
+    while i < mcp.len() {
+        base.push(mcp[i])
+        i = i + 1
+    }
+    return base
 }
 
 // Whether a tool changes the repo or the machine and so must be approved.
+// Every MCP tool is approved, since an external server is not assumed to be
+// read-only.
 fun needs_approval(name: String) -> Bool {
-    return name == "write_file" || name == "edit_file" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit"
+    return name == "write_file" || name == "edit_file" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit" || is_mcp_tool(
+        name,
+    )
 }
 
 // Run a tool call and return its result string.
 fun dispatch(call: ToolCall) -> String {
     let a = call.arguments
+    if is_mcp_tool(call.name) {
+        return call_mcp_tool(call.name, a)
+    }
     if call.name == "read_file" {
         return read_file(arg(a, "path"))
     }
@@ -247,6 +263,9 @@ fun dispatch(call: ToolCall) -> String {
 // prompt: "read_file(src/main.rv)", "run_command(rvpm test)".
 fun label(call: ToolCall) -> String {
     let a = call.arguments
+    if is_mcp_tool(call.name) {
+        return _mcp_label(call.name)
+    }
     if call.name == "read_file" || call.name == "list_dir" {
         return "${call.name}(${arg(a, "path")})"
     }
@@ -299,6 +318,17 @@ fun label(call: ToolCall) -> String {
         return "ask_user(${arg(a, "question")})"
     }
     return call.name
+}
+
+// A readable label for an MCP tool call: mcp__server__tool shows as
+// "mcp:server/tool".
+fun _mcp_label(name: String) -> String {
+    let rest = name.substring(5, name.length())
+    let sep = rest.index_of("__")
+    if sep < 0 {
+        return "mcp:${rest}"
+    }
+    return "mcp:${rest.substring(0, sep)}/${rest.substring(sep + 2, rest.length())}"
 }
 
 // The first line of a commit message, for the tool label.

@@ -1,0 +1,106 @@
+import std/string
+import std/json { parse, JsonValue }
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./client" { McpClient, McpTool }
+import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool }
+
+fun _client() -> McpClient {
+    let tools = [
+        McpTool { name: "read_file", description: "read a file", schema: "{\"type\": \"object\"}" },
+        McpTool { name: "weird name!", description: "", schema: "null" },
+    ]
+    return McpClient {
+        name: "fs",
+        server_name: "filesystem",
+        server_version: "1.0",
+        tools,
+        ok: true,
+        error: "",
+        conn: None,
+    }
+}
+
+fun test_exposed_name_namespaces_and_sanitizes() {
+    assert_eq_str(exposed_name("fs", "read_file"), "mcp__fs__read_file")
+    // A space and punctuation become underscores so the name is valid.
+    assert_eq_str(exposed_name("fs", "weird name!"), "mcp__fs__weird_name_")
+    assert_true(is_mcp_tool(exposed_name("fs", "read_file")))
+}
+
+fun test_tools_from_builds_a_def_per_tool() {
+    let defs = tools_from([_client()])
+    assert_eq_int(defs.len(), 2)
+    assert_eq_str(defs[0].name, "mcp__fs__read_file")
+    // A tool with no description still gets one.
+    assert_true(defs[1].description.contains("weird name!"))
+}
+
+fun test_tools_from_skips_a_failed_client() {
+    let empty: List<McpTool> = []
+    let dead = McpClient {
+        name: "down",
+        server_name: "",
+        server_version: "",
+        tools: empty,
+        ok: false,
+        error: "boom",
+        conn: None,
+    }
+    assert_eq_int(tools_from([dead]).len(), 0)
+}
+
+fun test_route_in_maps_the_exposed_name_back() {
+    let clients = [_client()]
+    match route_in(clients, "mcp__fs__read_file") {
+        Some(r) -> {
+            assert_eq_str(r.server, "fs")
+            assert_eq_str(r.tool, "read_file")
+        },
+        None -> {
+            assert_true(false)
+        },
+    }
+    // The sanitized name routes back to the original bare tool name.
+    match route_in(clients, "mcp__fs__weird_name_") {
+        Some(r) -> {
+            assert_eq_str(r.tool, "weird name!")
+        },
+        None -> {
+            assert_true(false)
+        },
+    }
+    // An unknown tool does not route.
+    assert_true(_is_none(route_in(clients, "mcp__fs__nope")))
+}
+
+fun test_format_tool_result_joins_text_and_flags_errors() {
+    assert_eq_str(
+        format_tool_result(
+            _json(
+                "{\"content\": [{\"type\": \"text\", \"text\": \"hello\"}, {\"type\": \"text\", \"text\": \"world\"}]}",
+            ),
+        ),
+        "hello\nworld",
+    )
+    assert_eq_str(
+        format_tool_result(
+            _json("{\"content\": [{\"type\": \"text\", \"text\": \"boom\"}], \"isError\": true}"),
+        ),
+        "error: boom",
+    )
+    assert_true(format_tool_result(_json("{\"content\": []}")).contains("no text content"))
+}
+
+fun _is_none(o: Option<Route>) -> Bool {
+    return match o {
+        Some(r) -> false,
+        None -> true,
+    }
+}
+
+fun _json(text: String) -> JsonValue {
+    return match parse(text) {
+        Ok(j) -> j,
+        Err(e) -> JsonValue.Null,
+    }
+}
