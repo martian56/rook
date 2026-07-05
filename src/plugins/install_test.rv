@@ -1,0 +1,91 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import std/env { os_name }
+import std/fs { write, exists, create_dir_all }
+import std/process { run }
+import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source }
+
+fun test_plugin_name_from_url() {
+    assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt"), "rook-fmt")
+    assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt.git"), "rook-fmt")
+    assert_eq_str(plugin_name_from_url("https://github.com/user/rook-fmt/"), "rook-fmt")
+    assert_eq_str(plugin_name_from_url("git@github.com:user/rook-fmt.git"), "rook-fmt")
+}
+
+fun test_normalize_url() {
+    assert_eq_str(normalize_url("github.com/u/r"), "https://github.com/u/r")
+    assert_eq_str(normalize_url("https://github.com/u/r"), "https://github.com/u/r")
+    assert_eq_str(normalize_url("git@github.com:u/r.git"), "git@github.com:u/r.git")
+    assert_eq_str(normalize_url("./local"), "./local")
+}
+
+fun test_install_from_a_local_repo() {
+    // Build a tiny plugin repo, commit it, then install it into a scratch
+    // plugins dir, all offline.
+    create_dir_all("_rook_src/skills/greet")
+    write(
+        "_rook_src/plugin.json",
+        "{\"name\": \"greeter\", \"version\": \"0.1.0\", \"description\": \"says hi\"}",
+    )
+    write("_rook_src/skills/greet/SKILL.md", "---\nname: greet\n---\nsay hi")
+    _git(["init", "_rook_src"])
+    _git(["-C", "_rook_src", "add", "-A"])
+    _git(
+        [
+            "-C",
+            "_rook_src",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            "init",
+        ],
+    )
+
+    let r = install_into("_rook_plugins", "./_rook_src", "")
+    assert_true(r.starts_with("installed greeter 0.1.0"))
+    assert_true(exists("_rook_plugins/_rook_src/plugin.json"))
+    assert_true(exists("_rook_plugins/_rook_src/skills/greet/SKILL.md"))
+    assert_true(exists("_rook_plugins/_rook_src/.rook-plugin.lock"))
+    // The lock records the source url.
+    let src = plugin_source("_rook_plugins/_rook_src")
+    assert_eq_str(src.name, "./_rook_src")
+
+    _rmtree("_rook_src")
+    _rmtree("_rook_plugins")
+    return
+}
+
+fun test_install_of_a_missing_repo_errors() {
+    assert_true(
+        install_into("_rook_plugins3", "file:///no/such/repo/xyz", "").starts_with("error:"),
+    )
+    _rmtree("_rook_plugins3")
+    return
+}
+
+fun _git(args: List<String>) {
+    match run("git", args) {
+        Ok(o) -> {},
+        Err(e) -> {},
+    }
+    return
+}
+
+fun _rmtree(path: String) {
+    let shell = "sh"
+    let flag = "-c"
+    let cmd = "rm -rf '${path}'"
+    if os_name() == "windows" {
+        shell = "cmd"
+        flag = "/c"
+        cmd = "rmdir /s /q \"${path}\""
+    }
+    match run(shell, [flag, cmd]) {
+        Ok(o) -> {},
+        Err(e) -> {},
+    }
+    return
+}
