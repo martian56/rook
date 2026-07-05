@@ -3,7 +3,13 @@ import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { remove_file }
 import std/env { get_env, has_env }
 import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, list_sessions, load_session }
+import "github.com/martian56/aviary/message" { Message, ToolCall, role_str }
 import "../ui/transcript" { Entry }
+
+fun _no_msgs() -> List<Message> {
+    let m: List<Message> = []
+    return m
+}
 
 fun _entry_tag(e: Entry) -> String {
     return match e {
@@ -24,7 +30,7 @@ fun test_save_list_load_round_trip() {
         Entry.ToolMsg("read_file(x)", "ok"),
         Entry.AgentHeader("explorer", "done"),
     ]
-    save_session(id, "openai/gpt-5.5", entries)
+    save_session(id, "openai/gpt-5.5", entries, _no_msgs())
 
     // The session appears in the list with its title and model.
     let all = list_sessions()
@@ -49,7 +55,7 @@ fun test_save_list_load_round_trip() {
 
 fun test_title_uses_the_first_user_message() {
     let id = new_session_id()
-    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")])
+    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")], _no_msgs())
     assert_eq_str(_find(list_sessions(), id).title, "second line here")
     _cleanup(id)
     return
@@ -58,7 +64,7 @@ fun test_title_uses_the_first_user_message() {
 fun test_empty_session_is_not_saved() {
     let id = new_session_id()
     let none: List<Entry> = []
-    save_session(id, "m", none)
+    save_session(id, "m", none, _no_msgs())
     assert_true(_find(list_sessions(), id).id != id)
 }
 
@@ -66,6 +72,43 @@ fun test_unknown_id_loads_empty() {
     let loaded = load_session("no-such-session-id")
     assert_eq_int(loaded.entries.len(), 0)
     assert_eq_str(loaded.model, "")
+    assert_eq_int(loaded.messages.len(), 0)
+}
+
+// The model-visible history round-trips with full structure: an assistant
+// turn's tool calls and a tool result's id, name, and content all survive, so
+// a resumed session gives the model back the same context, not just the
+// visible user and assistant lines.
+fun test_model_history_round_trips() {
+    let id = new_session_id()
+    let entries = [Entry.UserMsg("read x"), Entry.BotMsg("done")]
+    let call = ToolCall { id: "c1", name: "read_file", arguments: "{\"path\":\"x\"}" }
+    let msgs = [
+        Message.user("read x"),
+        Message.assistant_calls("reading it", [call]),
+        Message.tool_result("c1", "read_file", "the file contents"),
+        Message.assistant("done"),
+    ]
+    save_session(id, "m", entries, msgs)
+
+    let loaded = load_session(id)
+    assert_eq_int(loaded.messages.len(), 4)
+    assert_eq_str(role_str(loaded.messages[0].role), "user")
+    assert_eq_str(loaded.messages[0].content, "read x")
+    // The assistant turn keeps its tool call.
+    assert_eq_str(role_str(loaded.messages[1].role), "assistant")
+    assert_eq_int(loaded.messages[1].tool_calls.len(), 1)
+    assert_eq_str(loaded.messages[1].tool_calls[0].id, "c1")
+    assert_eq_str(loaded.messages[1].tool_calls[0].name, "read_file")
+    assert_eq_str(loaded.messages[1].tool_calls[0].arguments, "{\"path\":\"x\"}")
+    // The tool result keeps the id it answers, its name, and its content.
+    assert_eq_str(role_str(loaded.messages[2].role), "tool")
+    assert_eq_str(loaded.messages[2].tool_call_id, "c1")
+    assert_eq_str(loaded.messages[2].name, "read_file")
+    assert_eq_str(loaded.messages[2].content, "the file contents")
+
+    _cleanup(id)
+    return
 }
 
 fun _find(xs: List<SessionMeta>, id: String) -> SessionMeta {
