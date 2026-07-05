@@ -15,6 +15,13 @@ fun test_remove_and_update_of_a_missing_plugin() {
     assert_true(run_plugins_command("update not-installed-xyz").starts_with("no plugin named"))
 }
 
+fun test_remove_and_update_reject_unsafe_plugin_names() {
+    assert_true(run_plugins_command("remove ..").starts_with("error: unsafe plugin name"))
+    assert_true(run_plugins_command("update ..").starts_with("error: unsafe plugin name"))
+    assert_true(run_plugins_command("remove has/slash").starts_with("error: unsafe plugin name"))
+    assert_true(run_plugins_command("update CON").starts_with("error: unsafe plugin name"))
+}
+
 fun test_contrib_counts_the_bundle_subfolders() {
     create_dir_all("_rook_contrib/skills/a")
     create_dir_all("_rook_contrib/skills/b")
