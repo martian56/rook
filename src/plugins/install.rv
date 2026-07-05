@@ -93,6 +93,9 @@ fun plugin_name_from_url(url: String) -> String {
 // the plugin root. Keep this pure so install path safety is easy to test.
 fun valid_plugin_name(name: String) -> Bool {
     let n = name.trim()
+    if n != name {
+        return false
+    }
     if n == "" || n == "." || n == ".." {
         return false
     }
