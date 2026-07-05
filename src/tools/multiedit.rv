@@ -12,6 +12,7 @@ import std/fs { read, write, exists }
 import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
+import "./paths" { resolve_path }
 
 struct Edit {
     old_text: String,
@@ -21,20 +22,20 @@ struct Edit {
 // Apply a batch of edits to the file at `path`, all or nothing. `args_json`
 // is the raw tool arguments: { path, edits: [{ old_text, new_text }, ...] }.
 fun multi_edit(args_json: String) -> String {
-    let path = arg(args_json, "path")
-    if path == "" {
-        return "error: no path given"
+    let r = resolve_path(arg(args_json, "path"), "")
+    if !r.ok {
+        return r.error
     }
     let edits = parse_edits(args_json)
     if edits.len() == 0 {
         return "error: no edits given; provide an 'edits' array of {old_text, new_text}"
     }
-    if !exists(path) {
-        return "error: no such file: ${path}"
+    if !exists(r.path) {
+        return "error: no such file: ${r.path}"
     }
     let content = ""
     let ok = true
-    match read(path) {
+    match read(r.path) {
         Ok(s) -> {
             content = s
         },
@@ -48,14 +49,14 @@ fun multi_edit(args_json: String) -> String {
     }
     let outcome = apply_edits(content, edits)
     if !outcome.ok {
-        return "error: ${outcome.text} in ${path}; no changes written"
+        return "error: ${outcome.text} in ${r.path}; no changes written"
     }
     let word = "edits"
     if outcome.applied == 1 {
         word = "edit"
     }
-    return match write(path, outcome.text) {
-        Ok(b) -> "applied ${outcome.applied} ${word} to ${path}",
+    return match write(r.path, outcome.text) {
+        Ok(b) -> "applied ${outcome.applied} ${word} to ${r.path}",
         Err(e) -> "error: ${e.message}",
     }
 }

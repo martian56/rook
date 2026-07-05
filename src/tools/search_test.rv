@@ -65,3 +65,7 @@ fun test_grep_glob_filters_files() {
     remove_dir("_rook_gr5")
     return
 }
+
+fun test_grep_rejects_workspace_escape() {
+    assert_true(grep("needle", "..", "").contains("workspace"))
+}

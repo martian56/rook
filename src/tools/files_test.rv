@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
-import std/fs { remove_file, create_dir_all, remove_dir }
+import std/fs { remove_file, create_dir_all, remove_dir, exists }
 import "./files" { read_file, write_file, edit_file, list_dir }
 
 fun test_write_then_read_round_trips() {
@@ -39,5 +39,22 @@ fun test_list_dir_shows_entries() {
     assert_true(list_dir("_rook_ld").contains("x.txt"))
     remove_file("_rook_ld/x.txt")
     remove_dir("_rook_ld")
+    return
+}
+
+fun test_file_tools_reject_workspace_escape() {
+    assert_true(read_file("../README.md").contains("workspace"))
+    assert_true(list_dir("..").contains("workspace"))
+    assert_true(write_file("../_rook_escape.txt", "x").contains("workspace"))
+    assert_true(!exists("../_rook_escape.txt"))
+}
+
+fun test_write_accepts_mixed_separators_inside_workspace() {
+    create_dir_all("_rook_mix")
+    let r = write_file("_rook_mix\\x.txt", "mixed")
+    assert_true(r.starts_with("wrote"))
+    assert_eq_str(read_file("_rook_mix/x.txt"), "mixed")
+    remove_file("_rook_mix/x.txt")
+    remove_dir("_rook_mix")
     return
 }
