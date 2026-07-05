@@ -1,6 +1,10 @@
 import std/string
-import std/test { assert_true }
-import "./shell" { run_command }
+import std/env { os_name }
+import std/sync { sleep_millis }
+import std/json { JsonValue, parse }
+import std/test { assert_eq_int, assert_true }
+import "github.com/martian56/aviary/request" { CancelToken }
+import "./shell" { run_command, run_command_with_timeout, run_command_with_timeout_cancelable, parse_run_command_timeout_ms }
 
 fun test_echo_output_and_exit_zero() {
     let out = run_command("echo hello")
@@ -15,4 +19,58 @@ fun test_nonzero_exit_is_reported() {
 
 fun test_empty_command_is_error() {
     assert_true(run_command("").starts_with("error:"))
+}
+
+fun test_slow_command_times_out() {
+    let out = run_command_with_timeout(_slow_command(), 100)
+    assert_true(out.contains("timed out after"))
+    assert_true(out.contains("killed"))
+}
+
+fun test_cancel_token_interrupts_command() {
+    let token = CancelToken.new()
+    spawn(fun() -> Unit {
+        sleep_millis(100)
+        token.cancel()
+    })
+    let out = run_command_with_timeout_cancelable(_slow_command(), 5000, token)
+    assert_true(out.contains("interrupted"))
+    assert_true(out.contains("killed"))
+}
+
+fun test_run_command_timeout_setting_parses_nested_number() {
+    assert_eq_int(
+        parse_run_command_timeout_ms(_json("{\"run_command\":{\"timeout_ms\":3000}}")),
+        3000,
+    )
+}
+
+fun test_run_command_timeout_setting_parses_string_and_flat_key() {
+    assert_eq_int(
+        parse_run_command_timeout_ms(_json("{\"run_command\":{\"timeout_ms\":\"4500\"}}")),
+        4500,
+    )
+    assert_eq_int(parse_run_command_timeout_ms(_json("{\"run_command_timeout_ms\":6000}")), 6000)
+}
+
+fun test_run_command_timeout_setting_rejects_invalid_values() {
+    assert_eq_int(parse_run_command_timeout_ms(_json("{\"run_command\":{\"timeout_ms\":0}}")), 0)
+    assert_eq_int(
+        parse_run_command_timeout_ms(_json("{\"run_command\":{\"timeout_ms\":\"bad\"}}")),
+        0,
+    )
+}
+
+fun _slow_command() -> String {
+    if os_name() == "windows" {
+        return "ping -n 6 127.0.0.1 >nul"
+    }
+    return "sleep 5"
+}
+
+fun _json(text: String) -> JsonValue {
+    return match parse(text) {
+        Ok(j) -> j,
+        Err(e) -> JsonValue.Null,
+    }
 }

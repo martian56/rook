@@ -1,15 +1,39 @@
 // Run a shell command in the working directory. The command string is
 // handed to the platform shell (sh -c / cmd /c), and stdout, stderr, and the
 // exit code come back as one result, truncated so a noisy command cannot
-// bury the answer.
+// bury the answer. Foreground commands are polled so a bad command can be
+// killed on timeout or turn interruption.
 
 import std/string
 import std/env { os_name }
-import std/process { run, Output }
+import std/sync { sleep_millis }
+import std/json { JsonValue }
+import std/process { Child, start, Output }
+import "github.com/martian56/aviary/request" { CancelToken }
+import "../agents/dir" { roots }
+import "../agents/settings" { setting_section }
 
 const MAX_OUTPUT: Int = 4000
+const DEFAULT_TIMEOUT_MS: Int = 120000
+const POLL_MS: Int = 25
 
 fun run_command(command: String) -> String {
+    return run_command_cancelable(command, CancelToken.new())
+}
+
+fun run_command_cancelable(command: String, token: CancelToken) -> String {
+    return run_command_with_timeout_cancelable(command, command_timeout_ms(), token)
+}
+
+fun run_command_with_timeout(command: String, timeout_ms: Int) -> String {
+    return run_command_with_timeout_cancelable(command, timeout_ms, CancelToken.new())
+}
+
+fun run_command_with_timeout_cancelable(
+    command: String,
+    timeout_ms: Int,
+    token: CancelToken,
+) -> String {
     if command == "" {
         return "error: no command given"
     }
@@ -19,26 +43,139 @@ fun run_command(command: String) -> String {
         shell = "cmd"
         flag = "/c"
     }
-    return match run(shell, [flag, command]) {
-        Ok(out) -> _format(out),
+    return match start(shell, [flag, command]) {
+        Ok(child) -> _run_child(child, timeout_ms, token),
         Err(e) -> "error: ${e.message}",
     }
 }
 
-fun _format(out: Output) -> String {
-    let body = out.stdout
-    if out.stderr != "" {
-        if body != "" {
-            body = "${body}\n"
+fun command_timeout_ms() -> Int {
+    let rs = roots()
+    let i = 0
+    while i < rs.len() {
+        match setting_section(rs[i], "tools") {
+            Some(section) -> {
+                let n = parse_run_command_timeout_ms(section)
+                if n > 0 {
+                    return n
+                }
+            },
+            None -> {},
         }
-        body = "${body}${out.stderr}"
+        i = i + 1
     }
-    if body.length() > MAX_OUTPUT {
-        body = "${body.substring(0, MAX_OUTPUT)}\n… (truncated)"
+    return DEFAULT_TIMEOUT_MS
+}
+
+fun parse_run_command_timeout_ms(section: JsonValue) -> Int {
+    match section.get("run_command") {
+        Some(tool) -> {
+            let n = _json_int_field(tool, "timeout_ms")
+            if n > 0 {
+                return n
+            }
+        },
+        None -> {},
     }
+    return _json_int_field(section, "run_command_timeout_ms")
+}
+
+fun _run_child(child: Child, timeout_ms: Int, token: CancelToken) -> String {
+    child.close_stdin()
+    let stdout = ""
+    let stderr = ""
+    let waited = 0
+    let limit = timeout_ms
+    if limit <= 0 {
+        limit = DEFAULT_TIMEOUT_MS
+    }
+    while true {
+        stdout = stdout.concat(child.read_stdout())
+        stderr = stderr.concat(child.read_stderr())
+        if token.canceled() {
+            return _stop_child(child, "interrupted", stdout, stderr)
+        }
+        match child.poll() {
+            Some(code) -> {
+                stdout = stdout.concat(child.read_stdout())
+                stderr = stderr.concat(child.read_stderr())
+                child.free()
+                return _format(Output { code, stdout, stderr })
+            },
+            None -> {},
+        }
+        if waited >= limit {
+            return _stop_child(child, "timed out after ${limit}ms", stdout, stderr)
+        }
+        sleep_millis(POLL_MS)
+        waited = waited + POLL_MS
+    }
+    return "error: unreachable"
+}
+
+fun _stop_child(child: Child, reason: String, stdout: String, stderr: String) -> String {
+    let ignored = child.kill()
+    let code = child.wait()
+    let out = stdout.concat(child.read_stdout())
+    let err = stderr.concat(child.read_stderr())
+    child.free()
+    return _format_stopped(reason, code, out, err)
+}
+
+fun _format(out: Output) -> String {
+    let body = _body(out.stdout, out.stderr)
     let head = "exit ${out.code}"
     if body == "" {
         return head
     }
     return "${head}\n${body}"
+}
+
+fun _format_stopped(reason: String, code: Int, stdout: String, stderr: String) -> String {
+    let body = _body(stdout, stderr)
+    let head = "${reason} (killed, exit ${code})"
+    if body == "" {
+        return head
+    }
+    return "${head}\n${body}"
+}
+
+fun _body(stdout: String, stderr: String) -> String {
+    let body = stdout
+    if stderr != "" {
+        if body != "" {
+            body = "${body}\n"
+        }
+        body = "${body}${stderr}"
+    }
+    if body.length() > MAX_OUTPUT {
+        body = "${body.substring(0, MAX_OUTPUT)}\n... (truncated)"
+    }
+    return body
+}
+
+fun _json_int_field(j: JsonValue, key: String) -> Int {
+    return match j.get(key) {
+        Some(v) -> _json_int(v),
+        None -> 0,
+    }
+}
+
+fun _json_int(v: JsonValue) -> Int {
+    match v.as_int() {
+        Some(n) -> {
+            return n
+        },
+        None -> {},
+    }
+    match v.as_string() {
+        Some(s) -> {
+            return match s.trim().parse_int() {
+                Some(n) -> n,
+                None -> 0,
+            }
+        },
+        None -> {},
+    }
+    return 0
 }

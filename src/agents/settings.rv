@@ -9,11 +9,10 @@
 //     "mcp": { ... }
 //   }
 //
-// The three string fields are consumed by config resolution today; the
-// object sections are reserved for the permission rules, tool config, and
-// MCP servers that read them as those features land. A project settings.json
-// outranks the global one, and each sits below the same root's rook.json in
-// the overall resolution order.
+// The three string fields are consumed by config resolution. The object
+// sections configure permissions, tools, and MCP servers. A project
+// settings.json outranks the global one, and each sits below the same root's
+// rook.json in the overall resolution order.
 
 import std/string
 import std/fs { read, exists }
