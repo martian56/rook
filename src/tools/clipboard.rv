@@ -1,0 +1,56 @@
+// Copy text to the system clipboard so a mouse selection can leave rook. Uses
+// the platform's clipboard command (which touches no terminal state, so it
+// never disturbs the alternate screen), and falls back to OSC 52 for remote
+// sessions where those commands are absent but the terminal supports it.
+
+import std/string
+import std/env { os_name }
+import std/io { print }
+import std/encoding { base64_encode }
+import std/process { run_with_input, Output }
+
+// Copy `text` to the clipboard. Returns true when a copy path succeeded.
+fun copy_to_clipboard(text: String) -> Bool {
+    if text == "" {
+        return false
+    }
+    if _platform_copy(text) {
+        return true
+    }
+    return _osc52_copy(text)
+}
+
+fun _platform_copy(text: String) -> Bool {
+    let none: List<String> = []
+    let os = os_name()
+    if os == "windows" {
+        return _try("clip", none, text)
+    }
+    if os == "macos" {
+        return _try("pbcopy", none, text)
+    }
+    // Linux and BSD: Wayland first, then the X11 tools.
+    if _try("wl-copy", none, text) {
+        return true
+    }
+    if _try("xclip", ["-selection", "clipboard"], text) {
+        return true
+    }
+    return _try("xsel", ["--clipboard", "--input"], text)
+}
+
+fun _try(program: String, args: List<String>, text: String) -> Bool {
+    return match run_with_input(program, args, text) {
+        Ok(out) -> out.code == 0,
+        Err(e) -> false,
+    }
+}
+
+// OSC 52: ask the terminal to set the clipboard to base64(text). Reaches the
+// clipboard over SSH where no local command exists, on terminals that allow
+// it. Written straight to stdout; it sets no cells, so it does not disturb the
+// rendered frame.
+fun _osc52_copy(text: String) -> Bool {
+    print("\u{1b}]52;c;${base64_encode(text)}\u{7}")
+    return true
+}

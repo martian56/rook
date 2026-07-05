@@ -12,6 +12,7 @@ import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
 import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
 import "../ui/transcript" { validate_and_count, window_lines }
+import "../ui/selection" { normalize, is_empty, contains }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
@@ -916,8 +917,43 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
     if up > max_up {
         up = max_up
     }
-    let window = window_lines(m.entries, m.line_cache, max_up - up, area.h)
+    let top = max_up - up
+    // Record where the transcript is drawn and its top line, so a mouse cell
+    // can be mapped back to a content line and column for selection.
+    m.tr_x = area.x
+    m.tr_y = area.y
+    m.tr_w = area.w
+    m.tr_h = area.h
+    m.tr_top = top
+    let window = window_lines(m.entries, m.line_cache, top, area.h)
     Paragraph.from_lines(window).render(area, f.buf)
+    _draw_selection(m, area, top, f)
+    return
+}
+
+// Paint the mouse selection by reversing each selected cell that is on screen.
+// The selection is in content-line coordinates, so `top` maps a content line
+// to its screen row.
+fun _draw_selection(m: Chat, area: Rect, top: Int, f: Frame) {
+    if !m.sel.present || is_empty(m.sel) {
+        return
+    }
+    let sp = normalize(m.sel)
+    let row = 0
+    while row < area.h {
+        let abs_line = top + row
+        if abs_line >= sp.lo_line && abs_line <= sp.hi_line {
+            let col = 0
+            while col < area.w {
+                if contains(sp, abs_line, col) {
+                    let cell = f.buf.get(area.x + col, area.y + row)
+                    f.buf.set(area.x + col, area.y + row, cell.ch, cell.style.reverse())
+                }
+                col = col + 1
+            }
+        }
+        row = row + 1
+    }
     return
 }
 
@@ -942,6 +978,11 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     }
     if m.armed {
         left = "Press ctrl+c again to exit"
+        sty = m.theme.accent
+    }
+    // A copy confirmation briefly takes over the left hint.
+    if m.flash != "" && m.tick < m.flash_until {
+        left = "✓ ${m.flash}"
         sty = m.theme.accent
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)

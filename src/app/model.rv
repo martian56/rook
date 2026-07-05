@@ -5,6 +5,7 @@
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "../agent/state" { AgentState }
 import "../ui/transcript" { Entry, AgentBlock, EntryLines, empty_entry_lines }
+import "../ui/selection" { Selection, no_selection }
 import "../ui/theme" { Theme }
 import "../ui/themes" { startup_theme }
 import "../ui/depth" { themed }
@@ -47,6 +48,18 @@ struct Chat {
     scroll_up: Int,
     armed: Bool,
     turns: Int,
+    // Mouse text selection over the transcript, anchored to content lines so
+    // it survives scrolling. tr_* is the transcript area and top line that the
+    // last render used, so a mouse cell maps to a content line/column.
+    sel: Selection,
+    tr_x: Int,
+    tr_y: Int,
+    tr_w: Int,
+    tr_h: Int,
+    tr_top: Int,
+    // A brief status-bar flash (for example "copied") shown until this tick.
+    flash: String,
+    flash_until: Int,
     // "provider/model" and the key for its provider ("" when none is set).
     model: String,
     api_key: String,
@@ -137,6 +150,14 @@ fun chat_init() -> Chat {
         scroll_up: 0,
         armed: false,
         turns: 0,
+        sel: no_selection(),
+        tr_x: 0,
+        tr_y: 0,
+        tr_w: 0,
+        tr_h: 0,
+        tr_top: 0,
+        flash: "",
+        flash_until: 0,
         model,
         api_key: resolve_key(model),
         base_url: resolve_base(),

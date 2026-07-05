@@ -1,0 +1,124 @@
+// Content-anchored text selection over the transcript. The anchor and end are
+// (absolute line, column) into the assembled transcript, not screen cells, so
+// scrolling (wheel or auto-scroll while dragging) keeps the selection on the
+// same text. Ordering and text extraction are pure, so they are tested
+// without a terminal. Columns are treated as character positions, which lines
+// up with cells for rook's ASCII and width-1 glyphs.
+
+import std/string
+
+// A selection over the transcript. `active` is a drag in progress; `present`
+// is a finalized selection still shown. When both are false there is none.
+struct Selection {
+    active: Bool,
+    present: Bool,
+    a_line: Int,
+    a_col: Int,
+    b_line: Int,
+    b_col: Int,
+}
+
+fun no_selection() -> Selection {
+    return Selection { active: false, present: false, a_line: 0, a_col: 0, b_line: 0, b_col: 0 }
+}
+
+// A selection normalized so (lo_line, lo_col) precedes (hi_line, hi_col).
+// hi_col is exclusive.
+struct SelSpan {
+    lo_line: Int,
+    lo_col: Int,
+    hi_line: Int,
+    hi_col: Int,
+}
+
+fun normalize(s: Selection) -> SelSpan {
+    if s.a_line < s.b_line {
+        return SelSpan { lo_line: s.a_line, lo_col: s.a_col, hi_line: s.b_line, hi_col: s.b_col }
+    }
+    if s.a_line > s.b_line {
+        return SelSpan { lo_line: s.b_line, lo_col: s.b_col, hi_line: s.a_line, hi_col: s.a_col }
+    }
+    let lo = s.a_col
+    let hi = s.b_col
+    if lo > hi {
+        lo = s.b_col
+        hi = s.a_col
+    }
+    return SelSpan { lo_line: s.a_line, lo_col: lo, hi_line: s.a_line, hi_col: hi }
+}
+
+// Whether the selection covers no cells (nothing to copy or highlight).
+fun is_empty(s: Selection) -> Bool {
+    if !s.present && !s.active {
+        return true
+    }
+    return s.a_line == s.b_line && s.a_col == s.b_col
+}
+
+// Whether cell column `col` on absolute line `line` is inside the selection.
+// Used to paint the highlight, one row at a time.
+fun contains(sp: SelSpan, line: Int, col: Int) -> Bool {
+    if line < sp.lo_line || line > sp.hi_line {
+        return false
+    }
+    if sp.lo_line == sp.hi_line {
+        return col >= sp.lo_col && col < sp.hi_col
+    }
+    if line == sp.lo_line {
+        return col >= sp.lo_col
+    }
+    if line == sp.hi_line {
+        return col < sp.hi_col
+    }
+    return true
+}
+
+// The selected text, pulled from the transcript's plain-text lines. Middle and
+// boundary full-line ends are right-trimmed so trailing padding is not copied;
+// a single-line selection is taken verbatim between the two columns.
+fun extract(texts: List<String>, sp: SelSpan) -> String {
+    if texts.len() == 0 {
+        return ""
+    }
+    let lo_l = _clamp(sp.lo_line, 0, texts.len() - 1)
+    let hi_l = _clamp(sp.hi_line, 0, texts.len() - 1)
+    if lo_l == hi_l {
+        return _slice(texts[lo_l], sp.lo_col, sp.hi_col)
+    }
+    let out = _rtrim(_slice(texts[lo_l], sp.lo_col, texts[lo_l].length()))
+    let i = lo_l + 1
+    while i < hi_l {
+        out = out.concat("\n").concat(_rtrim(texts[i]))
+        i = i + 1
+    }
+    out = out.concat("\n").concat(_rtrim(_slice(texts[hi_l], 0, sp.hi_col)))
+    return out
+}
+
+fun _slice(s: String, start: Int, end: Int) -> String {
+    let n = s.length()
+    let a = _clamp(start, 0, n)
+    let b = _clamp(end, 0, n)
+    if a >= b {
+        return ""
+    }
+    return s.substring(a, b)
+}
+
+fun _rtrim(s: String) -> String {
+    let n = s.length()
+    while n > 0 && s.substring(n - 1, n) == " " {
+        n = n - 1
+    }
+    return s.substring(0, n)
+}
+
+fun _clamp(v: Int, lo: Int, hi: Int) -> Int {
+    if v < lo {
+        return lo
+    }
+    if v > hi {
+        return hi
+    }
+    return v
+}

@@ -1,0 +1,70 @@
+import std/string
+import std/test { assert_eq_str, assert_true, assert_eq_int }
+import "./selection" { Selection, SelSpan, no_selection, normalize, is_empty, contains, extract }
+
+fun test_normalize_orders_endpoints() {
+    // Anchor after end, same line: columns swap.
+    let s = Selection { active: true, present: true, a_line: 2, a_col: 9, b_line: 2, b_col: 3 }
+    let sp = normalize(s)
+    assert_eq_int(sp.lo_col, 3)
+    assert_eq_int(sp.hi_col, 9)
+    // Anchor on a later line: whole endpoints swap.
+    let s2 = Selection { active: true, present: true, a_line: 5, a_col: 1, b_line: 2, b_col: 7 }
+    let sp2 = normalize(s2)
+    assert_eq_int(sp2.lo_line, 2)
+    assert_eq_int(sp2.lo_col, 7)
+    assert_eq_int(sp2.hi_line, 5)
+}
+
+fun test_is_empty() {
+    assert_true(is_empty(no_selection()))
+    // A zero-width selection is empty.
+    assert_true(
+        is_empty(
+            Selection { active: true, present: true, a_line: 1, a_col: 4, b_line: 1, b_col: 4 },
+        ),
+    )
+    assert_true(
+        !is_empty(
+            Selection { active: true, present: true, a_line: 1, a_col: 4, b_line: 1, b_col: 6 },
+        ),
+    )
+}
+
+fun test_contains_for_highlighting() {
+    // A multi-line span: first line from lo_col on, last line up to hi_col,
+    // middle lines fully.
+    let sp = SelSpan { lo_line: 1, lo_col: 3, hi_line: 3, hi_col: 5 }
+    assert_true(!contains(sp, 1, 2))
+    assert_true(contains(sp, 1, 3))
+    assert_true(contains(sp, 2, 0))
+    assert_true(contains(sp, 2, 99))
+    assert_true(contains(sp, 3, 4))
+    assert_true(!contains(sp, 3, 5))
+    assert_true(!contains(sp, 4, 0))
+}
+
+fun test_extract_single_line() {
+    let texts = ["hello world"]
+    let sp = SelSpan { lo_line: 0, lo_col: 0, hi_line: 0, hi_col: 5 }
+    assert_eq_str(extract(texts, sp), "hello")
+    let sp2 = SelSpan { lo_line: 0, lo_col: 6, hi_line: 0, hi_col: 11 }
+    assert_eq_str(extract(texts, sp2), "world")
+}
+
+fun test_extract_multi_line_trims_full_line_ends() {
+    let texts = ["first line   ", "middle   ", "last line"]
+    let sp = SelSpan { lo_line: 0, lo_col: 6, hi_line: 2, hi_col: 4 }
+    // First line from col 6, trailing padding trimmed; middle whole (trimmed);
+    // last line up to col 4.
+    assert_eq_str(extract(texts, sp), "line\nmiddle\nlast")
+}
+
+fun test_extract_clamps_out_of_range() {
+    let texts = ["abc"]
+    let sp = SelSpan { lo_line: 0, lo_col: 0, hi_line: 0, hi_col: 999 }
+    assert_eq_str(extract(texts, sp), "abc")
+    // Empty input yields empty.
+    let none: List<String> = []
+    assert_eq_str(extract(none, sp), "")
+}

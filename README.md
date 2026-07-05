@@ -77,6 +77,11 @@ OpenRouter is the default provider, since one key there reaches most models.
   you see exactly what changed.
 - **Esc** interrupts; **ctrl+c** twice quits. **PageUp/PageDown** or the
   mouse wheel scroll.
+- **Drag with the left mouse button** to select transcript text; it is
+  copied to your clipboard on release. You can scroll while dragging, and
+  dragging past the top or bottom edge extends the selection. (rook draws
+  its own selection because it captures the mouse for scrolling; a click
+  or any keypress clears it.)
 - The status bar shows the session's token usage and an estimated cost;
   each turn also reports its own tokens and cost when it finishes. Costs
   are rough per-model estimates for at-a-glance spend, not billing.

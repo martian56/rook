@@ -206,6 +206,35 @@ fun _append(out: List<Line>, more: List<Line>) {
     return
 }
 
+// The plain text of one line: its spans' text joined, no styling.
+fun plain_of(line: Line) -> String {
+    let out = ""
+    let i = 0
+    while i < line.spans.len() {
+        out = out.concat(line.spans[i].text)
+        i = i + 1
+    }
+    return out
+}
+
+// The plain text of every assembled transcript line, in order. Used to
+// extract a mouse selection; O(total) but only on release, not per frame.
+fun transcript_texts(
+    entries: List<Entry>,
+    cache: List<EntryLines>,
+    w: Int,
+    theme: Theme,
+) -> List<String> {
+    let lines = assemble_cached(entries, cache, w, theme)
+    let out: List<String> = []
+    let i = 0
+    while i < lines.len() {
+        out.push(plain_of(lines[i]))
+        i = i + 1
+    }
+    return out
+}
+
 // The style of one diff line: removals in the error color, additions in
 // the tool green, context dim.
 fun _diff_style(line: String, theme: Theme) -> Style {

@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_eq_int }
 import "github.com/martian56/plumage/text" { Line }
-import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines }
+import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines, transcript_texts }
 import "./theme" { default_theme }
 
 fun line_text(lines: List<Line>, i: Int) -> String {
@@ -106,4 +106,16 @@ fun test_window_past_the_end_is_short() {
     // Asking for more lines than exist returns just what is there.
     let win = window_lines(entries, cache, 0, 50)
     assert_eq_int(win.len(), total)
+}
+
+fun test_transcript_texts_are_the_plain_rendered_lines() {
+    let entries = [Entry.UserMsg("hello"), Entry.BotMsg("world")]
+    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines()]
+    let texts = transcript_texts(entries, cache, 40, default_theme())
+    // Same count as the rendered lines, with the markers included, so a mouse
+    // selection maps cell columns to these strings.
+    let lines = build_lines(entries, 40, default_theme())
+    assert_eq_int(texts.len(), lines.len())
+    assert_eq_str(texts[0], "> hello")
+    assert_eq_str(texts[2], "● world")
 }

@@ -12,7 +12,9 @@ import "../ui/transcript" { AgentBlock }
 import "../agent/turn" { run_turn }
 import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
-import "../ui/transcript" { EntryLines, empty_entry_lines }
+import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
+import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
+import "../tools/clipboard" { copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions, load_session }
@@ -48,6 +50,21 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
                         m.scroll_up = 0
                     }
                 },
+                Down -> {
+                    if ev.button == 0 {
+                        _sel_begin(m, ev.x, ev.y)
+                    }
+                },
+                Drag -> {
+                    if ev.button == 0 {
+                        _sel_extend(m, ev.x, ev.y)
+                    }
+                },
+                Up -> {
+                    if ev.button == 0 {
+                        _sel_finish(m)
+                    }
+                },
                 _ -> {},
             }
             return next(m)
@@ -57,6 +74,94 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
         },
     }
     return next(m)
+}
+
+// Start a selection at a mouse-down inside the transcript, mapping the screen
+// cell to a content line and column. A click outside the transcript clears any
+// existing selection.
+fun _sel_begin(m: Chat, x: Int, y: Int) {
+    if !_in_transcript(m, x, y) {
+        m.sel = no_selection()
+        return
+    }
+    let col = x - m.tr_x
+    if col < 0 {
+        col = 0
+    }
+    let line = m.tr_top + (y - m.tr_y)
+    m.sel = Selection {
+        active: true,
+        present: true,
+        a_line: line,
+        a_col: col,
+        b_line: line,
+        b_col: col,
+    }
+    return
+}
+
+// Extend the active selection to the current mouse cell. Dragging past the top
+// or bottom edge scrolls, so a selection can run beyond one screen.
+fun _sel_extend(m: Chat, x: Int, y: Int) {
+    if !m.sel.active {
+        return
+    }
+    if y < m.tr_y {
+        m.scroll_up = m.scroll_up + 1
+    } else {
+        if y >= m.tr_y + m.tr_h {
+            m.scroll_up = m.scroll_up - 1
+            if m.scroll_up < 0 {
+                m.scroll_up = 0
+            }
+        }
+    }
+    let cy = y
+    if cy < m.tr_y {
+        cy = m.tr_y
+    }
+    if cy >= m.tr_y + m.tr_h {
+        cy = m.tr_y + m.tr_h - 1
+    }
+    let col = x - m.tr_x
+    if col < 0 {
+        col = 0
+    }
+    m.sel.b_line = m.tr_top + (cy - m.tr_y)
+    m.sel.b_col = col
+    return
+}
+
+// Finish a selection on mouse-up: pull out the selected text and copy it to
+// the clipboard, and flash a confirmation.
+fun _sel_finish(m: Chat) {
+    m.sel.active = false
+    if is_empty(m.sel) {
+        m.sel = no_selection()
+        return
+    }
+    let texts = transcript_texts(m.entries, m.line_cache, m.tr_w, m.theme)
+    let text = extract(texts, normalize(m.sel))
+    if text.trim() == "" {
+        return
+    }
+    if copy_to_clipboard(text) {
+        let n = text.lines().len()
+        let unit = "lines"
+        if n == 1 {
+            unit = "line"
+        }
+        m.flash = "copied ${n} ${unit} to the clipboard"
+        m.flash_until = m.tick + 60
+    }
+    return
+}
+
+fun _in_transcript(m: Chat, x: Int, y: Int) -> Bool {
+    if m.tr_w <= 0 || m.tr_h <= 0 {
+        return false
+    }
+    return x >= m.tr_x && x < m.tr_x + m.tr_w && y >= m.tr_y && y < m.tr_y + m.tr_h
 }
 
 // Advance the spinner and replay any new display events from the goroutine.
@@ -245,6 +350,11 @@ fun _drop_block(m: Chat, idx: Int) {
 }
 
 fun _key(m: Chat, k: Key) -> Step<Chat> {
+    // Any keypress clears a mouse selection, the way typing clears one in an
+    // editor.
+    if m.sel.present {
+        m.sel = no_selection()
+    }
     // ctrl+c is always available, even over a modal.
     match k {
         Ctrl(c) -> {
