@@ -59,6 +59,24 @@ fun test_resolve_tools_covers_each_case() {
     assert_eq_str(ex[0], "read_file")
 }
 
+// An oversized subagent body is capped so it cannot swallow the context when
+// the agent runs.
+fun test_parse_caps_an_oversized_prompt() {
+    let a = parse_subagent(_repeat_char("x", 9000), "huge")
+    assert_true(a.prompt.length() < 9000)
+    assert_true(a.prompt.contains("[truncated: subagent prompt]"))
+}
+
+fun _repeat_char(s: String, n: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < n {
+        out = out.concat(s)
+        i = i + 1
+    }
+    return out
+}
+
 fun _has(xs: List<String>, name: String) -> Bool {
     let i = 0
     while i < xs.len() {

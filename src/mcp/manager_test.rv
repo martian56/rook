@@ -171,6 +171,34 @@ fun test_format_tool_result_joins_text_and_flags_errors() {
     assert_true(format_tool_result(_json("{\"content\": []}")).contains("no text content"))
 }
 
+// A server's resource and tool text is untrusted and unbounded; it is capped
+// before it reaches the model, with a source-labeled marker.
+fun test_format_resource_caps_oversized_text() {
+    let big = _repeat("z", 9000)
+    let out = format_resource(_json("{\"contents\": [{\"text\": \"${big}\"}]}"))
+    assert_true(out.length() < 9000)
+    assert_true(out.contains("[truncated: MCP resource]"))
+}
+
+fun test_format_tool_result_caps_oversized_text() {
+    let big = _repeat("z", 9000)
+    let out = format_tool_result(
+        _json("{\"content\": [{\"type\": \"text\", \"text\": \"${big}\"}]}"),
+    )
+    assert_true(out.length() < 9000)
+    assert_true(out.contains("[truncated: MCP tool result]"))
+}
+
+fun _repeat(s: String, n: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < n {
+        out = out.concat(s)
+        i = i + 1
+    }
+    return out
+}
+
 fun _is_none(o: Option<Route>) -> Bool {
     return match o {
         Some(r) -> false,

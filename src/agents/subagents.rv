@@ -9,6 +9,13 @@ import std/string
 import std/fs { read, is_file }
 import "./dir" { merged_names, path_of }
 import "./front" { Front, parse_front, front_get }
+import "./limits" { cap_text, clip_line }
+
+// A subagent body becomes its system prompt when it runs; its description is a
+// one-line index row. Cap both so an oversized definition cannot dominate the
+// context.
+const MAX_SUBAGENT_PROMPT_CHARS: Int = 8000
+const MAX_SUBAGENT_DESC_CHARS: Int = 200
 
 struct Subagent {
     name: String,
@@ -59,7 +66,9 @@ fun parse_subagent(text: String, fallback_name: String) -> Subagent {
         description: front_get(fm, "description"),
         tools: resolve_tools(front_get(fm, "tools")),
         model: front_get(fm, "model"),
-        prompt: fm.body,
+        // A subagent's body becomes its system prompt when it runs; cap it so
+        // an oversized definition cannot swallow the context window.
+        prompt: cap_text(fm.body, MAX_SUBAGENT_PROMPT_CHARS, "subagent prompt"),
     }
 }
 
@@ -175,6 +184,7 @@ fun subagents_prompt(agents: List<Subagent>) -> String {
         if d == "" {
             d = "no description"
         }
+        d = clip_line(d, MAX_SUBAGENT_DESC_CHARS)
         out = "${out}\n- ${agents[i].name}: ${d} (${tool_access(agents[i])})"
         i = i + 1
     }

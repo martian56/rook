@@ -8,6 +8,12 @@ import std/string
 import std/fs { read, is_dir }
 import "./dir" { merged_names, path_of }
 import "./front" { Front, parse_front, front_get }
+import "./limits" { cap_text, clip_line }
+
+// A skill body is loaded whole when use_skill pulls it in; its description is
+// a one-line index row. Cap both so a large skill cannot dominate the context.
+const MAX_SKILL_CHARS: Int = 8000
+const MAX_SKILL_DESC_CHARS: Int = 200
 
 struct Skill {
     name: String,
@@ -64,6 +70,7 @@ fun skills_prompt(skills: List<Skill>) -> String {
         if d == "" {
             d = "no description"
         }
+        d = clip_line(d, MAX_SKILL_DESC_CHARS)
         out = "${out}\n- ${skills[i].name}: ${d}"
         i = i + 1
     }
@@ -81,7 +88,7 @@ fun skill_body(rs: List<String>, name: String) -> String {
     let i = 0
     while i < skills.len() {
         if skills[i].name.to_lower() == want {
-            return "skill ${skills[i].name}:\n${skills[i].body}"
+            return "skill ${skills[i].name}:\n${cap_text(skills[i].body, MAX_SKILL_CHARS, "skill body")}"
         }
         i = i + 1
     }

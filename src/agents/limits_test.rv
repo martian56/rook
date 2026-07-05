@@ -1,0 +1,49 @@
+import std/string
+import std/test { assert_true, assert_eq_str }
+import "./limits" { cap_text, clip_line }
+
+fun _repeat(s: String, n: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < n {
+        out = out.concat(s)
+        i = i + 1
+    }
+    return out
+}
+
+fun test_cap_text_leaves_short_text_alone() {
+    assert_eq_str(cap_text("hello", 100, "skill body"), "hello")
+}
+
+fun test_cap_text_truncates_with_a_source_labeled_marker() {
+    let big = _repeat("a", 200)
+    let out = cap_text(big, 10, "skill body")
+    assert_true(out.starts_with("aaaaaaaaaa"))
+    assert_true(out.length() < big.length())
+    assert_true(out.contains("[truncated: skill body]"))
+}
+
+fun test_clip_line_leaves_short_text_alone() {
+    assert_eq_str(clip_line("short", 100), "short")
+}
+
+fun test_clip_line_adds_an_ellipsis_when_long() {
+    let out = clip_line(_repeat("b", 40), 5)
+    assert_true(out.starts_with("bbbbb"))
+    assert_true(out.contains("…"))
+    assert_true(!out.contains("bbbbbb"))
+}
+
+// The cut must land on a character boundary. "é" is two bytes (0xC3 0xA9), so
+// cutting at byte 5 falls in the middle of the third "é"; the cut backs off to
+// byte 4 and keeps two whole characters, never a split byte.
+fun test_cap_text_never_splits_a_multibyte_character() {
+    let out = cap_text(_repeat("é", 100), 5, "skill body")
+    assert_true(out.starts_with("éé"))
+    assert_true(!out.starts_with("ééé"))
+    // The byte right after the kept text is the newline before the marker, so
+    // nothing dangles mid-character.
+    assert_true(out.byte_at(4) == 10)
+    assert_true(out.contains("[truncated: skill body]"))
+}
