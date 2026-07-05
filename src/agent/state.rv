@@ -122,6 +122,15 @@ impl AgentState {
         self.lock.unlock()
     }
 
+    // Set the session's running token totals, for restoring them when a saved
+    // session is resumed. Does not touch the per-turn counters.
+    fun set_usage(self, prompt: Int, completion: Int) {
+        self.lock.lock()
+        self.sess_prompt = prompt
+        self.sess_completion = completion
+        self.lock.unlock()
+    }
+
     // This turn's accumulated usage, for the end-of-turn summary.
     fun turn_tokens(self) -> Tokens {
         self.lock.lock()

@@ -1,10 +1,11 @@
 // Session persistence: each conversation is saved to ~/.rook/sessions as a
-// JSON file (id, created time, model, a title, and the transcript entries),
-// rewritten after every turn, so work survives a restart. /sessions lists
-// the saved ones newest first and resumes one: the transcript is restored,
-// and a text-only conversation is rebuilt from the user and assistant lines
-// so the model continues with context (the exact tool-call history is not
-// replayed).
+// JSON file (id, created time, model, a title, the transcript entries, and
+// the model-visible message history), rewritten after every turn, so work
+// survives a restart. /sessions lists the saved ones newest first and resumes
+// one: the transcript is restored for display, and the model-visible history
+// (tool calls, tool results, and compacted summaries) is restored so the
+// model picks up with the same context it had. Sessions saved before the
+// message history existed fall back to a text-only rebuild.
 
 import std/string
 import std/env { get_env, has_env }
@@ -12,6 +13,7 @@ import std/fs { read, write, exists, create_dir_all, list_dir }
 import std/json { JsonValue, parse, stringify }
 import std/time { now, now_millis }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
+import "github.com/martian56/aviary/message" { Message, ToolCall, Role, role_str }
 import "../ui/transcript" { Entry }
 
 // A saved session's headline, for the picker.
@@ -22,10 +24,18 @@ struct SessionMeta {
     title: String,
 }
 
-// The restored contents of a session.
+// The restored contents of a session: the display transcript and the
+// model-visible history. `messages` is empty for sessions saved before the
+// history was persisted, in which case the caller rebuilds a text-only
+// context from `entries`.
 struct Loaded {
     model: String,
     entries: List<Entry>,
+    messages: List<Message>,
+    // The session's running token totals, restored so the usage indicator
+    // reflects the resumed session instead of resetting to zero.
+    usage_prompt: Int,
+    usage_completion: Int,
 }
 
 // A fresh session id, unique to the millisecond.
@@ -34,8 +44,19 @@ fun new_session_id() -> String {
 }
 
 // Write the session. A session with no entries is not saved (nothing to
-// resume). Overwrites the same file as the conversation grows.
-fun save_session(id: String, model: String, entries: List<Entry>) {
+// resume). Overwrites the same file as the conversation grows. `messages` is
+// the model-visible history, saved alongside the display transcript so a
+// resumed session restores the same model context, not just the visible rows.
+// `usage_prompt`/`usage_completion` are the session's running token totals, so
+// the usage indicator survives a resume.
+fun save_session(
+    id: String,
+    model: String,
+    entries: List<Entry>,
+    messages: List<Message>,
+    usage_prompt: Int,
+    usage_completion: Int,
+) {
     if entries.len() == 0 {
         return
     }
@@ -50,8 +71,16 @@ fun save_session(id: String, model: String, entries: List<Entry>) {
         arr.push(_entry_json(entries[i]))
         i = i + 1
     }
+    let msgs: List<JsonValue> = []
+    let m = 0
+    while m < messages.len() {
+        msgs.push(_msg_json(messages[m]))
+        m = m + 1
+    }
     let doc = Obj.new().str("id", id).str("model", model).str("title", _title(entries))
     doc = doc.str("created", "${now()}").set("entries", JsonValue.Array(arr))
+    doc = doc.set("messages", JsonValue.Array(msgs))
+    doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
     write("${dir}/${id}.json", stringify(doc.build()))
     return
 }
@@ -98,9 +127,16 @@ fun list_sessions() -> List<SessionMeta> {
 // Restore a session by id.
 fun load_session(id: String) -> Loaded {
     let empty: List<Entry> = []
+    let no_msgs: List<Message> = []
     let dir = _sessions_dir()
     if dir == "" {
-        return Loaded { model: "", entries: empty }
+        return Loaded {
+            model: "",
+            entries: empty,
+            messages: no_msgs,
+            usage_prompt: 0,
+            usage_completion: 0,
+        }
     }
     let text = _read_opt("${dir}/${id}.json")
     return match parse(text) {
@@ -112,9 +148,37 @@ fun load_session(id: String) -> Loaded {
                 entries.push(_json_entry(arr[i]))
                 i = i + 1
             }
-            Loaded { model: as_str(field(j, "model")), entries }
+            let messages: List<Message> = []
+            let marr = as_list(field(j, "messages"))
+            let k = 0
+            while k < marr.len() {
+                messages.push(_json_msg(marr[k]))
+                k = k + 1
+            }
+            Loaded {
+                model: as_str(field(j, "model")),
+                entries,
+                messages,
+                usage_prompt: _int_field(j, "usage_prompt"),
+                usage_completion: _int_field(j, "usage_completion"),
+            }
         },
-        Err(e) -> Loaded { model: "", entries: empty },
+        Err(e) -> Loaded {
+            model: "",
+            entries: empty,
+            messages: no_msgs,
+            usage_prompt: 0,
+            usage_completion: 0,
+        },
+    }
+}
+
+// An integer stored as a string field, 0 when missing or unparseable (older
+// sessions have no usage totals).
+fun _int_field(j: JsonValue, key: String) -> Int {
+    return match as_str(field(j, key)).parse_int() {
+        Some(n) -> n,
+        None -> 0,
     }
 }
 
@@ -152,6 +216,60 @@ fun _json_entry(j: JsonValue) -> Entry {
         return Entry.AgentTool(a, b, as_str(field(j, "c")))
     }
     return Entry.Notice(a)
+}
+
+// One model-visible message to JSON: role and content, plus the tool calls
+// on an assistant turn and the tool_call_id/name on a tool result, so the
+// exact structure round-trips.
+fun _msg_json(m: Message) -> JsonValue {
+    let calls: List<JsonValue> = []
+    let i = 0
+    while i < m.tool_calls.len() {
+        let c = m.tool_calls[i]
+        calls.push(Obj.new().str("id", c.id).str("name", c.name).str("args", c.arguments).build())
+        i = i + 1
+    }
+    return Obj.new().str("role", role_str(m.role)).str("content", m.content).set(
+        "calls",
+        JsonValue.Array(calls),
+    ).str("tool_call_id", m.tool_call_id).str("name", m.name).build()
+}
+
+fun _json_msg(j: JsonValue) -> Message {
+    let calls: List<ToolCall> = []
+    let arr = as_list(field(j, "calls"))
+    let i = 0
+    while i < arr.len() {
+        calls.push(
+            ToolCall {
+                id: as_str(field(arr[i], "id")),
+                name: as_str(field(arr[i], "name")),
+                arguments: as_str(field(arr[i], "args")),
+            },
+        )
+        i = i + 1
+    }
+    return Message {
+        role: _role_of(as_str(field(j, "role"))),
+        content: as_str(field(j, "content")),
+        tool_calls: calls,
+        tool_call_id: as_str(field(j, "tool_call_id")),
+        name: as_str(field(j, "name")),
+    }
+}
+
+// A stored role name back to a Role; unknown names fall back to User.
+fun _role_of(s: String) -> Role {
+    if s == "system" {
+        return Role.System
+    }
+    if s == "assistant" {
+        return Role.Assistant
+    }
+    if s == "tool" {
+        return Role.Tool
+    }
+    return Role.User
 }
 
 // The session title: the first user message, trimmed to one short line.

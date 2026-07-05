@@ -80,8 +80,17 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.pending = ""
             m.pending_detail = ""
             m.question = ""
-            // Persist the conversation now that the turn has landed.
-            save_session(m.session_id, m.model, m.entries)
+            // Persist the conversation now that the turn has landed: the
+            // display transcript, the model-visible history, and the running
+            // token totals together, so a resume restores all three.
+            save_session(
+                m.session_id,
+                m.model,
+                m.entries,
+                m.agent.messages(),
+                m.sess_prompt,
+                m.sess_completion,
+            )
         }
         m.scroll_up = 0
     }
@@ -553,21 +562,39 @@ fun _resume(m: Chat, id: String) {
         set_model(m, loaded.model)
     }
     m.agent.clear_convo()
-    let i = 0
-    while i < loaded.entries.len() {
-        match loaded.entries[i] {
-            UserMsg(t) -> {
-                m.agent.push_user(t)
-            },
-            BotMsg(t) -> {
-                m.agent.push_assistant(t)
-            },
-            _ -> {},
+    if loaded.messages.len() > 0 {
+        // The saved model-visible history: restore it verbatim so tool
+        // results, subagent output, and compacted summaries come back with
+        // the transcript, and the next turn has the full context.
+        m.agent.replace_convo(loaded.messages)
+        m.entries.push(Entry.Notice("resumed session"))
+    } else {
+        // An older session without a saved model history: rebuild a text-only
+        // context from the visible user and assistant lines. The model still
+        // continues, but without the earlier tool results, so say so.
+        let i = 0
+        while i < loaded.entries.len() {
+            match loaded.entries[i] {
+                UserMsg(t) -> {
+                    m.agent.push_user(t)
+                },
+                BotMsg(t) -> {
+                    m.agent.push_assistant(t)
+                },
+                _ -> {},
+            }
+            i = i + 1
         }
-        i = i + 1
+        m.entries.push(
+            Entry.Notice("resumed session (older format, model context reduced to visible messages)"),
+        )
     }
+    // Restore the session's token totals (clear_convo reset them to zero) so
+    // the usage indicator reflects the resumed session, not a fresh one.
+    m.agent.set_usage(loaded.usage_prompt, loaded.usage_completion)
+    m.sess_prompt = loaded.usage_prompt
+    m.sess_completion = loaded.usage_completion
     m.session_id = id
-    m.entries.push(Entry.Notice("resumed session"))
     m.scroll_up = 0
     return
 }
