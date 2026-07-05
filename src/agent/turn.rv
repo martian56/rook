@@ -10,6 +10,7 @@ import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
+import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
 import "../tools/registry" { tools, needs_approval, dispatch, label }
 import "../tools/preview" { change_preview }
@@ -34,6 +35,15 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         }
         // Fire before every model call, so a hook can log or set up state.
         fire_hooks("pre-prompt", "", "")
+        // Summarize old turns when the conversation nears the context window.
+        let compacted = maybe_compact(st, model, api_key, base_url)
+        if compacted > 0 {
+            st.emit(
+                DisplayEvent.Info(
+                    "compacted ${compacted} earlier messages to stay within the context window",
+                ),
+            )
+        }
         st.emit(DisplayEvent.Started)
         let plan = st.plan()
         let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0, plan), plan).cancelable(

@@ -142,6 +142,14 @@ one: the transcript comes back and the model picks up the context.
 Sessions save to `~/.rook/sessions` automatically after each turn;
 `/clear` starts a fresh one and leaves the old one resumable.
 
+When a long conversation nears the model's context window, rook
+compacts it: the older turns are summarized into a compact note (by a
+one-off model call) and the recent turns are kept verbatim, so the
+session keeps going instead of overflowing or getting truncated
+blindly. A notice says when it happens. The transcript you see is
+untouched; only what the model receives is condensed. If the summary
+call fails, the conversation is left as is.
+
 `/help` opens the same list as a menu: arrows to browse every command
 (built-in and custom) with its description, Enter to run one, Esc to
 close. The other built-ins: `/clear` (wipe the conversation), `/model`,

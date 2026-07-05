@@ -1,0 +1,87 @@
+import std/string
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "github.com/martian56/aviary/message" { Message }
+import "./compact" { estimate_tokens, context_window, should_compact, split_index, rebuild, flatten }
+
+fun test_estimate_tokens_is_chars_over_four() {
+    // "abcd" is 4 chars plus 8 overhead = 12, /4 = 3.
+    assert_eq_int(estimate_tokens([Message.user("abcd")]), 3)
+}
+
+fun test_context_window_by_family() {
+    assert_eq_int(context_window("claude-opus-4"), 200000)
+    assert_eq_int(context_window("gpt-4o"), 128000)
+    assert_eq_int(context_window("gemini-1.5-pro"), 1000000)
+    // An unknown model gets the conservative default.
+    assert_eq_int(context_window("some-new-model"), 128000)
+}
+
+fun test_should_compact_only_when_large_and_is_model_aware() {
+    let small = [Message.user("hello"), Message.assistant("hi")]
+    assert_true(!should_compact(small, "gpt-4o"))
+
+    // ~400k chars is ~100k tokens: over 70% of gpt-4o's 128k, under claude's.
+    let unit = _repeat("x", 1000)
+    let huge = [Message.user(_repeat(unit, 400))]
+    assert_true(should_compact(huge, "gpt-4o"))
+    assert_true(!should_compact(huge, "claude-opus-4"))
+}
+
+fun test_split_index_keeps_the_last_turns() {
+    let convo = [
+        Message.user("q1"),
+        Message.assistant("a1"),
+        Message.user("q2"),
+        Message.assistant("a2"),
+        Message.user("q3"),
+        Message.assistant("a3"),
+        Message.user("q4"),
+        Message.assistant("a4"),
+        Message.user("q5"),
+        Message.assistant("a5"),
+    ]
+    // Five user turns, keep four: summarize up to the second turn (index 2).
+    assert_eq_int(split_index(convo, 4), 2)
+    // Too few turns to bother.
+    assert_eq_int(split_index(convo, 5), 0 - 1)
+    assert_eq_int(split_index(convo, 8), 0 - 1)
+}
+
+fun test_rebuild_replaces_old_with_a_summary() {
+    let convo = [
+        Message.user("q1"),
+        Message.assistant("a1"),
+        Message.user("q2"),
+        Message.assistant("a2"),
+    ]
+    let out = rebuild(convo, 2, "did q1")
+    // One summary message plus the two kept messages.
+    assert_eq_int(out.len(), 3)
+    assert_true(out[0].content.contains("did q1"))
+    assert_true(out[0].content.contains("summarized"))
+    // The recent messages are kept verbatim.
+    assert_eq_str(out[1].content, "q2")
+    assert_eq_str(out[2].content, "a2")
+}
+
+fun test_flatten_labels_roles() {
+    let convo = [
+        Message.user("hi"),
+        Message.assistant("yo"),
+        Message.tool_result("id", "grep", "match"),
+    ]
+    let text = flatten(convo)
+    assert_true(text.contains("USER: hi"))
+    assert_true(text.contains("ASSISTANT: yo"))
+    assert_true(text.contains("TOOL(grep): match"))
+}
+
+fun _repeat(chunk: String, times: Int) -> String {
+    let out = ""
+    let i = 0
+    while i < times {
+        out = out.concat(chunk)
+        i = i + 1
+    }
+    return out
+}

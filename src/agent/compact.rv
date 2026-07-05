@@ -1,0 +1,193 @@
+// Context compaction: when the conversation grows toward the model's context
+// window, summarize the older turns into one compact note and keep the recent
+// turns verbatim, so a long session neither overflows nor gets truncated
+// blindly. The summary is produced by a one-off model call; if it fails, the
+// conversation is left untouched rather than lost.
+//
+// The estimate, the split, and the rebuild are pure so they are tested
+// directly; only the summarize call and the state swap touch the outside.
+
+import std/string
+import "github.com/martian56/aviary" { complete }
+import "github.com/martian56/aviary/request" { ChatRequest }
+import "github.com/martian56/aviary/message" { Message, Role }
+import "./state" { AgentState, DisplayEvent }
+
+// Keep this many recent user turns verbatim; summarize everything before.
+const KEEP_TURNS: Int = 4
+const DEFAULT_WINDOW: Int = 128000
+// Compact once the estimate passes this percent of the window.
+const COMPACT_RATIO_PCT: Int = 70
+
+const SUMMARY_SYSTEM: String = "You compress a coding assistant's conversation so it can continue with less context. Keep only what matters for continuing the work."
+const SUMMARY_INSTRUCTION: String = "Summarize the conversation so far into a compact note. Keep: the user's goals and decisions, files created or changed and how, commands run and their outcomes, and anything still in progress or unresolved. Drop pleasantries and redundant detail. Write it as notes you can rely on to keep working."
+
+// Check the running conversation and, if it is large enough, replace the
+// older turns with a summary. Returns how many messages were summarized away
+// (0 when nothing was compacted). Runs on the turn goroutine before the
+// request is built.
+fun maybe_compact(st: AgentState, model: String, api_key: String, base_url: String) -> Int {
+    let msgs = st.messages()
+    if !should_compact(msgs, model) {
+        return 0
+    }
+    let split = split_index(msgs, KEEP_TURNS)
+    if split < 0 {
+        return 0
+    }
+    let old: List<Message> = []
+    let i = 0
+    while i < split {
+        old.push(msgs[i])
+        i = i + 1
+    }
+    let summary = summarize(old, model, api_key, base_url)
+    if summary.trim() == "" {
+        // A failed summary must not drop the conversation.
+        return 0
+    }
+    st.replace_convo(rebuild(msgs, split, summary))
+    return split
+}
+
+// A rough token estimate: about four characters per token, plus a little per
+// message for the role and any tool-call arguments.
+fun estimate_tokens(msgs: List<Message>) -> Int {
+    let chars = 0
+    let i = 0
+    while i < msgs.len() {
+        chars = chars + msgs[i].content.length() + 8
+        let j = 0
+        while j < msgs[i].tool_calls.len() {
+            chars = chars + msgs[i].tool_calls[j].arguments.length() + msgs[i].tool_calls[j].name.length()
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return chars / 4
+}
+
+// The context window for a model, by family, with a conservative default.
+fun context_window(model: String) -> Int {
+    let m = model.to_lower()
+    if m.contains("claude") {
+        return 200000
+    }
+    if m.contains("gemini") {
+        return 1000000
+    }
+    if m.contains("gpt-4o") || m.contains("gpt-4.1") || m.contains("o1") || m.contains("o3") || m.contains(
+        "gpt-4-turbo",
+    ) {
+        return 128000
+    }
+    return DEFAULT_WINDOW
+}
+
+// Whether the conversation is large enough to compact.
+fun should_compact(msgs: List<Message>, model: String) -> Bool {
+    let budget = (context_window(model) * COMPACT_RATIO_PCT) / 100
+    return estimate_tokens(msgs) > budget
+}
+
+// The index at which the last `keep_turns` user turns begin: everything
+// before it is summarized, everything from it stays verbatim. A user turn is
+// a User-role message (a tool result is a Tool-role message, not a boundary).
+// Returns -1 when there are not enough turns to bother, so recent history is
+// never summarized.
+fun split_index(msgs: List<Message>, keep_turns: Int) -> Int {
+    let user_idx: List<Int> = []
+    let i = 0
+    while i < msgs.len() {
+        if _is_user(msgs[i]) {
+            user_idx.push(i)
+        }
+        i = i + 1
+    }
+    if user_idx.len() <= keep_turns {
+        return 0 - 1
+    }
+    let boundary = user_idx[user_idx.len() - keep_turns]
+    if boundary < 2 {
+        return 0 - 1
+    }
+    return boundary
+}
+
+// The conversation with [0, split) replaced by one summary message and the
+// rest kept verbatim. Pure. The summary is a user message so it is a valid
+// standalone start (a tool result would be orphaned).
+fun rebuild(msgs: List<Message>, split: Int, summary: String) -> List<Message> {
+    let out: List<Message> = []
+    out.push(Message.user("[Earlier conversation, summarized to save context]\n\n${summary}"))
+    let i = split
+    while i < msgs.len() {
+        out.push(msgs[i])
+        i = i + 1
+    }
+    return out
+}
+
+// Flatten messages into a plain transcript for the summarizer, so the
+// summarize request carries no tool-call structure of its own to keep valid.
+fun flatten(msgs: List<Message>) -> String {
+    let out = ""
+    let i = 0
+    while i < msgs.len() {
+        let m = msgs[i]
+        let body = m.content
+        let j = 0
+        while j < m.tool_calls.len() {
+            if body != "" {
+                body = body.concat(" ")
+            }
+            body = body.concat("[calls ${m.tool_calls[j].name}]")
+            j = j + 1
+        }
+        if body.trim() != "" {
+            if out != "" {
+                out = out.concat("\n")
+            }
+            out = out.concat("${_role_label(m)}: ${body}")
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun summarize(old: List<Message>, model: String, api_key: String, base_url: String) -> String {
+    let transcript = flatten(old)
+    if transcript.trim() == "" {
+        return ""
+    }
+    let req = ChatRequest.new(model).system(SUMMARY_SYSTEM).user(
+        "${SUMMARY_INSTRUCTION}\n\n${transcript}",
+    )
+    if api_key != "" {
+        req = req.key(api_key)
+    }
+    if base_url != "" {
+        req = req.base(base_url)
+    }
+    req = req.timeout(60000)
+    return match complete(req) {
+        Ok(reply) -> reply.content,
+        Err(e) -> "",
+    }
+}
+
+fun _is_user(m: Message) -> Bool {
+    return match m.role {
+        User -> true,
+        _ -> false,
+    }
+}
+
+fun _role_label(m: Message) -> String {
+    return match m.role {
+        System -> "SYSTEM",
+        User -> "USER",
+        Assistant -> "ASSISTANT",
+        Tool -> "TOOL(${m.name})",
+    }
+}

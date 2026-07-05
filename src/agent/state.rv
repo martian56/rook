@@ -205,6 +205,15 @@ impl AgentState {
         self.lock.unlock()
     }
 
+    // Replace the whole conversation, for context compaction. The display
+    // transcript is separate and stays intact; this only changes what the
+    // model sees on the next request.
+    fun replace_convo(self, msgs: List<Message>) {
+        self.lock.lock()
+        self.convo = msgs
+        self.lock.unlock()
+    }
+
     // A copy of the conversation, for building a request.
     fun messages(self) -> List<Message> {
         self.lock.lock()
