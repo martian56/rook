@@ -13,7 +13,7 @@ import "github.com/martian56/wingspan" { width }
 import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
 import "../ui/transcript" { validate_and_count, window_lines }
 import "../ui/selection" { normalize, is_empty, contains }
-import "../ui/logo" { draw_logo, logo_width, logo_height }
+import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
@@ -858,11 +858,25 @@ fun _theme_picker(m: Chat, f: Frame) {
 fun _welcome(m: Chat, area: Rect, f: Frame) {
     let top = area.y + 1
     let below = 0
-    // The colored half-block logo when there is room; the ASCII wordmark as a
-    // fallback on a terminal too narrow for it.
-    if area.w >= logo_width() + 4 {
-        draw_logo(f.buf, area.x + 2, top)
-        below = top + logo_height() + 1
+    let text_x = area.x + 3
+    // Size the logo to the terminal: as wide as there is room, capped by a
+    // height budget so the tagline and input stay visible, and by the master
+    // width so it is never upscaled. It falls back to the ASCII wordmark when
+    // the terminal is too narrow for a legible render.
+    let h_budget = area.h - 6
+    let by_h = h_budget * master_width() / master_rows()
+    let tw = area.w - 2
+    if by_h < tw {
+        tw = by_h
+    }
+    if tw > master_width() {
+        tw = master_width()
+    }
+    if tw >= 48 {
+        let lx = area.x + (area.w - tw) / 2
+        draw_logo(f.buf, lx, top, tw)
+        below = top + rendered_height(tw) + 1
+        text_x = lx + 1
     } else {
         let art = _banner()
         let i = 0
@@ -872,8 +886,8 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
         }
         below = top + art.len() + 1
     }
-    f.buf.set_string(area.x + 3, below, "a coding agent for your terminal", m.theme.dim)
-    f.buf.set_string(area.x + 3, below + 1, "model: ${m.model}", m.theme.dim)
+    f.buf.set_string(text_x, below, "a coding agent for your terminal", m.theme.dim)
+    f.buf.set_string(text_x, below + 1, "model: ${m.model}", m.theme.dim)
 
     let tips = "Esc interrupts a turn · ctrl+c twice to quit."
     if m.api_key == "" && provider_of(m.model) != "ollama" {
@@ -886,7 +900,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     }
     let tips_y = below + 3
     Paragraph.new(tips).style(m.theme.dim).render(
-        Rect.new(area.x + 2, tips_y, area.w - 2, area.h - (tips_y - area.y)),
+        Rect.new(text_x, tips_y, area.x + area.w - text_x, area.h - (tips_y - area.y)),
         f.buf,
     )
     return

@@ -1,38 +1,53 @@
-// The rook logo as terminal art: a half-block render of the README banner (the
-// corvid head, the >_ prompt, and the wordmark). Each character is an upper
-// half block whose foreground is the top pixel and background is the bottom
-// pixel, so two image rows fit per text row and the navy-to-violet gradient
-// comes through in truecolor. The banner was cropped, quantized to the palette
-// below, and encoded two characters per cell (top, bottom); a space is a
-// transparent pixel that leaves the terminal background showing. Regenerated
-// from images/rook-2.png by scripts, not edited by hand.
+// The rook logo as terminal art. A high-resolution master (128 cells wide)
+// is box-averaged down to the requested width when drawn, so the logo is as
+// large and smooth as the terminal allows. Each drawn cell is a half block:
+// the top target pixel is the foreground, the bottom the background, so two
+// pixel rows fit per text row and the navy-to-violet gradient shows in
+// truecolor. Generated from images/rook-2.png by a script, not hand-edited.
 
 import std/string
 import "github.com/martian56/plumage/buffer" { Buffer }
 import "github.com/martian56/plumage/style" { Style, Color }
 
-const COLS: Int = 64
+const MW: Int = 128
 const ALPHABET: String = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
-// The logo's width and height in character cells.
-fun logo_width() -> Int {
-    return COLS
+// The master's width and height, in the source's own cells.
+fun master_width() -> Int {
+    return MW
 }
 
-fun logo_height() -> Int {
+fun master_rows() -> Int {
     return _rows().len()
 }
 
-// Draw the logo with its top-left corner at (x, y).
-fun draw_logo(buf: Buffer, x: Int, y: Int) {
-    let pal = _palette()
+// The rendered height in character rows for a target width.
+fun rendered_height(target_w: Int) -> Int {
+    let tw = _clamp_w(target_w)
+    let tr = tw * master_rows() / MW
+    if tr < 1 {
+        tr = 1
+    }
+    return tr
+}
+
+// Draw the logo at (x, y), scaled to `target_w` cells wide.
+fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
+    let tw = _clamp_w(target_w)
     let rows = _rows()
+    let pr = _pr()
+    let pg = _pg()
+    let pb = _pb()
+    let mph = rows.len() * 2
+    let tr = rendered_height(tw)
+    let tph = tr * 2
     let ry = 0
-    while ry < rows.len() {
-        let row = rows[ry]
+    while ry < tr {
         let cx = 0
-        while cx < COLS {
-            _cell(buf, x + cx, y + ry, _color(pal, _at(row, cx * 2)), _color(pal, _at(row, cx * 2 + 1)))
+        while cx < tw {
+            let top = _avg(rows, pr, pg, pb, cx, ry * 2, tw, tph, mph)
+            let bot = _avg(rows, pr, pg, pb, cx, ry * 2 + 1, tw, tph, mph)
+            _cell(buf, x + cx, y + ry, top, bot)
             cx = cx + 1
         }
         ry = ry + 1
@@ -40,8 +55,68 @@ fun draw_logo(buf: Buffer, x: Int, y: Int) {
     return
 }
 
-// One cell: an upper half block over both colors, a lower half block when only
-// the bottom is ink, or nothing (transparent) when neither is.
+fun _clamp_w(tw: Int) -> Int {
+    if tw > MW {
+        return MW
+    }
+    if tw < 1 {
+        return 1
+    }
+    return tw
+}
+
+// The averaged color of the master region that maps to target pixel (tx, tpy),
+// over its ink pixels; None when the region has no ink, so the background shows
+// through.
+fun _avg(
+    rows: List<String>,
+    pr: List<Int>,
+    pg: List<Int>,
+    pb: List<Int>,
+    tx: Int,
+    tpy: Int,
+    tw: Int,
+    tph: Int,
+    mph: Int,
+) -> Option<Color> {
+    let mx0 = tx * MW / tw
+    let mx1 = (tx + 1) * MW / tw
+    if mx1 <= mx0 {
+        mx1 = mx0 + 1
+    }
+    let my0 = tpy * mph / tph
+    let my1 = (tpy + 1) * mph / tph
+    if my1 <= my0 {
+        my1 = my0 + 1
+    }
+    let sr = 0
+    let sg = 0
+    let sb = 0
+    let n = 0
+    let my = my0
+    while my < my1 {
+        let cr = my / 2
+        let half = my - cr * 2
+        let row = rows[cr]
+        let mx = mx0
+        while mx < mx1 {
+            let idx = _idx(_at(row, mx * 2 + half))
+            if idx >= 0 {
+                sr = sr + pr[idx]
+                sg = sg + pg[idx]
+                sb = sb + pb[idx]
+                n = n + 1
+            }
+            mx = mx + 1
+        }
+        my = my + 1
+    }
+    if n == 0 {
+        return None
+    }
+    return Some(Color.Rgb(sr / n, sg / n, sb / n))
+}
+
 fun _cell(buf: Buffer, x: Int, y: Int, top: Option<Color>, bot: Option<Color>) {
     match top {
         Some(tc) -> {
@@ -67,56 +142,138 @@ fun _at(row: String, i: Int) -> String {
     return " "
 }
 
-fun _color(pal: List<Color>, ch: String) -> Option<Color> {
+fun _idx(ch: String) -> Int {
     if ch == " " {
-        return None
+        return 0 - 1
     }
-    let idx = ALPHABET.index_of(ch)
-    if idx < 0 || idx >= pal.len() {
-        return None
-    }
-    return Some(pal[idx])
+    return ALPHABET.index_of(ch)
 }
 
-fun _palette() -> List<Color> {
+fun _pr() -> List<Int> {
     return [
-        Color.Rgb(28, 30, 51),
-        Color.Rgb(42, 46, 78),
-        Color.Rgb(54, 59, 99),
-        Color.Rgb(38, 40, 76),
-        Color.Rgb(14, 14, 25),
-        Color.Rgb(15, 16, 31),
-        Color.Rgb(19, 19, 24),
-        Color.Rgb(19, 20, 38),
-        Color.Rgb(12, 12, 28),
-        Color.Rgb(64, 62, 149),
-        Color.Rgb(32, 31, 75),
-        Color.Rgb(49, 49, 111),
-        Color.Rgb(24, 25, 41),
-        Color.Rgb(85, 83, 106),
-        Color.Rgb(218, 218, 220),
-        Color.Rgb(56, 58, 77),
-        Color.Rgb(108, 107, 110),
-        Color.Rgb(255, 255, 255),
-        Color.Rgb(128, 127, 130),
-        Color.Rgb(248, 247, 250),
-        Color.Rgb(40, 40, 50),
-        Color.Rgb(173, 172, 176),
+        13,
+        28,
+        45,
+        50,
+        19,
+        54,
+        32,
+        14,
+        34,
+        16,
+        50,
+        25,
+        22,
+        83,
+        21,
+        41,
+        153,
+        226,
+        197,
+        255,
+        106,
+        243,
+        246,
+        250,
+        66,
+        254,
+        238,
+        254,
+        10,
+    ]
+}
+
+fun _pg() -> List<Int> {
+    return [
+        13,
+        29,
+        49,
+        55,
+        20,
+        57,
+        34,
+        16,
+        37,
+        17,
+        53,
+        26,
+        24,
+        73,
+        22,
+        42,
+        152,
+        225,
+        197,
+        255,
+        105,
+        242,
+        246,
+        249,
+        68,
+        253,
+        238,
+        255,
+        10,
+    ]
+}
+
+fun _pb() -> List<Int> {
+    return [
+        27,
+        47,
+        79,
+        92,
+        33,
+        106,
+        50,
+        28,
+        64,
+        31,
+        80,
+        53,
+        43,
+        215,
+        44,
+        87,
+        155,
+        228,
+        199,
+        255,
+        119,
+        246,
+        249,
+        252,
+        85,
+        255,
+        241,
+        255,
+        22,
     ]
 }
 
 fun _rows() -> List<String> {
     return [
-        "                 0 1 2021212123202 2 3",
-        "            3 242322212122251 152 262312 2 3 0 7",
-        "             101111111113   8 9 9AB7  C 0 132122221272 1",
-        "          C 0C131313110               0 1 1 1 2 2 242 2 255",
-        "          7A30A0A33CC                                                                                          D E F",
-        "       C0000000CC                        7                                                                    GGHHDD",
-        "    500C00077                           00 5             6IHGE EIHIJ   KCJIHLEEELHFH I       LDHLJEELJDH L    GGHHDD     EIHLIK",
-        "  77C7CCC5         9 A                  C700 5          66EJHJEKD K  DEHJID     K EFHHFL  LJHEI       L HEIJ  GGHHFD LEHHGG",
-        " 4755577          9 9AB9 9 5              0500 5          JJLL      IGHHFD          JJLLKCHHLL          LLHH6 GGHHEDHLLH G",
-        "  555855           8 9B99AA                 C CC 4        JJLL      K HLLH E D D LIHHEI   EDJHKJ G D IKJJHEF  GGHHFD  EKHJDJ F",
-        "                  909 8     AA9999999955      7 55        JFLK          I JCHDHDHKL C       D E HFHDHFE D     G6HFD     F JKEFFK",
+        "                                         0 1 2 34515656565651575 3 2 1",
+        "                             0 6 20565233353533333333333333333335353533585 3 7",
+        "                      9812233333333333333333333333333332323A333333353535535353B5 1",
+        "                            C 8 273A33323A323A3333338             7 B 2 3 38353353639505 5 3 2 1",
+        "                           7 283A2322222222222223A80      5 D5DDDDDD5DEF    1 3 3 343C583353535353552575 3 4",
+        "                       81322222222222222222222328             0 F 5 8            4 273833333333333333335555335 5 6",
+        "                    8 2 2 212222222222222228226                            102822222222A2A23A33333333333353535355535 3",
+        "                         88828888888888828226                           7 E 9 9 4 4 E 4 C C C C C C C C C C C 1 1 4 6",
+        "                     0C828888888888888882B4",
+        "                   B8888888888888888866                                              9                                                                                                                                        GHIJIJKG",
+        "               9C886888666668688816                                               9C44                                                                                                                                        HHLMNJGG",
+        "             B6B6B6BBB6B6BB8611                                                  4BB44                                                                                                                                        IIMMJJGG",
+        "         9CBB1BBBBBBB11BBCC                                                     CCBBEC                             1OMONOJ1K   K HANOJOL           K HOPKJGJGPGPKJAN I O                   6 G1QKJGJGJGJGPOP1Q G 4            HHMMJJGG             KAPONOMOJOK",
+        "       CB1BCCC1C1CCC1CC                                                         CCBBC6                            11QQQMPMKIKLJMMPQPLJHQ44    1IIJJQNMQPMIPGJGJIMHQJPLJLGJ G           OONQMJQLJQLNIJGPGNILMLPJQHPOL A        HIMMJJGG         KKJJLLLLPPKK",
+        "    9CBCCCCCCCCCCC14                                                            44B66118 0                        C1QQMMLLMMLQPOI K O O    AGNJLQNPHH4O           K NKLNQQJPOI      4GHJNQQJPGG 6         6 I JGQPNQHJ K      HHMNJJGG     KKPPLLMLNPOK",
+        "   9EEE4E4EEE4E4CC                  FD5D D E                                      61BBBB16 9                      1CQQMLQNJHK             GIJPQNJHO                   GOJNQQNJOK   AHNNLNJHK                    QGNJNQIQ 6    HHNMJJGG OONPLLLMMMOO",
+        "  4444444449444444                  5 DFDDDD5D D 9                                0 BCBBBBBB 9                    11QQLLJJGK             4HHMLJJGG                    4 HHQMJJGG  KKJRQQJPOO                    KOJJQQJPOO    IIMMLNHILHMPLQLNOK",
+        "  4499999999999949                      9 D D5DDDDFD 5                              0 BECCCECB 9                  11QQLQJJKK              HILNJMGH                    4OQPMQJJGK  O8JMLQPJOG                    KGJJQLNQA1    HHNNJJGG6 QOMLLMJLKP K",
+        "  9777997777999999                           55DDDDDD5                                  C4ECEEEC 0                11QQQLJJKK              K6JLQMJMKH 6               KIPPQQJLI6     IKNJMQQP4I                6IQPLQPJIO      HHMMPPGG    O PKQJLLNMOL A",
+        "  9770700070707077                     58DDDDDD5D B                                       E9E4E4EE 0              C4QQLLJJKK                G JGQJMQQMKJ4H I I I6LGJJQQLLJMKA         I6PQQPJQIJON I I I HOJINPQQJJHI1        IIMMJJGG        G JGQJNQQN6H 1",
+        "  0 0 0 0 0 0 0 0                   55DDD5DSF            0BD8DFDFD8DFD8D8DFD0F              49494999              11QMQNPJKK                    G JOJIQLLJNJPJNJQPLQJGQ6K               8 H JGMHQNMJPJPJMJLJNHJKI 6           HHLPPJGG            I JIQJNLIJ I",
+        "                                    B F                   D D0D D D D D D D 8                 9 9 4 0               A A A C                           6 K K K K O 4                             O K K K K A                   8 A A 6                 A A A O 4",
     ]
 }

@@ -2,19 +2,21 @@ import std/string
 import std/test { assert_true, assert_eq_int }
 import "github.com/martian56/plumage/buffer" { Buffer }
 import "github.com/martian56/plumage/style" { Color }
-import "./logo" { draw_logo, logo_width, logo_height }
+import "./logo" { draw_logo, rendered_height, master_width, master_rows }
 
 fun test_logo_paints_half_blocks() {
-    let buf = Buffer.new(logo_width(), logo_height())
-    draw_logo(buf, 0, 0)
+    let tw = master_width()
+    let th = rendered_height(tw)
+    let buf = Buffer.new(tw, th)
+    draw_logo(buf, 0, 0, tw)
     // The logo should paint a substantial number of half-block cells (the
     // bird, the prompt, and the wordmark), leaving the black background as
     // untouched, transparent cells.
     let painted = 0
     let y = 0
-    while y < logo_height() {
+    while y < th {
         let x = 0
-        while x < logo_width() {
+        while x < tw {
             let ch = buf.get(x, y).ch
             if ch == "▀" || ch == "▄" {
                 painted = painted + 1
@@ -23,27 +25,31 @@ fun test_logo_paints_half_blocks() {
         }
         y = y + 1
     }
-    assert_true(painted > 150)
+    assert_true(painted > 400)
 }
 
-fun test_logo_has_sensible_dimensions() {
-    assert_eq_int(logo_width(), 64)
-    // Tall enough to be a real logo, short enough to leave room for the input.
-    assert_true(logo_height() >= 8)
-    assert_true(logo_height() <= 16)
+fun test_rendered_height_scales_and_caps() {
+    // Half width is about half the height, preserving aspect.
+    let full = rendered_height(master_width())
+    let half = rendered_height(master_width() / 2)
+    assert_true(half < full)
+    assert_true(half > 0)
+    // A target wider than the master is capped, never upscaled.
+    assert_eq_int(rendered_height(master_width() * 3), full)
 }
 
 fun test_logo_maps_the_violet_accent() {
-    let buf = Buffer.new(logo_width(), logo_height())
-    draw_logo(buf, 0, 0)
+    let tw = 96
+    let buf = Buffer.new(tw, rendered_height(tw))
+    draw_logo(buf, 0, 0, tw)
     // The >_ prompt and the eye are a bright violet (~149 blue). Finding it
-    // proves the palette is decoded through to real colors, not just black and
-    // navy, so the color mapping works end to end.
+    // proves the palette is decoded and averaged through to real colors, not
+    // just black and navy, so the color path works end to end.
     let max_blue = 0
     let y = 0
-    while y < logo_height() {
+    while y < rendered_height(tw) {
         let x = 0
-        while x < logo_width() {
+        while x < tw {
             match buf.get(x, y).style.fg {
                 Rgb(r, g, b) -> {
                     if b > max_blue {
@@ -56,5 +62,5 @@ fun test_logo_maps_the_violet_accent() {
         }
         y = y + 1
     }
-    assert_true(max_blue > 120)
+    assert_true(max_blue > 110)
 }
