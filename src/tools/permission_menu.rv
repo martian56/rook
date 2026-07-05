@@ -21,6 +21,11 @@ struct PermissionGrantState {
     enabled: Bool,
 }
 
+struct SettingsText {
+    text: String,
+    error: String,
+}
+
 fun permission_grants() -> List<PermissionGrant> {
     return [
         PermissionGrant {
@@ -78,7 +83,11 @@ fun toggle_permission_grant(index: Int) -> String {
     if index < 0 || index >= grants.len() {
         return "no permission grant selected"
     }
-    let existing = _read_opt(user_settings_path())
+    let loaded = read_user_settings()
+    if loaded.error != "" {
+        return loaded.error
+    }
+    let existing = loaded.text
     if existing.trim() != "" {
         match parse(existing) {
             Ok(j) -> {},
@@ -100,7 +109,12 @@ fun toggle_permission_grant(index: Int) -> String {
 }
 
 fun read_user_allow_rules() -> List<String> {
-    return allow_rules_from_settings(_read_opt(user_settings_path()))
+    let loaded = read_user_settings()
+    if loaded.error != "" {
+        let out: List<String> = []
+        return out
+    }
+    return allow_rules_from_settings(loaded.text)
 }
 
 fun allow_rules_from_settings(text: String) -> List<String> {
@@ -140,9 +154,36 @@ fun write_user_allow_rules(existing: String, allow: List<String>) -> String {
     if root == "" {
         return "error: no home directory for ~/.agents/settings.json"
     }
-    create_dir_all(root)
-    write("${root}/settings.json", settings_with_allow(existing, allow))
+    match create_dir_all(root) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "error: could not create ~/.agents: ${e.message}"
+        },
+    }
+    match write("${root}/settings.json", settings_with_allow(existing, allow)) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "error: could not write ~/.agents/settings.json: ${e.message}"
+        },
+    }
     return ""
+}
+
+fun read_user_settings() -> SettingsText {
+    let path = user_settings_path()
+    if path == "" {
+        return SettingsText { text: "", error: "" }
+    }
+    if !exists(path) {
+        return SettingsText { text: "", error: "" }
+    }
+    return match read(path) {
+        Ok(s) -> SettingsText { text: s, error: "" },
+        Err(e) -> SettingsText {
+            text: "",
+            error: "error: could not read ~/.agents/settings.json: ${e.message}",
+        },
+    }
 }
 
 fun settings_with_allow(existing: String, allow: List<String>) -> String {

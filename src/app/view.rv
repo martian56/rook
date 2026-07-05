@@ -19,7 +19,6 @@ import "../config/catalog" { catalog, filter_catalog }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
-import "../tools/permission_menu" { permission_grant_states }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
 import "../config/sessions" { SessionMeta }
@@ -514,7 +513,7 @@ fun _help_menu(m: Chat, f: Frame) {
 // settings. Deny rules stay untouched and still win at runtime.
 fun _permissions_panel(m: Chat, f: Frame) {
     let full = f.area()
-    let items = permission_grant_states()
+    let items = m.permissions_items
     let count = items.len()
     if count < 1 {
         count = 1

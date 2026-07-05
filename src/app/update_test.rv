@@ -85,6 +85,7 @@ fun test_permissions_command_opens_and_esc_closes_the_panel() {
     m.entry = TextInput.with_value("/permissions")
     let opened = chat_update(m, Event.KeyPress(Key.Enter)).model
     assert_true(opened.permissions_open)
+    assert_true(opened.permissions_items.len() == 5)
     let closed = chat_update(opened, Event.KeyPress(Key.Esc)).model
     assert_true(!closed.permissions_open)
 }

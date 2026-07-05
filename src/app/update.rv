@@ -666,7 +666,7 @@ fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
 // Navigate the /permissions panel. Space or enter toggles the highlighted
 // grant in the user's global ~/.agents/settings.json file.
 fun _permissions_key(m: Chat, k: Key) -> Step<Chat> {
-    let items = permission_grant_states()
+    let items = m.permissions_items
     if items.len() == 0 {
         match k {
             Esc -> {
@@ -708,6 +708,9 @@ fun _permissions_key(m: Chat, k: Key) -> Step<Chat> {
 
 fun _toggle_permission(m: Chat) {
     let msg = toggle_permission_grant(m.permissions_sel)
+    if !msg.starts_with("error:") {
+        m.permissions_items = permission_grant_states()
+    }
     m.entries.push(Entry.Notice(msg))
     m.scroll_up = 0
     return
@@ -893,6 +896,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             return next(m)
         },
         Permissions -> {
+            m.permissions_items = permission_grant_states()
             m.permissions_open = true
             m.permissions_sel = 0
             return next(m)
