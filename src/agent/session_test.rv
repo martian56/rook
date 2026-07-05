@@ -1,0 +1,25 @@
+import std/string
+import std/test { assert_true }
+import "./session" { base_system_prompt }
+
+// The base prompt should encode the default coding workflow, so a prompt
+// change that drops one of these rules is caught here.
+fun test_prompt_states_the_core_workflow_rules() {
+    let p = base_system_prompt()
+    // Inspect before editing.
+    assert_true(p.contains("before you change anything"))
+    // Check git status before edits.
+    assert_true(p.contains("check git_status before edits"))
+    // Keep changes scoped and preserve unrelated work.
+    assert_true(p.contains("scoped to what the user asked for"))
+    assert_true(p.contains("never overwrite or undo unrelated work"))
+    // Verify after changes, handle failures.
+    assert_true(p.contains("run the smallest meaningful test"))
+    assert_true(p.contains("report the blocker clearly"))
+    // No commits unless asked.
+    assert_true(
+        p.contains("Do not commit, push, publish, or release unless the user explicitly asks"),
+    )
+    // Report what changed and what was verified.
+    assert_true(p.contains("name what you changed and what you verified"))
+}
