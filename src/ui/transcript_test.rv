@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_eq_int }
 import "github.com/martian56/plumage/text" { Line }
-import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached }
+import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines }
 import "./theme" { default_theme }
 
 fun line_text(lines: List<Line>, i: Int) -> String {
@@ -75,4 +75,35 @@ fun test_invalid_slot_is_recomputed() {
     let redo = assemble_cached(entries, cache, 40, default_theme())
     assert_eq_int(redo.len(), first.len())
     assert_true(cache[1].valid)
+}
+
+fun test_window_returns_only_the_visible_slice() {
+    let entries = [Entry.UserMsg("a"), Entry.BotMsg("b"), Entry.UserMsg("c"), Entry.BotMsg("d")]
+    let cache: List<EntryLines> = [
+        empty_entry_lines(),
+        empty_entry_lines(),
+        empty_entry_lines(),
+        empty_entry_lines(),
+    ]
+    let full = build_lines(entries, 40, default_theme())
+    // The total matches the full assembly, and every slot is now valid.
+    let total = validate_and_count(entries, cache, 40, default_theme())
+    assert_eq_int(total, full.len())
+    assert_true(cache[3].valid)
+
+    // A window is exactly the corresponding slice of the full transcript.
+    let win = window_lines(entries, cache, 1, 3)
+    assert_eq_int(win.len(), 3)
+    assert_eq_str(line_text(win, 0), line_text(full, 1))
+    assert_eq_str(line_text(win, 1), line_text(full, 2))
+    assert_eq_str(line_text(win, 2), line_text(full, 3))
+}
+
+fun test_window_past_the_end_is_short() {
+    let entries = [Entry.UserMsg("only")]
+    let cache: List<EntryLines> = [empty_entry_lines()]
+    let total = validate_and_count(entries, cache, 40, default_theme())
+    // Asking for more lines than exist returns just what is there.
+    let win = window_lines(entries, cache, 0, 50)
+    assert_eq_int(win.len(), total)
 }

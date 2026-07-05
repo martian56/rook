@@ -81,6 +81,60 @@ fun assemble_cached(
     return out
 }
 
+// Validate every cache slot (wrapping only the invalid ones) and return the
+// total display-line count, separators included. The caller uses the total to
+// clamp scrolling before drawing only the visible window.
+fun validate_and_count(entries: List<Entry>, cache: List<EntryLines>, w: Int, theme: Theme) -> Int {
+    let total = 0
+    let i = 0
+    while i < entries.len() {
+        if !cache[i].valid {
+            cache[i] = EntryLines { valid: true, lines: entry_lines(entries[i], w, theme) }
+        }
+        total = total + cache[i].lines.len()
+        if !_binds_to_next(entries, i) {
+            total = total + 1
+        }
+        i = i + 1
+    }
+    return total
+}
+
+// The lines in the window [top, top + count) of the assembled transcript.
+// Slots are already valid (validate_and_count ran), so this only walks the
+// entries and copies the visible lines: O(entries + count), not O(total
+// lines). This is the virtualized per-frame path, so scrolled-off history is
+// never materialized.
+fun window_lines(
+    entries: List<Entry>,
+    cache: List<EntryLines>,
+    top: Int,
+    count: Int,
+) -> List<Line> {
+    let out: List<Line> = []
+    let line_no = 0
+    let i = 0
+    while i < entries.len() && out.len() < count {
+        let el = cache[i].lines
+        let j = 0
+        while j < el.len() {
+            if line_no >= top && out.len() < count {
+                out.push(el[j])
+            }
+            line_no = line_no + 1
+            j = j + 1
+        }
+        if !_binds_to_next(entries, i) {
+            if line_no >= top && out.len() < count {
+                out.push(Line.raw(""))
+            }
+            line_no = line_no + 1
+        }
+        i = i + 1
+    }
+    return out
+}
+
 // The styled lines for one entry, without the trailing separator.
 fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
     let out: List<Line> = []

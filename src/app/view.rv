@@ -11,7 +11,7 @@ import "github.com/martian56/plumage/widgets/list" { ListView }
 import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
 import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
-import "../ui/transcript" { assemble_cached }
+import "../ui/transcript" { validate_and_count, window_lines }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
@@ -801,8 +801,11 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
         m.cache_theme = m.theme.name
     }
     ensure_cache_len(m)
-    let lines = assemble_cached(m.entries, m.line_cache, area.w, m.theme)
-    let max_up = lines.len() - area.h
+    // Count all lines (cached; only changed entries re-wrap), clamp the
+    // scroll, then materialize just the visible window instead of the whole
+    // transcript.
+    let total = validate_and_count(m.entries, m.line_cache, area.w, m.theme)
+    let max_up = total - area.h
     if max_up < 0 {
         max_up = 0
     }
@@ -810,7 +813,8 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
     if up > max_up {
         up = max_up
     }
-    Paragraph.from_lines(lines).scroll(max_up - up).render(area, f.buf)
+    let window = window_lines(m.entries, m.line_cache, max_up - up, area.h)
+    Paragraph.from_lines(window).render(area, f.buf)
     return
 }
 
