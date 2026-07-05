@@ -1,8 +1,18 @@
-# rook
+<div align="center">
 
-[![CI](https://github.com/martian56/rook/actions/workflows/ci.yml/badge.svg)](https://github.com/martian56/rook/actions/workflows/ci.yml)
+<img src="images/rook-2.png" alt="rook" width="620" />
 
-A coding agent for the terminal, written in [Raven](https://github.com/martian56/raven).
+### A coding agent that lives in your terminal
+
+<p>
+  <a href="https://github.com/martian56/rook/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/martian56/rook/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/martian56/rook/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/martian56/rook?sort=semver&label=release&color=5b4fe8" /></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-5b4fe8" /></a>
+  <a href="https://github.com/martian56/raven"><img alt="Built with Raven" src="https://img.shields.io/badge/built%20with-Raven-5b4fe8" /></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-linux%20%7C%20windows-8891a5" />
+</p>
+
+</div>
 
 rook streams a real model's reply token by token, and the model can read,
 search, edit files, and run commands in your working directory, with you
@@ -14,13 +24,34 @@ OpenAI, Anthropic, Gemini, and a dozen more providers behind one API.
 The name: a rook is the raven's cousin, which is what this is to the Raven
 language.
 
-## Run it
+**Contents:**
+[Install](#install) · [Run it](#run-it) · [Talking to it](#talking-to-it) · [Models](#choosing-a-model) · [Tools](#tools) · [Commands](#commands) · [Skills & memory](#skills-and-memory) · [Subagents](#subagents) · [Web](#web) · [Git](#git) · [Plugins](#plugins) · [Hooks](#hooks) · [MCP](#mcp) · [How it is built](#how-it-is-built) · [Development](#development)
+
+## Install
+
+Download a build for your platform from the
+[latest release](https://github.com/martian56/rook/releases/latest):
+
+| Platform | File |
+|----------|------|
+| Windows | `rook-<version>-x86_64.msi` (adds rook to your PATH) or `rook-<version>-x86_64.zip` |
+| Debian / Ubuntu | `rook_<version>_amd64.deb` |
+| Fedora / RHEL | `rook-<version>-1.x86_64.rpm` |
+| Linux (any) | `rook-<version>-x86_64.tar.gz` |
+
+Or run it from source with the [Raven toolchain](https://github.com/martian56/raven):
 
 ```
+git clone https://github.com/martian56/rook
+cd rook
 rvpm run
 ```
 
-in a real terminal, then give it an API key. Either export one:
+## Run it
+
+Launch it in a real terminal, `rook` if you installed a release, or
+`rvpm run` from a source checkout, then give it an API key. Either export
+one:
 
 ```
 export OPENROUTER_API_KEY=...     # or OPENAI_API_KEY, ANTHROPIC_API_KEY, ...
