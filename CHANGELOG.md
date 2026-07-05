@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1
+
+- Replaced the welcome screen's ASCII wordmark with the rook logo drawn as colored terminal art, sized to the terminal.
+- Trimmed the welcome screen's tips to the interrupt and quit hint.
+
 ## 0.3.0
 
 - Added mouse selection: drag the transcript with the left button to select text, copied to the clipboard on release. You can scroll while dragging, and dragging past an edge extends the selection.
