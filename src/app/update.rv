@@ -24,6 +24,8 @@ import "../agents/commands" { load_commands, find_expansion }
 import "../tools/shells" { list_shells, kill_all_shells }
 import "../tools/todos" { clear_todos }
 import "../plugins/manage" { run_plugins_command }
+import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt }
+import "../mcp/command" { McpInvoke, parse_invoke }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -813,6 +815,9 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.scroll_up = 0
             return next(m)
         },
+        Mcp(args) -> {
+            return _mcp_command(m, text, args)
+        },
         Plan -> {
             m.plan_mode = !m.plan_mode
             if m.plan_mode {
@@ -847,6 +852,52 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         },
     }
     return next(m)
+}
+
+// The /mcp command: status by default, connect to kick off connections in
+// the background, and prompt to expand a server prompt and run it as a turn.
+fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
+    let a = args.trim()
+    if a.starts_with("prompt ") || a == "prompt" {
+        return _mcp_prompt(m, text, a.substring(6, a.length()).trim())
+    }
+    m.entries.push(Entry.UserMsg(text))
+    if a == "connect" {
+        begin_connect()
+        m.entries.push(
+            Entry.Notice(
+                "connecting to ${configured_count()} MCP server(s) in the background; /mcp to see status",
+            ),
+        )
+    }
+    let lines = mcp_status_text().lines()
+    let i = 0
+    while i < lines.len() {
+        m.entries.push(Entry.Notice(lines[i]))
+        i = i + 1
+    }
+    m.scroll_up = 0
+    return next(m)
+}
+
+fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
+    let inv = parse_invoke(rest)
+    if inv.server == "" || inv.name == "" {
+        m.entries.push(Entry.UserMsg(text))
+        m.entries.push(Entry.Notice("usage: /mcp prompt <server> <name> [key=value ...]"))
+        m.scroll_up = 0
+        return next(m)
+    }
+    let expanded = get_prompt(inv.server, inv.name, inv.args_json)
+    if expanded.starts_with("error:") {
+        m.entries.push(Entry.UserMsg(text))
+        m.entries.push(Entry.Notice(expanded))
+        m.scroll_up = 0
+        return next(m)
+    }
+    // Run the expanded prompt as a turn: the transcript shows what was typed,
+    // the model gets the server's prompt text.
+    return _send_prompt(m, text, expanded)
 }
 
 fun _send(m: Chat, text: String) -> Step<Chat> {

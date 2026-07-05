@@ -1,0 +1,60 @@
+// Pure parsing for the /mcp command's prompt invocation:
+// "/mcp prompt <server> <name> [key=value ...]". The key=value pairs become
+// the prompt's JSON arguments. Kept here, apart from the manager, so it is
+// tested without touching a connection.
+
+import std/string
+import std/json { JsonValue, stringify }
+
+struct McpInvoke {
+    server: String,
+    name: String,
+    args_json: String,
+}
+
+// Parse "<server> <name> k=v k2=v2" into an invocation. A missing server or
+// name comes back empty so the caller can report usage; the args are always a
+// valid JSON object (an empty one when no pairs are given).
+fun parse_invoke(rest: String) -> McpInvoke {
+    let toks = _tokens(rest)
+    let server = ""
+    let name = ""
+    if toks.len() >= 1 {
+        server = toks[0]
+    }
+    if toks.len() >= 2 {
+        name = toks[1]
+    }
+    let obj = "{"
+    let count = 0
+    let i = 2
+    while i < toks.len() {
+        let eq = toks[i].index_of("=")
+        if eq > 0 {
+            let k = toks[i].substring(0, eq)
+            let v = toks[i].substring(eq + 1, toks[i].length())
+            if count > 0 {
+                obj = obj.concat(",")
+            }
+            obj = obj.concat(stringify(JsonValue.Str(k))).concat(":").concat(stringify(JsonValue.Str(v)))
+            count = count + 1
+        }
+        i = i + 1
+    }
+    obj = obj.concat("}")
+    return McpInvoke { server, name, args_json: obj }
+}
+
+fun _tokens(s: String) -> List<String> {
+    let out: List<String> = []
+    let parts = s.trim().split(" ")
+    let i = 0
+    while i < parts.len() {
+        let p = parts[i].trim()
+        if p != "" {
+            out.push(p)
+        }
+        i = i + 1
+    }
+    return out
+}

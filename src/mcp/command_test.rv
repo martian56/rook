@@ -1,0 +1,23 @@
+import std/string
+import std/test { assert_eq_str, assert_true }
+import "./command" { McpInvoke, parse_invoke }
+
+fun test_parse_invoke_reads_server_name_and_args() {
+    let inv = parse_invoke("filesystem review path=src/main.rv depth=2")
+    assert_eq_str(inv.server, "filesystem")
+    assert_eq_str(inv.name, "review")
+    assert_eq_str(inv.args_json, "{\"path\":\"src/main.rv\",\"depth\":\"2\"}")
+}
+
+fun test_parse_invoke_without_args_gives_empty_object() {
+    let inv = parse_invoke("git summarize")
+    assert_eq_str(inv.server, "git")
+    assert_eq_str(inv.name, "summarize")
+    assert_eq_str(inv.args_json, "{}")
+}
+
+fun test_parse_invoke_missing_name_is_empty() {
+    let inv = parse_invoke("onlyserver")
+    assert_eq_str(inv.server, "onlyserver")
+    assert_eq_str(inv.name, "")
+}

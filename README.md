@@ -319,6 +319,50 @@ Working examples are in [`examples/hooks/`](examples/hooks/): block a
 dangerous command, format a file after an edit, and notify when a turn
 ends, with a `settings.json` to copy.
 
+## MCP
+
+rook is an MCP client: it launches Model Context Protocol servers and
+uses the tools, resources, and prompts they expose. Configure servers
+under an `mcp` key in a `settings.json` at any root rook reads (project
+`.agents`, an installed plugin, or global `~/.agents`):
+
+```json
+{
+  "mcp": {
+    "servers": [
+      {
+        "name": "filesystem",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+        "env": ["SOME_TOKEN=value"]
+      }
+    ]
+  }
+}
+```
+
+Each entry is `{ name, command, args, env }`, where `env` is a list of
+`"KEY=value"` strings. rook connects on first use, or when you run
+`/mcp connect`.
+
+- **Tools** a server exposes reach the model as `mcp__<server>__<tool>`.
+  Being external, they always ask for approval.
+- **Resources** are readable context. The model pulls one in with the
+  `mcp_read_resource` tool, which runs without approval since it only
+  reads.
+- **Prompts** are server-provided templates you invoke with
+  `/mcp prompt <server> <name> [key=value ...]`; the expanded prompt runs
+  as a turn.
+
+`/mcp` shows the configured servers, whether each connected, and what
+each provides; `/mcp connect` starts the connections in the background.
+
+Two platform notes. Per-server `env` is applied on Unix (through the
+`env` command); on Windows the server inherits rook's own environment
+instead, so set the variables there. And on Windows a `.cmd` launcher
+such as `npx` is not found directly, so use `"command": "cmd", "args":
+["/c", "npx", ...]`.
+
 ## How it is built
 
 rook is a plumage app. The one interesting problem is that a streamed
@@ -337,6 +381,9 @@ src/
   tools/             file, search, and shell tools, plus the schema registry
   config/            model resolution, rook.json, the /model catalog
   ui/                the transcript renderer, theme, and spinner
+  plugins/           install, load, and manage shareable .agents bundles
+  hooks/             run commands on lifecycle events
+  mcp/               the MCP client: transport, connect, tools, resources
   commands.rv        slash-command parsing
 ```
 

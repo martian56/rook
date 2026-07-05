@@ -16,9 +16,16 @@ fun tag(c: Command) -> String {
         Plan -> "plan",
         Sessions -> "sessions",
         Plugins(a) -> "plugins:${a}",
+        Mcp(a) -> "mcp:${a}",
         Login -> "login",
         Unknown(t) -> "unknown:${t}",
     }
+}
+
+fun test_mcp_command_carries_its_args() {
+    assert_eq_str(tag(parse_command("/mcp")), "mcp:")
+    assert_eq_str(tag(parse_command("/mcp connect")), "mcp:connect")
+    assert_eq_str(tag(parse_command("/mcp prompt fs review path=a")), "mcp:prompt fs review path=a")
 }
 
 fun test_plain_text_is_send() {

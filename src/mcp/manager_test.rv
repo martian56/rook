@@ -2,7 +2,8 @@ import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import "./client" { McpClient, McpTool, McpResource, McpPrompt }
-import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt }
+import "./config" { ServerSpec }
+import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from }
 
 fun _client() -> McpClient {
     let tools = [
@@ -67,6 +68,53 @@ fun test_format_resource_joins_text_contents() {
         "line one\nline two",
     )
     assert_true(format_resource(_json("{\"contents\": []}")).contains("no text contents"))
+}
+
+fun test_status_from_shows_each_server_state() {
+    let no_res: List<McpResource> = []
+    let no_pr: List<McpPrompt> = []
+    let no_tools: List<McpTool> = []
+    let ok_tools = [McpTool { name: "read", description: "", schema: "null" }]
+    let connected = McpClient {
+        name: "fs",
+        server_name: "fs-srv",
+        server_version: "1.0",
+        tools: ok_tools,
+        resources: no_res,
+        prompts: no_pr,
+        ok: true,
+        error: "",
+        conn: None,
+    }
+    let failed = McpClient {
+        name: "bad",
+        server_name: "",
+        server_version: "",
+        tools: no_tools,
+        resources: no_res,
+        prompts: no_pr,
+        ok: false,
+        error: "boom",
+        conn: None,
+    }
+    let no_args: List<String> = []
+    let specs = [
+        ServerSpec { name: "fs", command: "x", args: no_args, env: no_args },
+        ServerSpec { name: "bad", command: "y", args: no_args, env: no_args },
+        ServerSpec { name: "later", command: "z", args: no_args, env: no_args },
+    ]
+    let text = status_from(specs, [connected, failed])
+    assert_true(text.contains("fs: connected (fs-srv 1.0)"))
+    assert_true(text.contains("tools: read"))
+    assert_true(text.contains("bad: failed to connect"))
+    assert_true(text.contains("boom"))
+    assert_true(text.contains("later: configured, not connected yet"))
+}
+
+fun test_status_from_with_no_servers() {
+    let no_specs: List<ServerSpec> = []
+    let no_clients: List<McpClient> = []
+    assert_true(status_from(no_specs, no_clients).contains("no MCP servers configured"))
 }
 
 fun test_format_prompt_flattens_messages() {

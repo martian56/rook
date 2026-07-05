@@ -16,7 +16,7 @@ import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/message" { ToolDef }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
 import "./config" { ServerSpec, configured_servers }
-import "./client" { McpClient, McpTool, McpResource, connect }
+import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect }
 import "./transport" { enc_str }
 
 const CALL_TIMEOUT: Int = 120000
@@ -117,6 +117,109 @@ fun call_mcp_tool(name: String, arguments: String) -> String {
 fun connected_clients() -> List<McpClient> {
     ensure_started()
     return _clients()
+}
+
+// Start connecting to the configured servers in the background, if not
+// already started, so /mcp connect does not block the UI.
+fun begin_connect() {
+    MANAGER.lock.lock()
+    let already = MANAGER.started
+    MANAGER.lock.unlock()
+    if already {
+        return
+    }
+    spawn(fun() -> Unit {
+        ensure_started()
+    })
+    return
+}
+
+// The number of configured servers, for a "connecting to N" message.
+fun configured_count() -> Int {
+    return configured_servers().len()
+}
+
+// The /mcp status view: each configured server, whether it connected, and
+// what it provides. Reads the current snapshot without forcing a connect.
+fun mcp_status_text() -> String {
+    return status_from(configured_servers(), _clients())
+}
+
+// Pure core of the status view over given specs and live clients.
+fun status_from(specs: List<ServerSpec>, clients: List<McpClient>) -> String {
+    if specs.len() == 0 {
+        return "no MCP servers configured. Add an \"mcp\" section to a settings.json (see the README)."
+    }
+    let out = ""
+    let i = 0
+    while i < specs.len() {
+        if i > 0 {
+            out = out.concat("\n")
+        }
+        out = out.concat(_server_status(specs[i], clients))
+        i = i + 1
+    }
+    return out
+}
+
+fun _server_status(spec: ServerSpec, clients: List<McpClient>) -> String {
+    return match _find(clients, spec.name) {
+        Some(c) -> {
+            if c.ok {
+                _connected_status(spec.name, c)
+            } else {
+                "${spec.name}: failed to connect\n  ${c.error}"
+            }
+        },
+        None -> "${spec.name}: configured, not connected yet (send a message, or /mcp connect)",
+    }
+}
+
+fun _connected_status(name: String, c: McpClient) -> String {
+    let head = "${name}: connected"
+    if c.server_name != "" {
+        head = "${head} (${c.server_name} ${c.server_version})"
+    }
+    let detail = ""
+    if c.tools.len() > 0 {
+        detail = detail.concat("\n  tools: ${_tool_names(c.tools)}")
+    }
+    if c.resources.len() > 0 {
+        detail = detail.concat("\n  resources: ${c.resources.len()}")
+    }
+    if c.prompts.len() > 0 {
+        detail = detail.concat("\n  prompts: ${_prompt_names(c.prompts)}")
+    }
+    if detail == "" {
+        detail = "\n  (no tools, resources, or prompts)"
+    }
+    return head.concat(detail)
+}
+
+fun _tool_names(tools: List<McpTool>) -> String {
+    let out = ""
+    let i = 0
+    while i < tools.len() {
+        if i > 0 {
+            out = out.concat(", ")
+        }
+        out = out.concat(tools[i].name)
+        i = i + 1
+    }
+    return out
+}
+
+fun _prompt_names(prompts: List<McpPrompt>) -> String {
+    let out = ""
+    let i = 0
+    while i < prompts.len() {
+        if i > 0 {
+            out = out.concat(", ")
+        }
+        out = out.concat(prompts[i].name)
+        i = i + 1
+    }
+    return out
 }
 
 // The read-resource tool, offered only when a connected server exposes at

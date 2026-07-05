@@ -20,6 +20,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "shells", desc: "list background shells" },
         CmdInfo { name: "sessions", desc: "resume a past conversation" },
         CmdInfo { name: "plugins", desc: "manage plugins (list, browse, add, remove, update)" },
+        CmdInfo { name: "mcp", desc: "MCP servers: status, connect, and run a prompt" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "clear", desc: "wipe the conversation" },
         CmdInfo { name: "quit", desc: "exit rook" },
@@ -88,6 +89,7 @@ enum Command {
     Plan,
     Sessions,
     Plugins(String),
+    Mcp(String),
     Login,
     Unknown(String),
 }
@@ -132,6 +134,12 @@ fun parse_command(text: String) -> Command {
     }
     if text.starts_with("/plugins ") {
         return Command.Plugins(text.substring(9, text.length()).trim())
+    }
+    if text == "/mcp" {
+        return Command.Mcp("")
+    }
+    if text.starts_with("/mcp ") {
+        return Command.Mcp(text.substring(5, text.length()).trim())
     }
     if text == "/theme" {
         return Command.ThemePicker
