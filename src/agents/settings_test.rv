@@ -64,6 +64,15 @@ fun test_settings_errors_report_invalid_project_and_global_files() {
     assert_true(errors[0].contains("invalid JSON"))
     assert_true(errors[1].contains("_rook_bad_global/settings.json"))
     assert_true(errors[1].contains("invalid JSON"))
+    assert_eq_str(setting_str("_rook_bad_project", "model"), "")
+    let section_missing = true
+    match setting_section("_rook_bad_project", "permissions") {
+        Some(v) -> {
+            section_missing = false
+        },
+        None -> {},
+    }
+    assert_true(section_missing)
     remove_file("_rook_bad_project/settings.json")
     remove_file("_rook_bad_global/settings.json")
     remove_dir("_rook_bad_project")

@@ -14,3 +14,16 @@ fun test_settings_errors_are_visible_startup_notices() {
     assert_eq_int(entries.len(), 1)
     assert_eq_str(notice_text(entries[0]), "settings error: invalid JSON in .agents/settings.json")
 }
+
+fun test_settings_error_entries_empty_when_no_errors() {
+    let errors: List<String> = []
+    let entries = settings_error_entries(errors)
+    assert_eq_int(entries.len(), 0)
+}
+
+fun test_settings_error_entries_preserves_order_for_multiple_errors() {
+    let entries = settings_error_entries(["error a", "error b"])
+    assert_eq_int(entries.len(), 2)
+    assert_eq_str(notice_text(entries[0]), "error a")
+    assert_eq_str(notice_text(entries[1]), "error b")
+}

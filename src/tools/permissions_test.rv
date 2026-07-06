@@ -1,7 +1,8 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
 import "github.com/martian56/aviary/message" { ToolCall }
-import "./permissions" { Verdict, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of }
+import "./permissions" { Verdict, check_permission_from_roots, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of }
 
 fun tag(v: Verdict) -> String {
     return match v {
@@ -66,6 +67,17 @@ fun test_untrusted_deny_rules_still_block() {
         tag(verdict_with_allow_trust(false, allow, deny, "run_command", "rm -rf target")),
         "deny:run_command(rm *)",
     )
+}
+
+fun test_malformed_settings_fail_closed_for_permissions() {
+    create_dir_all("_rook_bad_perms")
+    write("_rook_bad_perms/settings.json", "{\"permissions\":")
+    let call = ToolCall { id: "1", name: "run_command", arguments: "{\"command\":\"rvpm test\"}" }
+    let result = tag(check_permission_from_roots(["_rook_bad_perms"], call))
+    assert_true(result.starts_with("deny:settings error: invalid JSON"))
+    remove_file("_rook_bad_perms/settings.json")
+    remove_dir("_rook_bad_perms")
+    return
 }
 
 fun test_subjects_per_tool() {
