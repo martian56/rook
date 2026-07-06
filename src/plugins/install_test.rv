@@ -3,13 +3,38 @@ import std/test { assert_eq_str, assert_true }
 import std/env { os_name }
 import std/fs { write, exists, create_dir_all }
 import std/process { run }
-import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source }
+import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source, valid_plugin_name, plugin_target_path }
 
 fun test_plugin_name_from_url() {
     assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt"), "rook-fmt")
     assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt.git"), "rook-fmt")
     assert_eq_str(plugin_name_from_url("https://github.com/user/rook-fmt/"), "rook-fmt")
     assert_eq_str(plugin_name_from_url("git@github.com:user/rook-fmt.git"), "rook-fmt")
+}
+
+fun test_valid_plugin_name_rejects_unsafe_names() {
+    assert_true(valid_plugin_name("rook-fmt"))
+    assert_true(valid_plugin_name("rook.fmt_1"))
+    assert_true(valid_plugin_name(plugin_name_from_url("https://github.com/user/rook-fmt.git")))
+    assert_true(!valid_plugin_name(""))
+    assert_true(!valid_plugin_name("."))
+    assert_true(!valid_plugin_name(".."))
+    assert_true(!valid_plugin_name("has/slash"))
+    assert_true(!valid_plugin_name("has\\slash"))
+    assert_true(!valid_plugin_name("has:colon"))
+    assert_true(!valid_plugin_name("C:drive"))
+    assert_true(!valid_plugin_name("trailing."))
+    assert_true(!valid_plugin_name("trailing "))
+    assert_true(!valid_plugin_name(" leading"))
+    assert_true(!valid_plugin_name("CON"))
+    assert_true(!valid_plugin_name("com1.txt"))
+}
+
+fun test_plugin_target_path_only_uses_safe_child_names() {
+    assert_eq_str(plugin_target_path("_rook_plugins", "rook-fmt"), "_rook_plugins/rook-fmt")
+    assert_eq_str(plugin_target_path("_rook_plugins", ".."), "")
+    assert_eq_str(plugin_target_path("_rook_plugins", "has/slash"), "")
+    assert_eq_str(plugin_target_path("_rook_plugins", "C:drive"), "")
 }
 
 fun test_normalize_url() {
@@ -66,6 +91,14 @@ fun test_install_of_a_missing_repo_errors() {
         install_into("_rook_plugins3", "file:///no/such/repo/xyz", "").starts_with("error:"),
     )
     _rmtree("_rook_plugins3")
+    return
+}
+
+fun test_install_rejects_unsafe_derived_name_before_touching_target() {
+    _rmtree("_rook_plugins_bad")
+    let r = install_into("_rook_plugins_bad", "https://example.invalid/owner/..", "")
+    assert_true(r.starts_with("error: unsafe plugin name"))
+    assert_true(!exists("_rook_plugins_bad"))
     return
 }
 
