@@ -36,6 +36,7 @@ fun test_approval_policy() {
 
 fun test_call_approval_policy_gates_sensitive_web_fetches() {
     assert_false(call_needs_approval(call("web_fetch", "{\"url\":\"https://8.8.8.8/dns-query\"}")))
+    assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"https://example.com/docs\"}")))
     assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://127.0.0.1:11434\"}")))
     assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://169.254.169.254/\"}")))
     assert_true(call_needs_approval(call("run_command", "{\"command\":\"rvpm test\"}")))

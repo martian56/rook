@@ -6,7 +6,6 @@
 
 import std/string
 import std/http { request_with_timeout, HttpResponse }
-import std/net { dns_lookup }
 
 const TIMEOUT_MS: Int = 15000
 const MAX_TEXT: Int = 6000
@@ -24,8 +23,9 @@ fun web_fetch_url(url: String) -> String {
     return u
 }
 
-// Whether fetching this URL crosses from the public web into local, private,
-// link-local, or metadata-address space and therefore needs user approval.
+// Whether fetching this URL needs user approval. Hostnames are gated so a DNS
+// answer cannot change between approval and the actual fetch; public IP
+// literals stay low-friction.
 fun web_fetch_needs_approval(url: String) -> Bool {
     return web_fetch_approval_detail(url) != ""
 }
@@ -41,9 +41,6 @@ fun web_fetch_approval_detail(url: String) -> String {
         return ""
     }
     let kind = _sensitive_host_kind(host)
-    if kind == "" {
-        kind = _resolved_sensitive_host_kind(host)
-    }
     if kind == "" {
         return ""
     }
@@ -74,7 +71,7 @@ fun _url_host(url: String) -> String {
     if sep >= 0 {
         rest = rest.substring(0, sep)
     }
-    let at = rest.index_of("@")
+    let at = _last_byte(rest, 64)
     if at >= 0 {
         rest = rest.substring(at + 1, rest.length())
     }
@@ -111,6 +108,18 @@ fun _first_url_separator(s: String) -> Int {
     return best
 }
 
+fun _last_byte(s: String, needle: Int) -> Int {
+    let last = 0 - 1
+    let i = 0
+    while i < s.length() {
+        if s.byte_at(i) == needle {
+            last = i
+        }
+        i = i + 1
+    }
+    return last
+}
+
 fun _strip_trailing_dots(host: String) -> String {
     let h = host.trim()
     while h.ends_with(".") && h.length() > 0 {
@@ -134,28 +143,14 @@ fun _sensitive_host_kind(host: String) -> String {
     if ipv4 != "" {
         return ipv4
     }
-    return _sensitive_ipv6_kind(h)
-}
-
-fun _resolved_sensitive_host_kind(host: String) -> String {
-    if _looks_like_ip_literal(host) {
-        return ""
+    let ipv6 = _sensitive_ipv6_kind(h)
+    if ipv6 != "" {
+        return ipv6
     }
-    return match dns_lookup(host) {
-        Ok(addrs) -> {
-            let i = 0
-            while i < addrs.len() {
-                let addr = _strip_trailing_dots(addrs[i].trim().to_lower())
-                let kind = _sensitive_host_kind(addr)
-                if kind != "" {
-                    return "hostname resolving to ${kind} ${addr}"
-                }
-                i = i + 1
-            }
-            ""
-        },
-        Err(e) -> "",
+    if !_looks_like_ip_literal(h) {
+        return "hostname"
     }
+    return ""
 }
 
 fun _looks_like_ip_literal(host: String) -> Bool {
@@ -163,6 +158,9 @@ fun _looks_like_ip_literal(host: String) -> Bool {
         return true
     }
     let parts = host.split(".")
+    if parts.len() == 1 {
+        return _ipv4_uint(parts[0]) >= 0
+    }
     if parts.len() != 4 {
         return false
     }
@@ -178,6 +176,17 @@ fun _looks_like_ip_literal(host: String) -> Bool {
 
 fun _sensitive_ipv4_kind(host: String) -> String {
     let parts = host.split(".")
+    if parts.len() == 1 {
+        let n = _ipv4_uint(parts[0])
+        if n < 0 {
+            return ""
+        }
+        let a = n / 16777216
+        let b = (n / 65536) % 256
+        let c = (n / 256) % 256
+        let d = n % 256
+        return _sensitive_ipv4_octets(a, b, c, d)
+    }
     if parts.len() != 4 {
         return ""
     }
@@ -188,6 +197,10 @@ fun _sensitive_ipv4_kind(host: String) -> String {
     if a < 0 || b < 0 || c < 0 || d < 0 {
         return ""
     }
+    return _sensitive_ipv4_octets(a, b, c, d)
+}
+
+fun _sensitive_ipv4_octets(a: Int, b: Int, c: Int, d: Int) -> String {
     if a == 0 {
         return "local IPv4"
     }
@@ -216,20 +229,40 @@ fun _sensitive_ipv4_kind(host: String) -> String {
 }
 
 fun _ipv4_octet(s: String) -> Int {
+    return _ipv4_piece(s, 255)
+}
+
+fun _ipv4_uint(s: String) -> Int {
+    return _ipv4_piece(s, 4294967295)
+}
+
+fun _ipv4_piece(s: String, max: Int) -> Int {
     let t = s.trim()
     if t == "" || !_all_digits(t) {
         return 0 - 1
     }
-    return match t.parse_int() {
-        Some(n) -> {
-            if n >= 0 && n <= 255 {
-                n
-            } else {
-                0 - 1
-            }
-        },
-        None -> 0 - 1,
+    let base = 10
+    if t.length() > 1 && t.starts_with("0") {
+        base = 8
     }
+    return _uint_base(t, base, max)
+}
+
+fun _uint_base(s: String, base: Int, max: Int) -> Int {
+    let n = 0
+    let i = 0
+    while i < s.length() {
+        let v = s.byte_at(i) - 48
+        if v < 0 || v >= base {
+            return 0 - 1
+        }
+        if n > (max - v) / base {
+            return 0 - 1
+        }
+        n = n * base + v
+        i = i + 1
+    }
+    return n
 }
 
 fun _sensitive_ipv6_kind(host: String) -> String {

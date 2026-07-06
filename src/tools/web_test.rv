@@ -63,6 +63,7 @@ fun test_web_fetch_validates_input() {
 fun test_web_fetch_approval_classifies_sensitive_targets() {
     assert_true(web_fetch_needs_approval("http://localhost:3000/"))
     assert_true(web_fetch_needs_approval("http://api.localhost/status"))
+    assert_true(web_fetch_needs_approval("https://example.com/docs"))
     assert_true(web_fetch_needs_approval("http://127.0.0.1:11434/api/tags"))
     assert_true(web_fetch_needs_approval("http://10.0.0.5/"))
     assert_true(web_fetch_needs_approval("http://172.16.0.1/"))
@@ -75,12 +76,20 @@ fun test_web_fetch_approval_classifies_sensitive_targets() {
     assert_true(web_fetch_needs_approval("http://metadata.google.internal/computeMetadata/v1/"))
 }
 
-fun test_web_fetch_approval_leaves_public_targets_automatic() {
+fun test_web_fetch_approval_leaves_public_ip_targets_automatic() {
     assert_false(web_fetch_needs_approval("https://8.8.8.8/dns-query"))
     assert_false(web_fetch_needs_approval("8.8.8.8/dns-query"))
     assert_false(web_fetch_needs_approval("http://8.8.8.8/"))
     assert_false(web_fetch_needs_approval("http://172.32.0.1/"))
     assert_eq_str(web_fetch_approval_detail("https://8.8.8.8/dns-query"), "")
+}
+
+fun test_web_fetch_approval_handles_host_parser_bypasses() {
+    assert_true(web_fetch_needs_approval("http://2130706433/"))
+    assert_true(web_fetch_needs_approval("http://0177.0.0.1/"))
+    let detail = web_fetch_approval_detail("http://a@public.com@127.0.0.1/")
+    assert_true(detail.contains("loopback IPv4"))
+    assert_true(detail.contains("127.0.0.1"))
 }
 
 fun test_web_fetch_approval_detail_names_target() {

@@ -102,7 +102,8 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
     if call.name == "ask_user" {
         return "error: subagents cannot ask the user; make a reasonable choice or report back"
     }
-    if st.plan() && call_needs_approval(call) {
+    let approval_needed = call_needs_approval(call)
+    if st.plan() && approval_needed {
         return "error: plan mode is on; you can only read and search, so ${call.name} is unavailable"
     }
     if !_tool_allowed(agent.tools, call.name) {
@@ -123,7 +124,7 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
     if denied != "" {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or report back."
     }
-    if !call_needs_approval(call) {
+    if !approval_needed {
         return dispatch_cancelable(call, st.token())
     }
     if pre_allowed || _contains(allowed, call.name) {

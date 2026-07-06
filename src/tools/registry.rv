@@ -16,7 +16,7 @@ import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
 import "./tree" { file_tree }
 import "./todos" { set_todos }
 import "./git" { git_status, git_diff, git_commit }
-import "./web" { web_fetch, web_fetch_needs_approval, web_search }
+import "./web" { web_fetch, web_fetch_approval_detail, web_search }
 import "../agents/dir" { roots }
 import "../agents/skills" { skill_body }
 import "../mcp/manager" { mcp_tools, is_mcp_tool, call_mcp_tool, resource_tools, is_resource_tool, read_resource }
@@ -154,7 +154,7 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "web_fetch",
-            "Fetch a URL and return its readable text (HTML stripped, truncated). Local and private network targets require approval.",
+            "Fetch a URL and return its readable text (HTML stripped, truncated). Hostnames and local or private network targets require approval.",
             _schema([Prop { name: "url", desc: "the URL to fetch" }]),
         ),
         ToolDef.new(
@@ -212,17 +212,23 @@ fun needs_approval(name: String) -> Bool {
     )
 }
 
+// Approval detail for concrete calls that are conditional rather than gated
+// solely by tool name.
+fun call_approval_detail(call: ToolCall) -> String {
+    if call.name == "web_fetch" {
+        return web_fetch_approval_detail(arg(call.arguments, "url"))
+    }
+    return ""
+}
+
 // Whether a concrete call needs approval. Most tools are decided by name,
-// but web_fetch is conditional: public web stays low-friction, while local
-// and private network targets require approval.
+// but web_fetch is conditional: public IP literals stay low-friction, while
+// hostnames and local or private network targets require approval.
 fun call_needs_approval(call: ToolCall) -> Bool {
     if needs_approval(call.name) {
         return true
     }
-    if call.name == "web_fetch" {
-        return web_fetch_needs_approval(arg(call.arguments, "url"))
-    }
-    return false
+    return call_approval_detail(call) != ""
 }
 
 // Run a tool call and return its result string.

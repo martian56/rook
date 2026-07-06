@@ -7,10 +7,11 @@
 //       "deny":  ["run_command(rm *)", "write_file(.github/*)"] } }
 //
 // A rule is a tool name, optionally with a glob in the tool name or a glob
-// in parentheses matched against the call's subject (the command for shell
-// tools, the path for file tools). Deny beats allow; a call neither denies
-// nor allows falls through to the normal approval flow. Rules from the
-// project .agents and the global one both apply.
+// in parentheses matched against the call's subject: the command for shell
+// tools, the path for file tools, the URL for web_fetch, or the query for
+// web_search. Deny beats allow; a call neither denies nor allows falls
+// through to the normal approval flow. Rules from the project .agents and
+// the global one both apply.
 
 import std/string
 import std/json { JsonValue }

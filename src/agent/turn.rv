@@ -12,7 +12,7 @@ import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
 import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
-import "../tools/registry" { tools, needs_approval, call_needs_approval, dispatch_cancelable, label }
+import "../tools/registry" { tools, needs_approval, call_approval_detail, dispatch_cancelable, label }
 import "../tools/preview" { change_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
@@ -261,9 +261,11 @@ fun _ask_user(st: AgentState, call: ToolCall) -> String {
 // Run one tool call, gating a mutating one through approval unless its kind
 // was already allowed for the turn.
 fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
+    let approval_detail = call_approval_detail(call)
+    let approval_needed = needs_approval(call.name) || approval_detail != ""
     // Plan mode blocks every mutating tool outright, even if one slips into
     // a request; the model should propose the change, not make it.
-    if st.plan() && call_needs_approval(call) {
+    if st.plan() && approval_needed {
         return "Plan mode is on, so ${call.name} is unavailable. Describe this change as part of your plan instead; the user will turn plan mode off to carry it out."
     }
     // A pre-tool hook may veto the call before anything runs; its reason goes
@@ -288,12 +290,15 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
     if denied != "" {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or ask the user."
     }
-    if !call_needs_approval(call) {
+    if !approval_needed {
         return _do(st.token(), call, "")
     }
     // The diff this call would make, shown in the approval prompt and, on
     // success, under the tool row.
-    let preview = change_preview(call)
+    let preview = approval_detail
+    if preview == "" {
+        preview = change_preview(call)
+    }
     if pre_allowed || _contains(allowed, call.name) {
         return _do(st.token(), call, preview)
     }
