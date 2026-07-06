@@ -18,7 +18,7 @@ import "github.com/martian56/aviary/message" { ToolCall }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
 import "../agents/dir" { roots }
-import "../agents/settings" { setting_section, settings_error_for }
+import "../agents/settings" { setting_section_load }
 import "../agents/trust" { settings_root_trusted }
 
 // What the rules say about one call. Deny carries the rule that fired so
@@ -40,13 +40,11 @@ fun check_permission_from_roots(rs: List<String>, call: ToolCall) -> Verdict {
     let deny: List<String> = []
     let i = 0
     while i < rs.len() {
-        match settings_error_for(rs[i]) {
-            Some(msg) -> {
-                return Verdict.Deny(msg)
-            },
-            None -> {},
+        let loaded = setting_section_load(rs[i], "permissions")
+        if loaded.error != "" {
+            return Verdict.Deny(loaded.error)
         }
-        match setting_section(rs[i], "permissions") {
+        match loaded.section {
             Some(section) -> {
                 _collect(field(section, "deny"), deny)
                 if settings_root_trusted(rs[i]) {

@@ -25,6 +25,11 @@ struct SettingsLoad {
     error: String,
 }
 
+struct SettingsSectionLoad {
+    section: Option<JsonValue>,
+    error: String,
+}
+
 // A top-level string field from the settings.json under `root`, "" when the
 // root is empty, the file is absent or unreadable, or the field is not a
 // string.
@@ -50,13 +55,25 @@ fun setting_from(text: String, key: String) -> String {
 // A top-level object section (permissions, tools, mcp) from the settings
 // under `root`, for the features that consume them. None when absent.
 fun setting_section(root: String, key: String) -> Option<JsonValue> {
+    return setting_section_load(root, key).section
+}
+
+// A top-level object section with any settings load or parse error from the
+// same pass, for hot paths that need to fail closed.
+fun setting_section_load(root: String, key: String) -> SettingsSectionLoad {
     let loaded = load_settings(root)
-    if !loaded.present || loaded.error != "" || loaded.text.trim() == "" {
-        return None
+    if loaded.error != "" {
+        return SettingsSectionLoad { section: None, error: loaded.error }
+    }
+    if !loaded.present || loaded.text.trim() == "" {
+        return SettingsSectionLoad { section: None, error: "" }
     }
     return match parse(loaded.text) {
-        Ok(j) -> j.get(key),
-        Err(e) -> None,
+        Ok(j) -> SettingsSectionLoad { section: j.get(key), error: "" },
+        Err(e) -> SettingsSectionLoad {
+            section: None,
+            error: _invalid_json_error(loaded.path, e.message),
+        },
     }
 }
 
@@ -90,7 +107,7 @@ fun settings_error_for(root: String) -> Option<String> {
     if loaded.present && loaded.text.trim() != "" {
         return match parse(loaded.text) {
             Ok(j) -> None,
-            Err(e) -> Some("settings error: invalid JSON in ${loaded.path}: ${e.message}"),
+            Err(e) -> Some(_invalid_json_error(loaded.path, e.message)),
         }
     }
     return None
@@ -109,6 +126,10 @@ fun settings_errors_from(rs: List<String>) -> List<String> {
         i = i + 1
     }
     return out
+}
+
+fun _invalid_json_error(path: String, message: String) -> String {
+    return "settings error: invalid JSON in ${path}: ${message}"
 }
 
 fun _field_str(j: JsonValue, key: String) -> String {
