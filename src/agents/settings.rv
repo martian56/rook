@@ -100,15 +100,9 @@ fun load_settings(root: String) -> SettingsLoad {
 
 // The error for one settings root, if the file exists but cannot be used.
 fun settings_error_for(root: String) -> Option<String> {
-    let loaded = load_settings(root)
+    let loaded = setting_section_load(root, "")
     if loaded.error != "" {
         return Some(loaded.error)
-    }
-    if loaded.present && loaded.text.trim() != "" {
-        return match parse(loaded.text) {
-            Ok(j) -> None,
-            Err(e) -> Some(_invalid_json_error(loaded.path, e.message)),
-        }
     }
     return None
 }
