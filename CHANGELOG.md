@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- Ran pre-tool and post-tool hooks for subagent tool calls, including the subagent name in hook context.
+
 ## 0.3.5
 
 - Surfaced invalid or unreadable `.agents/settings.json` files as startup notices instead of silently ignoring them.
