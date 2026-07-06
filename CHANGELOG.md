@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+
+- Failed closed for permission checks when an existing `.agents/settings.json` file is invalid or unreadable.
+
 ## 0.3.4
 
 - Surfaced invalid or unreadable `.agents/settings.json` files as startup notices instead of silently ignoring them.

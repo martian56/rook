@@ -18,7 +18,7 @@ import "github.com/martian56/aviary/message" { ToolCall }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
 import "../agents/dir" { roots }
-import "../agents/settings" { setting_section }
+import "../agents/settings" { setting_section, settings_error_for }
 import "../agents/trust" { settings_root_trusted }
 
 // What the rules say about one call. Deny carries the rule that fired so
@@ -31,11 +31,21 @@ enum Verdict {
 
 // The verdict for a call under the configured rules.
 fun check_permission(call: ToolCall) -> Verdict {
+    return check_permission_from_roots(roots(), call)
+}
+
+// Same decision as check_permission, but with explicit roots for tests.
+fun check_permission_from_roots(rs: List<String>, call: ToolCall) -> Verdict {
     let allow: List<String> = []
     let deny: List<String> = []
-    let rs = roots()
     let i = 0
     while i < rs.len() {
+        match settings_error_for(rs[i]) {
+            Some(msg) -> {
+                return Verdict.Deny(msg)
+            },
+            None -> {},
+        }
         match setting_section(rs[i], "permissions") {
             Some(section) -> {
                 _collect(field(section, "deny"), deny)

@@ -81,24 +81,30 @@ fun load_settings(root: String) -> SettingsLoad {
     }
 }
 
+// The error for one settings root, if the file exists but cannot be used.
+fun settings_error_for(root: String) -> Option<String> {
+    let loaded = load_settings(root)
+    if loaded.error != "" {
+        return Some(loaded.error)
+    }
+    if loaded.present && loaded.text.trim() != "" {
+        return match parse(loaded.text) {
+            Ok(j) -> None,
+            Err(e) -> Some("settings error: invalid JSON in ${loaded.path}: ${e.message}"),
+        }
+    }
+    return None
+}
+
 // Human-readable diagnostics for settings files that exist but cannot be
 // used. Missing files stay quiet.
 fun settings_errors_from(rs: List<String>) -> List<String> {
     let out: List<String> = []
     let i = 0
     while i < rs.len() {
-        let loaded = load_settings(rs[i])
-        if loaded.error != "" {
-            out.push(loaded.error)
-        } else {
-            if loaded.present && loaded.text.trim() != "" {
-                match parse(loaded.text) {
-                    Ok(j) -> {},
-                    Err(e) -> {
-                        out.push("settings error: invalid JSON in ${loaded.path}: ${e.message}")
-                    },
-                }
-            }
+        match settings_error_for(rs[i]) {
+            Some(msg) -> out.push(msg),
+            None -> {},
         }
         i = i + 1
     }

@@ -197,6 +197,7 @@ fun chat_init() -> Chat {
     }
 }
 
+// Convert settings load errors into startup transcript notices.
 fun settings_error_entries(errors: List<String>) -> List<Entry> {
     let out: List<Entry> = []
     let i = 0
