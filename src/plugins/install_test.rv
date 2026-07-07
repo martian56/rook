@@ -3,7 +3,8 @@ import std/test { assert_eq_str, assert_true }
 import std/env { os_name }
 import std/fs { write, exists, create_dir_all }
 import std/process { run }
-import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source, valid_plugin_name, plugin_target_path }
+import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source }
+import "./model" { valid_plugin_name, plugin_target_path }
 
 fun test_plugin_name_from_url() {
     assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt"), "rook-fmt")

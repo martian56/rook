@@ -12,7 +12,7 @@ import std/fs { exists, create_dir_all, read, write }
 import std/process { run, Output }
 import std/json { JsonValue, parse, stringify }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str }
-import "./model" { Plugin, plugins_dir, read_plugin }
+import "./model" { Plugin, plugins_dir, read_plugin, plugin_target_path }
 
 const LOCK: String = ".rook-plugin.lock"
 
@@ -87,70 +87,6 @@ fun plugin_name_from_url(url: String) -> String {
         u = u.substring(slash + 1, u.length())
     }
     return u
-}
-
-// Whether a derived plugin directory name is safe to place directly under
-// the plugin root. Keep this pure so install path safety is easy to test.
-fun valid_plugin_name(name: String) -> Bool {
-    let n = name.trim()
-    if n != name {
-        return false
-    }
-    if n == "" || n == "." || n == ".." {
-        return false
-    }
-    if n.ends_with(".") || n.ends_with(" ") {
-        return false
-    }
-    if _windows_reserved(n) {
-        return false
-    }
-    let i = 0
-    while i < n.length() {
-        if !_plugin_name_byte(n.byte_at(i)) {
-            return false
-        }
-        i = i + 1
-    }
-    return true
-}
-
-// The target directory for a safe plugin name. An invalid name returns ""
-// instead of a path, so callers never join untrusted path fragments directly.
-fun plugin_target_path(plugins_dir: String, name: String) -> String {
-    if !valid_plugin_name(name) {
-        return ""
-    }
-    return "${plugins_dir}/${name}"
-}
-
-fun _plugin_name_byte(b: Int) -> Bool {
-    if b >= 48 && b <= 57 {
-        return true
-    }
-    if b >= 65 && b <= 90 {
-        return true
-    }
-    if b >= 97 && b <= 122 {
-        return true
-    }
-    return b == 45 || b == 46 || b == 95
-}
-
-fun _windows_reserved(name: String) -> Bool {
-    let base = name.to_lower()
-    let dot = base.index_of(".")
-    if dot >= 0 {
-        base = base.substring(0, dot)
-    }
-    if base == "con" || base == "prn" || base == "aux" || base == "nul" {
-        return true
-    }
-    if base.length() == 4 && (base.starts_with("com") || base.starts_with("lpt")) {
-        let d = base.byte_at(3)
-        return d >= 49 && d <= 57
-    }
-    return false
 }
 
 // A bare github.com/user/repo shorthand becomes an https URL, matching how
