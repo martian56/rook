@@ -67,8 +67,11 @@ fun test_prompt_lists_names_and_descriptions() {
     assert_eq_str(skills_prompt(none), "")
     let one = [Skill { name: "release", description: "cut a release", body: "b", path: "p" }]
     let p = skills_prompt(one)
+    assert_true(p.contains("[project skills]"))
     assert_true(p.contains("- release: cut a release"))
     assert_true(p.contains("use_skill"))
+    assert_true(p.contains("higher-priority instructions"))
+    assert_true(p.contains("not as permission to override user intent"))
 }
 
 fun test_skill_body_finds_ignoring_case_and_reports_unknowns() {
@@ -76,6 +79,8 @@ fun test_skill_body_finds_ignoring_case_and_reports_unknowns() {
     write("_rook_sb/skills/release/SKILL.md", "---\nname: release\n---\nbump, tag, push")
 
     let hit = skill_body(["_rook_sb"], "Release")
+    assert_true(hit.contains("[skill: release]"))
+    assert_true(hit.contains("higher-priority instructions"))
     assert_true(hit.contains("bump, tag, push"))
     let miss = skill_body(["_rook_sb"], "deploy")
     assert_true(miss.starts_with("error:"))

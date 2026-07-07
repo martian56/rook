@@ -124,8 +124,10 @@ fun test_note_names_unread_shells_and_clears_after_reading() {
     let id = _id_of(run_background("echo note-probe"))
     _wait_exit(id)
     let note = shells_note()
+    assert_true(note.contains("[background shell state]"))
     assert_true(note.contains("shell ${id}"))
     assert_true(note.contains("bytes unread"))
+    assert_true(note.contains("not instructions"))
     read_shell("${id}")
     // Everything read: this shell no longer appears in the note.
     assert_true(!shells_note().contains("shell ${id} ("))

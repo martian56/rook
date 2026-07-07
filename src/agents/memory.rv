@@ -55,10 +55,10 @@ fun memory_from(texts: List<String>) -> String {
     if texts.len() == 0 {
         return ""
     }
-    let out = " Standing instructions from AGENTS.md, follow them:"
+    let out = "\n\n[AGENTS.md guidance]\nStanding instructions from AGENTS.md. Follow them when they do not conflict with higher-priority instructions:"
     let i = 0
     while i < texts.len() {
-        out = "${out}\n\n${texts[i]}"
+        out = "${out}\n\n[source ${i + 1}: AGENTS.md]\n${texts[i]}"
         i = i + 1
     }
     return out

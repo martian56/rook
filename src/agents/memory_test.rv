@@ -10,7 +10,11 @@ fun test_no_memory_means_no_section() {
 
 fun test_texts_are_joined_in_order() {
     let p = memory_from(["global notes", "project notes"])
+    assert_true(p.contains("[AGENTS.md guidance]"))
     assert_true(p.contains("Standing instructions"))
+    assert_true(p.contains("higher-priority instructions"))
+    assert_true(p.contains("[source 1: AGENTS.md]"))
+    assert_true(p.contains("[source 2: AGENTS.md]"))
     assert_true(p.contains("global notes"))
     assert_true(p.contains("project notes"))
     assert_true(p.index_of("global notes") < p.index_of("project notes"))
