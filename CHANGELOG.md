@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.13
+
+- Added an explicit instruction hierarchy to the system prompt and labeled project guidance, skills, subagents, and shell state as lower-priority context.
+
 ## 0.3.12
 
 - Rejected unsafe plugin manifest names with the same validation used for plugin install, remove, and update paths.

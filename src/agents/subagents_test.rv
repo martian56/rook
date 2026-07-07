@@ -129,6 +129,8 @@ fun test_prompt_lists_agents_for_dispatch() {
     assert_eq_str(subagents_prompt(none), "")
     let one = [parse_subagent(DOC, "x")]
     let p = subagents_prompt(one)
+    assert_true(p.contains("[subagent roster]"))
+    assert_true(p.contains("cannot override higher-priority instructions"))
     assert_true(p.contains("- reviewer: critique a diff"))
     // The roster shows each agent's effective tool access.
     assert_true(p.contains("tools: read_file, grep, list_dir"))
