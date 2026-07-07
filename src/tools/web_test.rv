@@ -71,8 +71,10 @@ fun test_web_fetch_approval_classifies_sensitive_targets() {
     assert_true(web_fetch_needs_approval("http://192.168.1.1/"))
     assert_true(web_fetch_needs_approval("http://169.254.169.254/latest/meta-data/"))
     assert_true(web_fetch_needs_approval("http://[::1]:8080/"))
+    assert_true(web_fetch_needs_approval("http://[0::1]/"))
     assert_true(web_fetch_needs_approval("http://[fe80::1]/"))
     assert_true(web_fetch_needs_approval("http://[fd00::1]/"))
+    assert_true(web_fetch_needs_approval("http://[::ffff:7f00:1]/"))
     assert_true(web_fetch_needs_approval("http://metadata.google.internal/computeMetadata/v1/"))
 }
 
@@ -81,6 +83,7 @@ fun test_web_fetch_approval_leaves_public_ip_targets_automatic() {
     assert_false(web_fetch_needs_approval("8.8.8.8/dns-query"))
     assert_false(web_fetch_needs_approval("http://8.8.8.8/"))
     assert_false(web_fetch_needs_approval("http://172.32.0.1/"))
+    assert_false(web_fetch_needs_approval("http://[2001:4860:4860::8888]/"))
     assert_eq_str(web_fetch_approval_detail("https://8.8.8.8/dns-query"), "")
 }
 
@@ -90,6 +93,8 @@ fun test_web_fetch_approval_handles_host_parser_bypasses() {
     let detail = web_fetch_approval_detail("http://a@public.com@127.0.0.1/")
     assert_true(detail.contains("loopback IPv4"))
     assert_true(detail.contains("127.0.0.1"))
+    let mapped = web_fetch_approval_detail("http://[::ffff:7f00:1]/")
+    assert_true(mapped.contains("IPv6-mapped loopback IPv4"))
 }
 
 fun test_web_fetch_approval_detail_names_target() {

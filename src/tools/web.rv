@@ -270,6 +270,27 @@ fun _sensitive_ipv6_kind(host: String) -> String {
     if h == "" || !h.contains(":") {
         return ""
     }
+    let expanded = _expand_ipv6(h)
+    if expanded.len() == 8 {
+        if _all_zero_hextets(expanded, 0, 8) {
+            return "unspecified IPv6"
+        }
+        if _all_zero_hextets(expanded, 0, 7) && _hex_int(expanded[7]) == 1 {
+            return "loopback IPv6"
+        }
+        let embedded = _embedded_ipv4_kind(expanded)
+        if embedded != "" {
+            return "IPv6-mapped ${embedded}"
+        }
+        let n = _hex_int(expanded[0])
+        if n >= 64512 && n <= 65023 {
+            return "private IPv6"
+        }
+        if n >= 65152 && n <= 65215 {
+            return "link-local IPv6"
+        }
+        return ""
+    }
     if h == "::" || _is_expanded_unspecified_ipv6(h) {
         return "unspecified IPv6"
     }
@@ -292,6 +313,113 @@ fun _sensitive_ipv6_kind(host: String) -> String {
         return "link-local IPv6"
     }
     return ""
+}
+
+fun _expand_ipv6(host: String) -> List<String> {
+    let empty: List<String> = []
+    if host.contains(".") {
+        return empty
+    }
+    let out: List<String> = []
+    let dbl = host.index_of("::")
+    if dbl >= 0 {
+        let before = host.substring(0, dbl)
+        let after = host.substring(dbl + 2, host.length())
+        if after.index_of("::") >= 0 || before.ends_with(":") || after.starts_with(":") {
+            return empty
+        }
+        let left = _hextets(before)
+        let right = _hextets(after)
+        let zeros = 8 - left.len() - right.len()
+        if zeros <= 0 {
+            return empty
+        }
+        _push_all(out, left)
+        let z = 0
+        while z < zeros {
+            out.push("0")
+            z = z + 1
+        }
+        _push_all(out, right)
+    } else {
+        out = _hextets(host)
+        if out.len() != 8 {
+            return empty
+        }
+    }
+    if out.len() != 8 || !_valid_hextets(out) {
+        return empty
+    }
+    return out
+}
+
+fun _hextets(s: String) -> List<String> {
+    let out: List<String> = []
+    if s == "" {
+        return out
+    }
+    let parts = s.split(":")
+    let i = 0
+    while i < parts.len() {
+        if parts[i] == "" {
+            let empty: List<String> = []
+            return empty
+        }
+        out.push(parts[i])
+        i = i + 1
+    }
+    return out
+}
+
+fun _push_all(out: List<String>, xs: List<String>) {
+    let i = 0
+    while i < xs.len() {
+        out.push(xs[i])
+        i = i + 1
+    }
+    return
+}
+
+fun _valid_hextets(parts: List<String>) -> Bool {
+    let i = 0
+    while i < parts.len() {
+        if _hex_int(parts[i]) < 0 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _all_zero_hextets(parts: List<String>, start: Int, end: Int) -> Bool {
+    let i = start
+    while i < end {
+        if _hex_int(parts[i]) != 0 {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _embedded_ipv4_kind(parts: List<String>) -> String {
+    if !_all_zero_hextets(parts, 0, 5) {
+        return ""
+    }
+    let marker = _hex_int(parts[5])
+    if marker != 65535 && marker != 0 {
+        return ""
+    }
+    let hi = _hex_int(parts[6])
+    let lo = _hex_int(parts[7])
+    if hi < 0 || lo < 0 {
+        return ""
+    }
+    let a = hi / 256
+    let b = hi % 256
+    let c = lo / 256
+    let d = lo % 256
+    return _sensitive_ipv4_octets(a, b, c, d)
 }
 
 fun _strip_ipv6_zone(host: String) -> String {
