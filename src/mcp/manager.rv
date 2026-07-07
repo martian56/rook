@@ -45,6 +45,12 @@ struct Route {
     tool: String,
 }
 
+struct ResourceRoute {
+    ok: Bool,
+    server: String,
+    error: String,
+}
+
 // Connect to every configured server once. Safe to call repeatedly; only the
 // first call connects (the handshakes run outside the lock).
 fun ensure_started() {
@@ -260,16 +266,13 @@ fun read_resource(server: String, uri: String) -> String {
     }
     ensure_started()
     let clients = _clients()
-    return match _resource_owner(clients, server, uri) {
-        Some(c) -> {
-            let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT)
-            if resp.ok {
-                format_resource(resp.result)
-            } else {
-                "error: ${resp.error}"
-            }
-        },
-        None -> "error: no connected MCP server exposes the resource '${uri}'",
+    let route = resource_route(clients, server, uri)
+    if !route.ok {
+        return route.error
+    }
+    return match _find(clients, route.server) {
+        Some(c) -> _read_resource_from(c, uri),
+        None -> "error: MCP server '${route.server}' is not connected",
     }
 }
 
@@ -348,26 +351,91 @@ fun _msg_text(m: JsonValue) -> String {
     return as_str(content)
 }
 
-fun _resource_owner(clients: List<McpClient>, server: String, uri: String) -> Option<McpClient> {
+fun resource_route(clients: List<McpClient>, server: String, uri: String) -> ResourceRoute {
+    if uri.trim() == "" {
+        return ResourceRoute { ok: false, server: "", error: "error: a resource uri is required" }
+    }
+    if server != "" {
+        return match _find(clients, server) {
+            Some(c) -> {
+                if _has_resource(c, uri) {
+                    ResourceRoute { ok: true, server: c.name, error: "" }
+                } else {
+                    ResourceRoute {
+                        ok: false,
+                        server: "",
+                        error: "error: MCP server '${server}' does not expose the resource '${uri}'",
+                    }
+                }
+            },
+            None -> ResourceRoute {
+                ok: false,
+                server: "",
+                error: "error: MCP server '${server}' is not connected",
+            },
+        }
+    }
+    let owners = _resource_owners(clients, uri)
+    if owners.len() == 1 {
+        return ResourceRoute { ok: true, server: owners[0].name, error: "" }
+    }
+    if owners.len() > 1 {
+        return ResourceRoute {
+            ok: false,
+            server: "",
+            error: "error: MCP resource '${uri}' is ambiguous across servers ${_client_names(owners)}; retry with the server argument",
+        }
+    }
+    return ResourceRoute {
+        ok: false,
+        server: "",
+        error: "error: no connected MCP server exposes the resource '${uri}'",
+    }
+}
+
+fun _read_resource_from(c: McpClient, uri: String) -> String {
+    let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT)
+    if resp.ok {
+        return format_resource(resp.result)
+    }
+    return "error: ${resp.error}"
+}
+
+fun _resource_owners(clients: List<McpClient>, uri: String) -> List<McpClient> {
+    let out: List<McpClient> = []
     let i = 0
     while i < clients.len() {
         let c = clients[i]
-        if server != "" {
-            if c.name == server {
-                return Some(c)
-            }
-        } else {
-            let j = 0
-            while j < c.resources.len() {
-                if c.resources[j].uri == uri {
-                    return Some(c)
-                }
-                j = j + 1
-            }
+        if c.ok && _has_resource(c, uri) {
+            out.push(c)
         }
         i = i + 1
     }
-    return None
+    return out
+}
+
+fun _has_resource(c: McpClient, uri: String) -> Bool {
+    let j = 0
+    while j < c.resources.len() {
+        if c.resources[j].uri == uri {
+            return true
+        }
+        j = j + 1
+    }
+    return false
+}
+
+fun _client_names(clients: List<McpClient>) -> String {
+    let out = ""
+    let i = 0
+    while i < clients.len() {
+        if i > 0 {
+            out = out.concat(", ")
+        }
+        out = out.concat(clients[i].name)
+        i = i + 1
+    }
+    return out
 }
 
 fun _any_resources(clients: List<McpClient>) -> Bool {

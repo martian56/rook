@@ -3,7 +3,7 @@ import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import "./client" { McpClient, McpTool, McpResource, McpPrompt }
 import "./config" { ServerSpec }
-import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from }
+import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from, resource_route }
 
 fun _client() -> McpClient {
     let tools = [
@@ -28,6 +28,23 @@ fun _client() -> McpClient {
 fun _tool_client(server: String, tool: String) -> McpClient {
     let tools = [McpTool { name: tool, description: "", schema: "null" }]
     let resources: List<McpResource> = []
+    let prompts: List<McpPrompt> = []
+    return McpClient {
+        name: server,
+        server_name: "",
+        server_version: "",
+        tools,
+        resources,
+        prompts,
+        ok: true,
+        error: "",
+        conn: None,
+    }
+}
+
+fun _resource_client(server: String, uri: String) -> McpClient {
+    let tools: List<McpTool> = []
+    let resources = [McpResource { uri, name: "doc", description: "", mime: "text/plain" }]
     let prompts: List<McpPrompt> = []
     return McpClient {
         name: server,
@@ -96,6 +113,52 @@ fun test_format_resource_joins_text_contents() {
         "line one\nline two",
     )
     assert_true(format_resource(_json("{\"contents\": []}")).contains("no text contents"))
+}
+
+fun test_resource_route_allows_unique_uri_without_server() {
+    let route = resource_route(
+        [_resource_client("docs", "file:///README.md")],
+        "",
+        "file:///README.md",
+    )
+    assert_true(route.ok)
+    assert_eq_str(route.server, "docs")
+}
+
+fun test_resource_route_reports_missing_uri() {
+    let route = resource_route(
+        [_resource_client("docs", "file:///README.md")],
+        "",
+        "file:///missing.md",
+    )
+    assert_true(!route.ok)
+    assert_true(route.error.contains("no connected MCP server exposes"))
+}
+
+fun test_resource_route_reports_duplicate_uri_without_server() {
+    let route = resource_route(
+        [
+            _resource_client("docs", "file:///README.md"),
+            _resource_client("cache", "file:///README.md"),
+        ],
+        "",
+        "file:///README.md",
+    )
+    assert_true(!route.ok)
+    assert_true(route.error.contains("ambiguous"))
+    assert_true(route.error.contains("docs"))
+    assert_true(route.error.contains("cache"))
+    assert_true(route.error.contains("server argument"))
+}
+
+fun test_resource_route_validates_explicit_server_uri() {
+    let route = resource_route(
+        [_resource_client("docs", "file:///README.md")],
+        "docs",
+        "file:///missing.md",
+    )
+    assert_true(!route.ok)
+    assert_true(route.error.contains("does not expose"))
 }
 
 fun test_status_from_shows_each_server_state() {

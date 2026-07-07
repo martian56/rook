@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.15
+
+- Reported ambiguous MCP resource URIs instead of reading from the first matching server when `server` is omitted.
+
 ## 0.3.14
 
 - Detected colliding MCP tool names after sanitization and skipped ambiguous tools instead of exposing duplicate provider-facing names.
