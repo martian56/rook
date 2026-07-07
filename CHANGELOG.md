@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.16
+
+- Reported plugin removal failures when recursive deletion commands fail or the plugin directory remains on disk.
+
 ## 0.3.15
 
 - Reported ambiguous MCP resource URIs instead of reading from the first matching server when `server` is omitted.

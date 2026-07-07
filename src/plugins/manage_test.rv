@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./manage" { run_plugins_command, contrib }
+import "./manage" { run_plugins_command, contrib, removal_error }
 
 fun test_router_usage_and_unknown() {
     assert_true(run_plugins_command("bogus").starts_with("unknown /plugins command"))
@@ -47,5 +47,15 @@ fun test_contrib_counts_the_bundle_subfolders() {
     remove_dir("_rook_contrib/skills/b")
     remove_dir("_rook_contrib/skills")
     remove_dir("_rook_contrib")
+    return
+}
+
+fun test_removal_error_reports_directory_that_still_exists() {
+    create_dir_all("_rook_remove_failed")
+    let err = removal_error("_rook_remove_failed", "rm: permission denied")
+    assert_true(err.contains("directory still exists after removal"))
+    assert_true(err.contains("_rook_remove_failed"))
+    assert_true(err.contains("permission denied"))
+    remove_dir("_rook_remove_failed")
     return
 }

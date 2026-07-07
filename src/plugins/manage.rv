@@ -6,7 +6,7 @@
 import std/string
 import std/env { os_name }
 import std/fs { is_dir, list_dir }
-import std/process { run }
+import std/process { run, Output }
 import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
 import "./install" { install_plugin, plugin_source }
 import "./market" { browse_text, resolve_name }
@@ -129,7 +129,10 @@ fun remove(name: String) -> String {
     if path == "" || !is_dir(path) {
         return "no plugin named ${name}; /plugins list shows what is installed"
     }
-    _rmtree(path)
+    let err = _rmtree(path)
+    if err != "" {
+        return "error: failed to remove plugin ${name}: ${err}"
+    }
     return "removed plugin ${name}"
 }
 
@@ -173,21 +176,62 @@ fun _count(path: String, sub: String) -> Int {
 
 // Remove a directory tree, clearing read-only attributes first on Windows
 // so a plugin's git files do not block removal. See install._remove_tree.
-fun _rmtree(path: String) {
+fun _rmtree(path: String) -> String {
+    let detail = ""
     if os_name() == "windows" {
-        match run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]) {
-            Ok(o) -> {},
-            Err(e) -> {},
-        }
-        match run("cmd", ["/c", "rmdir", "/s", "/q", path]) {
-            Ok(o) -> {},
-            Err(e) -> {},
-        }
+        detail = _append_detail(
+            detail,
+            _run_remove("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]),
+        )
+        detail = _append_detail(detail, _run_remove("cmd", ["/c", "rmdir", "/s", "/q", path]))
     } else {
-        match run("rm", ["-rf", path]) {
-            Ok(o) -> {},
-            Err(e) -> {},
-        }
+        detail = _append_detail(detail, _run_remove("rm", ["-rf", path]))
     }
-    return
+    return removal_error(path, detail)
+}
+
+fun _run_remove(command: String, args: List<String>) -> String {
+    return match run(command, args) {
+        Ok(o) -> {
+            if o.code == 0 {
+                ""
+            } else {
+                _output_error(command, o)
+            }
+        },
+        Err(e) -> "${command} failed to start: ${e.message}",
+    }
+}
+
+fun _output_error(command: String, out: Output) -> String {
+    let msg = out.stderr.trim()
+    if msg == "" {
+        msg = out.stdout.trim()
+    }
+    if msg == "" {
+        msg = "exit ${out.code}"
+    } else {
+        msg = "${msg} (exit ${out.code})"
+    }
+    return "${command}: ${msg}"
+}
+
+fun _append_detail(existing: String, next: String) -> String {
+    if next == "" {
+        return existing
+    }
+    if existing == "" {
+        return next
+    }
+    return "${existing}; ${next}"
+}
+
+fun removal_error(path: String, detail: String) -> String {
+    if !is_dir(path) {
+        return ""
+    }
+    if detail.trim() == "" {
+        return "directory still exists after removal: ${path}"
+    }
+    return "directory still exists after removal: ${path}; ${detail.trim()}"
 }
