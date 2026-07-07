@@ -210,10 +210,14 @@ fun settings_error_entries(errors: List<String>) -> List<Entry> {
 
 // Adopt a newly chosen model: update the running config, resolve its key, and
 // persist the choice so the next session remembers it.
-fun set_model(m: Chat, model: String) {
+fun set_model(m: Chat, model: String) -> String {
+    apply_model(m, model)
+    return save_model(model)
+}
+
+fun apply_model(m: Chat, model: String) {
     m.model = model
     m.api_key = resolve_key(model)
-    save_model(model)
     return
 }
 

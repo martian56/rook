@@ -22,6 +22,12 @@ import "../agents/settings" { setting_str }
 // The model used when nothing else selects one. A "provider/model" string.
 const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-5"
 
+struct AuthUpdate {
+    ok: Bool,
+    text: String,
+    error: String,
+}
+
 fun resolve_model() -> String {
     let a = args()
     let i = 0
@@ -114,15 +120,26 @@ fun resolve_theme() -> String {
 }
 
 // Remember `name` as the theme for the next session.
-fun save_theme(name: String) {
+fun save_theme(name: String) -> String {
     let h = _home()
     if h == "" {
-        return
+        return "error: no home directory for ~/.rook/last-theme"
     }
     let dir = "${h}/.rook"
-    create_dir_all(dir)
-    write("${dir}/last-theme", name)
-    return
+    let mkdir_err = ""
+    match create_dir_all(dir) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            mkdir_err = "error: could not create ~/.rook: ${e.message}"
+        },
+    }
+    if mkdir_err != "" {
+        return mkdir_err
+    }
+    return match write("${dir}/last-theme", name) {
+        Ok(ok) -> "",
+        Err(e) -> "error: could not write ~/.rook/last-theme: ${e.message}",
+    }
 }
 
 // The last model picked in a previous session, or "" when none was saved.
@@ -135,15 +152,26 @@ fun last_used() -> String {
 }
 
 // Remember `model` as the last-used choice for the next session.
-fun save_model(model: String) {
+fun save_model(model: String) -> String {
     let h = _home()
     if h == "" {
-        return
+        return "error: no home directory for ~/.rook/last-model"
     }
     let dir = "${h}/.rook"
-    create_dir_all(dir)
-    write("${dir}/last-model", model)
-    return
+    let mkdir_err = ""
+    match create_dir_all(dir) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            mkdir_err = "error: could not create ~/.rook: ${e.message}"
+        },
+    }
+    if mkdir_err != "" {
+        return mkdir_err
+    }
+    return match write("${dir}/last-model", model) {
+        Ok(ok) -> "",
+        Err(e) -> "error: could not write ~/.rook/last-model: ${e.message}",
+    }
 }
 
 // The API key for a model's provider: its environment variable if set, else
@@ -169,16 +197,23 @@ fun stored_key(provider: String) -> String {
 
 // Store `key` for `provider` in ~/.rook/auth.json, merging with any keys
 // already saved for other providers.
-fun save_key(provider: String, key: String) {
+fun save_key(provider: String, key: String) -> String {
     let h = _home()
     if h == "" {
-        return
+        return "error: no home directory for ~/.rook/auth.json"
     }
     let dir = "${h}/.rook"
-    create_dir_all(dir)
-    let path = "${dir}/auth.json"
-    write(path, _merge_auth(_read_opt(path), provider, key))
-    return
+    let mkdir_err = ""
+    match create_dir_all(dir) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            mkdir_err = "error: could not create ~/.rook: ${e.message}"
+        },
+    }
+    if mkdir_err != "" {
+        return mkdir_err
+    }
+    return save_key_to_path("${dir}/auth.json", provider, key)
 }
 
 // Whether a model can run: its provider has a key, or needs none (Ollama).
@@ -282,25 +317,63 @@ fun _read_opt(path: String) -> String {
     }
 }
 
+fun save_key_to_path(path: String, provider: String, key: String) -> String {
+    let existing = ""
+    if exists(path) {
+        let read_err = ""
+        match read(path) {
+            Ok(s) -> {
+                existing = s
+            },
+            Err(e) -> {
+                read_err = "error: could not read ${path}: ${e.message}"
+            },
+        }
+        if read_err != "" {
+            return read_err
+        }
+    }
+    let updated = auth_with_key(existing, provider, key)
+    if !updated.ok {
+        return updated.error
+    }
+    return match write(path, updated.text) {
+        Ok(ok) -> "",
+        Err(e) -> "error: could not write ${path}: ${e.message}",
+    }
+}
+
 // Rebuild the auth JSON object with `provider` set to `key`, preserving any
-// other providers already present.
-fun _merge_auth(existing: String, provider: String, key: String) -> String {
+// other providers already present. Malformed existing JSON is an error so a
+// save cannot silently replace the whole auth file.
+fun auth_with_key(existing: String, provider: String, key: String) -> AuthUpdate {
+    if provider == "" {
+        return AuthUpdate { ok: false, text: "", error: "error: no provider selected" }
+    }
     let obj = Obj.new()
-    match parse(existing) {
-        Ok(j) -> {
-            let ks = j.keys()
-            let i = 0
-            while i < ks.len() {
-                if ks[i] != provider {
-                    obj = obj.str(ks[i], _field_str(j, ks[i]))
+    let parse_err = ""
+    if existing.trim() != "" {
+        match parse(existing) {
+            Ok(j) -> {
+                let ks = j.keys()
+                let i = 0
+                while i < ks.len() {
+                    if ks[i] != provider {
+                        obj = obj.str(ks[i], _field_str(j, ks[i]))
+                    }
+                    i = i + 1
                 }
-                i = i + 1
-            }
-        },
-        Err(e) -> {},
+            },
+            Err(e) -> {
+                parse_err = "error: ~/.rook/auth.json is not valid JSON; key not saved"
+            },
+        }
+    }
+    if parse_err != "" {
+        return AuthUpdate { ok: false, text: "", error: parse_err }
     }
     obj = obj.str(provider, key)
-    return stringify(obj.build())
+    return AuthUpdate { ok: true, text: stringify(obj.build()), error: "" }
 }
 
 // A string field from a JSON config document, or "" when absent.

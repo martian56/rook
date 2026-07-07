@@ -1,6 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
-import "./config" { provider_of, key_env, key_present }
+import std/fs { read, write, remove_file, exists }
+import "./config" { provider_of, key_env, key_present, auth_with_key, save_key_to_path }
 import "./catalog" { catalog, filter_catalog, index_of }
 
 fun test_provider_of() {
@@ -23,6 +24,57 @@ fun test_ollama_needs_no_key() {
 
 fun test_unknown_provider_has_no_key() {
     assert_false(key_present("mystery/model"))
+}
+
+fun test_auth_with_key_creates_a_new_auth_object() {
+    let updated = auth_with_key("", "openai", "new-key")
+    assert_true(updated.ok)
+    assert_true(updated.text.contains("\"openai\":\"new-key\""))
+}
+
+fun test_auth_with_key_preserves_other_provider_keys() {
+    let existing = "{\"anthropic\":\"old-a\",\"openai\":\"old-o\"}"
+    let updated = auth_with_key(existing, "openai", "new-o")
+    assert_true(updated.ok)
+    assert_true(updated.text.contains("\"anthropic\":\"old-a\""))
+    assert_true(updated.text.contains("\"openai\":\"new-o\""))
+    assert_true(!updated.text.contains("old-o"))
+}
+
+fun test_auth_with_key_rejects_malformed_json() {
+    let updated = auth_with_key("{\"anthropic\":", "openai", "new-o")
+    assert_true(!updated.ok)
+    assert_true(updated.error.contains("not valid JSON"))
+    assert_eq_str(updated.text, "")
+}
+
+fun test_save_key_to_path_does_not_overwrite_malformed_auth() {
+    write("_rook_auth_bad.json", "{\"anthropic\":")
+    let err = save_key_to_path("_rook_auth_bad.json", "openai", "new-o")
+    assert_true(err.contains("not valid JSON"))
+    match read("_rook_auth_bad.json") {
+        Ok(text) -> assert_eq_str(text, "{\"anthropic\":"),
+        Err(e) -> assert_true(false),
+    }
+    remove_file("_rook_auth_bad.json")
+    return
+}
+
+fun test_save_key_to_path_creates_missing_auth_file() {
+    if exists("_rook_auth_new.json") {
+        match remove_file("_rook_auth_new.json") {
+            Ok(ok) -> {},
+            Err(e) -> {},
+        }
+    }
+    let err = save_key_to_path("_rook_auth_new.json", "openai", "new-o")
+    assert_eq_str(err, "")
+    match read("_rook_auth_new.json") {
+        Ok(text) -> assert_true(text.contains("\"openai\":\"new-o\"")),
+        Err(e) -> assert_true(false),
+    }
+    remove_file("_rook_auth_new.json")
+    return
 }
 
 fun test_catalog_index_round_trips() {

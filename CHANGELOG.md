@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.7
+
+- Prevented malformed `auth.json` files from being overwritten during API key saves and surfaced config persistence errors in the UI.
+
 ## 0.3.6
 
 - Required approval before `web_fetch` can read hostnames, localhost, private network, link-local, shared-address, benchmark, or metadata targets.

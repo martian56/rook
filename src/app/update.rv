@@ -6,7 +6,7 @@ import std/string
 import "github.com/martian56/perch/keys" { Key }
 import "github.com/martian56/plumage" { Event, Step, next, quit }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
-import "./model" { Chat, set_model, set_entry, replace_entries, ensure_cache_len }
+import "./model" { Chat, set_model, apply_model, set_entry, replace_entries, ensure_cache_len }
 import "../agent/state" { DisplayEvent, Snapshot }
 import "../ui/transcript" { AgentBlock }
 import "../agent/turn" { run_turn }
@@ -640,9 +640,12 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
         },
         Enter -> {
             if items.len() > 0 {
-                set_model(m, items[m.pick_sel])
+                let err = set_model(m, items[m.pick_sel])
                 m.picking = false
                 _after_model_set(m)
+                if err != "" {
+                    m.entries.push(Entry.Notice(err))
+                }
                 m.scroll_up = 0
             }
         },
@@ -695,7 +698,7 @@ fun _resume(m: Chat, id: String) {
     let loaded = load_session(id)
     replace_entries(m, loaded.entries)
     if loaded.model != "" {
-        set_model(m, loaded.model)
+        apply_model(m, loaded.model)
     }
     m.agent.clear_convo()
     if loaded.messages.len() > 0 {
@@ -884,9 +887,13 @@ fun _theme_pick_key(m: Chat, k: Key) -> Step<Chat> {
         },
         Enter -> {
             m.theme = themed(items[m.theme_sel])
-            save_theme(m.theme.name)
+            let err = save_theme(m.theme.name)
             m.theme_picking = false
-            m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+            if err != "" {
+                m.entries.push(Entry.Notice(err))
+            } else {
+                m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+            }
             m.scroll_up = 0
         },
         Esc -> {
@@ -906,9 +913,13 @@ fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
             let key = m.key_input.value.trim()
             if key != "" {
                 let p = provider_of(m.model)
-                save_key(p, key)
-                m.api_key = key
-                m.entries.push(Entry.Notice("saved key for ${p}"))
+                let err = save_key(p, key)
+                if err != "" {
+                    m.entries.push(Entry.Notice(err))
+                } else {
+                    m.api_key = key
+                    m.entries.push(Entry.Notice("saved key for ${p}"))
+                }
                 m.scroll_up = 0
             }
             m.entering_key = false
@@ -985,8 +996,11 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             return next(m)
         },
         ModelSet(id) -> {
-            set_model(m, id)
+            let err = set_model(m, id)
             _after_model_set(m)
+            if err != "" {
+                m.entries.push(Entry.Notice(err))
+            }
             return next(m)
         },
         ThemePicker -> {
@@ -1004,8 +1018,12 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
                 m.entries.push(Entry.Notice("no theme named ${name}; /theme lists them"))
             } else {
                 m.theme = themed(all_themes()[idx])
-                save_theme(m.theme.name)
-                m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+                let err = save_theme(m.theme.name)
+                if err != "" {
+                    m.entries.push(Entry.Notice(err))
+                } else {
+                    m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
+                }
             }
             return next(m)
         },
