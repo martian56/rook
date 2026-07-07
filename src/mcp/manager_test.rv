@@ -25,6 +25,23 @@ fun _client() -> McpClient {
     }
 }
 
+fun _tool_client(server: String, tool: String) -> McpClient {
+    let tools = [McpTool { name: tool, description: "", schema: "null" }]
+    let resources: List<McpResource> = []
+    let prompts: List<McpPrompt> = []
+    return McpClient {
+        name: server,
+        server_name: "",
+        server_version: "",
+        tools,
+        resources,
+        prompts,
+        ok: true,
+        error: "",
+        conn: None,
+    }
+}
+
 fun test_exposed_name_namespaces_and_sanitizes() {
     assert_eq_str(exposed_name("fs", "read_file"), "mcp__fs__read_file")
     // A space and punctuation become underscores so the name is valid.
@@ -38,6 +55,17 @@ fun test_tools_from_builds_a_def_per_tool() {
     assert_eq_str(defs[0].name, "mcp__fs__read_file")
     // A tool with no description still gets one.
     assert_true(defs[1].description.contains("weird name!"))
+}
+
+fun test_tools_from_skips_colliding_exposed_names() {
+    let clients = [
+        _tool_client("a.b", "read"),
+        _tool_client("a_b", "read"),
+        _tool_client("safe", "read"),
+    ]
+    let defs = tools_from(clients)
+    assert_eq_int(defs.len(), 1)
+    assert_eq_str(defs[0].name, "mcp__safe__read")
 }
 
 fun test_tools_from_skips_a_failed_client() {
@@ -111,6 +139,20 @@ fun test_status_from_shows_each_server_state() {
     assert_true(text.contains("later: configured, not connected yet"))
 }
 
+fun test_status_from_reports_tool_name_collisions() {
+    let no_args: List<String> = []
+    let specs = [
+        ServerSpec { name: "a.b", command: "x", args: no_args, env: no_args },
+        ServerSpec { name: "a_b", command: "y", args: no_args, env: no_args },
+    ]
+    let text = status_from(specs, [_tool_client("a.b", "read"), _tool_client("a_b", "read")])
+    assert_true(text.contains("warning: MCP tool name collision"))
+    assert_true(text.contains("mcp__a_b__read"))
+    assert_true(text.contains("a.b/read"))
+    assert_true(text.contains("a_b/read"))
+    assert_true(text.contains("colliding tools are not exposed"))
+}
+
 fun test_status_from_with_no_servers() {
     let no_specs: List<ServerSpec> = []
     let no_clients: List<McpClient> = []
@@ -151,6 +193,12 @@ fun test_route_in_maps_the_exposed_name_back() {
     }
     // An unknown tool does not route.
     assert_true(_is_none(route_in(clients, "mcp__fs__nope")))
+}
+
+fun test_route_in_rejects_ambiguous_separator_collision() {
+    let clients = [_tool_client("a", "b__c"), _tool_client("a__b", "c")]
+    assert_eq_int(tools_from(clients).len(), 0)
+    assert_true(_is_none(route_in(clients, "mcp__a__b__c")))
 }
 
 fun test_format_tool_result_joins_text_and_flags_errors() {

@@ -164,6 +164,10 @@ fun status_from(specs: List<ServerSpec>, clients: List<McpClient>) -> String {
         out = out.concat(_server_status(specs[i], clients))
         i = i + 1
     }
+    let warnings = _tool_collision_warnings(clients)
+    if warnings != "" {
+        out = out.concat("\n").concat(warnings)
+    }
     return out
 }
 
@@ -414,7 +418,10 @@ fun tools_from(clients: List<McpClient>) -> List<ToolDef> {
             let j = 0
             while j < c.tools.len() {
                 let t = c.tools[j]
-                out.push(ToolDef.new(exposed_name(c.name, t.name), _desc(c.name, t), _params(t)))
+                let name = exposed_name(c.name, t.name)
+                if !_tool_name_collides(clients, name) {
+                    out.push(ToolDef.new(name, _desc(c.name, t), _params(t)))
+                }
                 j = j + 1
             }
         }
@@ -425,19 +432,96 @@ fun tools_from(clients: List<McpClient>) -> List<ToolDef> {
 
 // Find which server and tool a namespaced name routes to. Pure.
 fun route_in(clients: List<McpClient>, name: String) -> Option<Route> {
+    if _tool_name_collides(clients, name) {
+        return None
+    }
     let i = 0
     while i < clients.len() {
         let c = clients[i]
-        let j = 0
-        while j < c.tools.len() {
-            if exposed_name(c.name, c.tools[j].name) == name {
-                return Some(Route { server: c.name, tool: c.tools[j].name })
+        if c.ok {
+            let j = 0
+            while j < c.tools.len() {
+                if exposed_name(c.name, c.tools[j].name) == name {
+                    return Some(Route { server: c.name, tool: c.tools[j].name })
+                }
+                j = j + 1
             }
-            j = j + 1
         }
         i = i + 1
     }
     return None
+}
+
+fun _tool_collision_warnings(clients: List<McpClient>) -> String {
+    let seen: List<String> = []
+    let out = ""
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        if c.ok {
+            let j = 0
+            while j < c.tools.len() {
+                let name = exposed_name(c.name, c.tools[j].name)
+                if !_contains_string(seen, name) && _tool_name_collides(clients, name) {
+                    if out != "" {
+                        out = out.concat("\n")
+                    }
+                    out = out.concat(
+                        "warning: MCP tool name collision for '${name}' among ${_tool_routes(clients, name)}; colliding tools are not exposed",
+                    )
+                    seen.push(name)
+                }
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun _tool_name_collides(clients: List<McpClient>, name: String) -> Bool {
+    return _tool_name_count(clients, name) > 1
+}
+
+fun _tool_name_count(clients: List<McpClient>, name: String) -> Int {
+    let count = 0
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        if c.ok {
+            let j = 0
+            while j < c.tools.len() {
+                if exposed_name(c.name, c.tools[j].name) == name {
+                    count = count + 1
+                }
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return count
+}
+
+fun _tool_routes(clients: List<McpClient>, name: String) -> String {
+    let out = ""
+    let i = 0
+    while i < clients.len() {
+        let c = clients[i]
+        if c.ok {
+            let j = 0
+            while j < c.tools.len() {
+                if exposed_name(c.name, c.tools[j].name) == name {
+                    if out != "" {
+                        out = out.concat(", ")
+                    }
+                    out = out.concat("${c.name}/${c.tools[j].name}")
+                }
+                j = j + 1
+            }
+        }
+        i = i + 1
+    }
+    return out
 }
 
 // The text of an MCP tools/call result: its text content parts joined, with
@@ -529,6 +613,17 @@ fun _find(clients: List<McpClient>, server: String) -> Option<McpClient> {
         i = i + 1
     }
     return None
+}
+
+fun _contains_string(xs: List<String>, name: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == name {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
 
 fun _clients() -> List<McpClient> {

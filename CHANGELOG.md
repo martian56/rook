@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.14
+
+- Detected colliding MCP tool names after sanitization and skipped ambiguous tools instead of exposing duplicate provider-facing names.
+
 ## 0.3.13
 
 - Added an explicit instruction hierarchy to the system prompt and labeled project guidance, skills, subagents, and shell state as lower-priority context.
