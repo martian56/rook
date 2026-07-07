@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.8
+
+- Ran pre-tool and post-tool hooks for subagent tool calls, including the subagent name in hook context.
+
 ## 0.3.7
 
 - Prevented malformed `auth.json` files from being overwritten during API key saves and surfaced config persistence errors in the UI.

@@ -2,7 +2,7 @@ import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./hooks" { Hook, hooks_from, hooks_for, load_hooks_from_with_project_trust, run_pre_tool }
+import "./hooks" { Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool }
 
 const CONFIG: String = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\"}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
 
@@ -72,4 +72,12 @@ fun test_pre_tool_hook_blocks_on_nonzero_exit() {
     // With no hooks, nothing ever blocks.
     let none: List<Hook> = []
     assert_eq_str(run_pre_tool(none, "write_file", "{}"), "")
+}
+
+fun test_hook_context_includes_subagent_name() {
+    let ctx = hook_context("pre-tool", "worker", "write_file", "{\"path\":\"x\"}")
+    assert_true(ctx.contains("\"event\":\"pre-tool\""))
+    assert_true(ctx.contains("\"agent\":\"worker\""))
+    assert_true(ctx.contains("\"tool\":\"write_file\""))
+    assert_true(ctx.contains("\"args\":\"{\\\"path\\\":\\\"x\\\"}\""))
 }
