@@ -2,9 +2,9 @@
 // Each root's settings.json may carry a "hooks" object keyed by event, whose
 // value is an array of { match, command }. On an event rook runs every hook
 // whose match glob matches the tool name, handing it a small JSON context on
-// stdin ({ event, tool, args }). A pre-tool hook that exits non-zero blocks
-// the tool; every other event is observe-only. This is the mechanism plugins
-// build on to extend rook.
+// stdin ({ event, tool, args, agent }). A pre-tool hook that exits non-zero
+// blocks the tool; every other event is observe-only. This is the mechanism
+// plugins build on to extend rook.
 
 import std/string
 import std/env { os_name }
@@ -110,15 +110,28 @@ fun hooks_for(hooks: List<Hook>, event: String, tool: String) -> List<Hook> {
 // place of running the tool. A hook that fails to launch does not block, so a
 // misconfigured hook cannot wedge every tool.
 fun run_pre_tool_hooks(tool: String, args_json: String) -> String {
-    return run_pre_tool(hooks_for(load_hooks(), "pre-tool", tool), tool, args_json)
+    return run_pre_tool_hooks_for_agent("", tool, args_json)
+}
+
+fun run_pre_tool_hooks_for_agent(agent: String, tool: String, args_json: String) -> String {
+    return run_pre_tool_for_agent(hooks_for(load_hooks(), "pre-tool", tool), agent, tool, args_json)
 }
 
 // Run an already-filtered list of pre-tool hooks; the first non-zero exit
 // blocks and its reason (stderr, else stdout, else the code) is returned.
 fun run_pre_tool(hooks: List<Hook>, tool: String, args_json: String) -> String {
+    return run_pre_tool_for_agent(hooks, "", tool, args_json)
+}
+
+fun run_pre_tool_for_agent(
+    hooks: List<Hook>,
+    agent: String,
+    tool: String,
+    args_json: String,
+) -> String {
     let i = 0
     while i < hooks.len() {
-        let out = _run(hooks[i], "pre-tool", tool, args_json)
+        let out = _run(hooks[i], "pre-tool", agent, tool, args_json)
         if out.code != 0 {
             let why = out.stderr.trim()
             if why == "" {
@@ -137,21 +150,30 @@ fun run_pre_tool(hooks: List<Hook>, tool: String, args_json: String) -> String {
 // Fire every hook bound to `event` for `tool`, ignoring exit codes. Used for
 // the observe-only events (session start, post tool, prompt, turn end).
 fun fire_hooks(event: String, tool: String, args_json: String) {
+    fire_hooks_for_agent("", event, tool, args_json)
+    return
+}
+
+fun fire_hooks_for_agent(agent: String, event: String, tool: String, args_json: String) {
     let hooks = hooks_for(load_hooks(), event, tool)
     let i = 0
     while i < hooks.len() {
-        let out = _run(hooks[i], event, tool, args_json)
+        let out = _run(hooks[i], event, agent, tool, args_json)
         i = i + 1
     }
     return
 }
 
+fun hook_context(event: String, agent: String, tool: String, args_json: String) -> String {
+    return stringify(
+        Obj.new().str("event", event).str("tool", tool).str("args", args_json).str("agent", agent).build(),
+    )
+}
+
 // Run one hook's command through the platform shell with the event context
 // on stdin. A launch failure comes back as exit 0 so it never blocks.
-fun _run(hook: Hook, event: String, tool: String, args_json: String) -> Output {
-    let ctx = stringify(
-        Obj.new().str("event", event).str("tool", tool).str("args", args_json).build(),
-    )
+fun _run(hook: Hook, event: String, agent: String, tool: String, args_json: String) -> Output {
+    let ctx = hook_context(event, agent, tool, args_json)
     let shell = "sh"
     let flag = "-c"
     if os_name() == "windows" {

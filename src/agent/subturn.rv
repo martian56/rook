@@ -13,6 +13,7 @@ import "github.com/martian56/aviary/message" { Message, ToolCall }
 import "./state" { AgentState, DisplayEvent }
 import "../tools/registry" { tools, needs_approval, call_needs_approval, dispatch_cancelable, label }
 import "../tools/permissions" { Verdict, check_permission }
+import "../hooks/hooks" { run_pre_tool_hooks_for_agent, fire_hooks_for_agent }
 import "../agents/subagents" { Subagent }
 import "../config/config" { resolve_key }
 
@@ -96,6 +97,24 @@ fun run_subagent(
 // read-only tools, and gate mutating ones through the parent's approval
 // prompt (labeled with the agent's name so the user knows who is asking).
 fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<String>) -> String {
+    return _sub_one_with_hooks(
+        st,
+        agent,
+        call,
+        allowed,
+        run_pre_tool_hooks_for_agent,
+        _fire_post_tool_hook,
+    )
+}
+
+fun _sub_one_with_hooks(
+    st: AgentState,
+    agent: Subagent,
+    call: ToolCall,
+    allowed: List<String>,
+    pre_hook: fun(String, String, String) -> String,
+    post_hook: fun(String, String, String) -> Unit,
+) -> String {
     if call.name == "dispatch" {
         return "error: subagents cannot dispatch further agents; do the work yourself"
     }
@@ -108,6 +127,10 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
     }
     if !_tool_allowed(agent.tools, call.name) {
         return "error: the ${call.name} tool is not available to this agent"
+    }
+    let vetoed = pre_hook(agent.name, call.name, call.arguments)
+    if vetoed != "" {
+        return vetoed
     }
     // The user's permission rules bind subagents the same way.
     let denied = ""
@@ -125,20 +148,36 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or report back."
     }
     if !approval_needed {
-        return dispatch_cancelable(call, st.token())
+        return _sub_do(st, agent, call, post_hook)
     }
     if pre_allowed || _contains(allowed, call.name) {
-        return dispatch_cancelable(call, st.token())
+        return _sub_do(st, agent, call, post_hook)
     }
     let decision = st.ask("${agent.name}: ${label(call)}")
     if decision == 2 {
         allowed.push(call.name)
-        return dispatch_cancelable(call, st.token())
+        return _sub_do(st, agent, call, post_hook)
     }
     if decision == 1 {
-        return dispatch_cancelable(call, st.token())
+        return _sub_do(st, agent, call, post_hook)
     }
     return "The user denied this action. Do not retry it; try another way or report back."
+}
+
+fun _sub_do(
+    st: AgentState,
+    agent: Subagent,
+    call: ToolCall,
+    post_hook: fun(String, String, String) -> Unit,
+) -> String {
+    let result = dispatch_cancelable(call, st.token())
+    post_hook(agent.name, call.name, call.arguments)
+    return result
+}
+
+fun _fire_post_tool_hook(agent: String, tool: String, args_json: String) {
+    fire_hooks_for_agent(agent, "post-tool", tool, args_json)
+    return
 }
 
 // The subagent's request: its own prompt and history, the session key and

@@ -1,0 +1,101 @@
+import std/string
+import std/fs { write, exists, remove_file }
+import std/test { assert_true, assert_eq_str }
+import "github.com/martian56/aviary/message" { ToolCall }
+import "./state" { AgentState }
+import "./subturn" { _sub_one_with_hooks }
+import "../agents/subagents" { Subagent }
+
+let hook_agent = ""
+let hook_tool = ""
+let hook_args = ""
+let post_agent = ""
+let post_tool = ""
+let post_args = ""
+
+fun full_agent(name: String) -> Subagent {
+    let all: List<String> = []
+    return Subagent {
+        name,
+        description: "test agent",
+        tools: all,
+        model: "",
+        prompt: "You are a test agent.",
+    }
+}
+
+fun call(name: String, args: String) -> ToolCall {
+    return ToolCall { id: "1", name, arguments: args }
+}
+
+fun reset_hooks() {
+    hook_agent = ""
+    hook_tool = ""
+    hook_args = ""
+    post_agent = ""
+    post_tool = ""
+    post_args = ""
+    return
+}
+
+fun blocking_pre_hook(agent: String, tool: String, args_json: String) -> String {
+    hook_agent = agent
+    hook_tool = tool
+    hook_args = args_json
+    return "blocked by test hook"
+}
+
+fun allowing_pre_hook(agent: String, tool: String, args_json: String) -> String {
+    hook_agent = agent
+    hook_tool = tool
+    hook_args = args_json
+    return ""
+}
+
+fun record_post_hook(agent: String, tool: String, args_json: String) {
+    post_agent = agent
+    post_tool = tool
+    post_args = args_json
+    return
+}
+
+fun test_subagent_pre_tool_hook_blocks_mutation() {
+    reset_hooks()
+    let allowed: List<String> = []
+    let result = _sub_one_with_hooks(
+        AgentState.new(),
+        full_agent("worker"),
+        call("write_file", "{\"path\":\"_rook_sub_hook_blocked.txt\",\"content\":\"x\"}"),
+        allowed,
+        blocking_pre_hook,
+        record_post_hook,
+    )
+    assert_eq_str(result, "blocked by test hook")
+    assert_eq_str(hook_agent, "worker")
+    assert_eq_str(hook_tool, "write_file")
+    assert_true(hook_args.contains("_rook_sub_hook_blocked.txt"))
+    assert_eq_str(post_tool, "")
+    assert_true(!exists("_rook_sub_hook_blocked.txt"))
+}
+
+fun test_subagent_post_tool_hook_observes_tool_call() {
+    reset_hooks()
+    write("_rook_sub_hook_read.txt", "observed")
+    let allowed: List<String> = []
+    let result = _sub_one_with_hooks(
+        AgentState.new(),
+        full_agent("reader"),
+        call("read_file", "{\"path\":\"_rook_sub_hook_read.txt\"}"),
+        allowed,
+        allowing_pre_hook,
+        record_post_hook,
+    )
+    assert_true(result.contains("observed"))
+    assert_eq_str(hook_agent, "reader")
+    assert_eq_str(hook_tool, "read_file")
+    assert_eq_str(post_agent, "reader")
+    assert_eq_str(post_tool, "read_file")
+    assert_true(post_args.contains("_rook_sub_hook_read.txt"))
+    remove_file("_rook_sub_hook_read.txt")
+    return
+}
