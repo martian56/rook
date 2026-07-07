@@ -7,7 +7,7 @@ import std/string
 import std/http { Server, Request, Response }
 import std/sync { sleep_millis }
 import std/fs { write as fs_write, remove_file, remove_dir, create_dir_all, exists }
-import std/test { assert_true, assert_eq_int }
+import std/test { assert_true, assert_eq_str, assert_eq_int }
 import "./state" { AgentState, DisplayEvent, Snapshot }
 import "./turn" { run_turn }
 
@@ -323,7 +323,10 @@ fun test_two_dispatches_fan_out_and_both_results_return() {
     assert_true(got.contains("[dispatch(shouter) => SHOUT DONE]"))
     assert_true(got.contains("Both agents reported."))
     // user, assistant(two tool_calls), two tool_results, assistant(final).
-    assert_eq_int(st.messages().len(), 5)
+    let msgs = st.messages()
+    assert_eq_int(msgs.len(), 5)
+    assert_eq_str(msgs[2].tool_call_id, "f1")
+    assert_eq_str(msgs[3].tool_call_id, "f2")
     remove_file(".agents/subagents/echoer.md")
     remove_file(".agents/subagents/shouter.md")
     remove_dir(".agents/subagents")

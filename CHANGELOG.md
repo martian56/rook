@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.11
+
+- Preserved original tool-call order when parallel subagent dispatches finish out of order.
+
 ## 0.3.8
 
 - Ran pre-tool and post-tool hooks for subagent tool calls, including the subagent name in hook context.

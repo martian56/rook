@@ -1,0 +1,26 @@
+import std/test { assert_eq_str, assert_eq_int }
+import "github.com/martian56/aviary/message" { ToolCall }
+import "./state" { AgentState }
+import "./turn" { ToolResults, _push_tool_results }
+
+fun test_parallel_dispatch_results_are_pushed_in_call_order() {
+    let calls = [
+        ToolCall { id: "f1", name: "dispatch", arguments: "{\"agent\":\"slow\"}" },
+        ToolCall { id: "f2", name: "dispatch", arguments: "{\"agent\":\"fast\"}" },
+    ]
+    let results = ToolResults.new(calls.len())
+    results.set(1, "fast finished first")
+    results.set(0, "slow finished second")
+
+    let st = AgentState.new()
+    st.push_user("ask both")
+    st.push_assistant_calls("", calls)
+    _push_tool_results(st, calls, results)
+
+    let msgs = st.messages()
+    assert_eq_int(msgs.len(), 4)
+    assert_eq_str(msgs[2].tool_call_id, "f1")
+    assert_eq_str(msgs[2].content, "slow finished second")
+    assert_eq_str(msgs[3].tool_call_id, "f2")
+    assert_eq_str(msgs[3].content, "fast finished first")
+}

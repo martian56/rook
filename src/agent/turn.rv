@@ -95,7 +95,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         // runs in order on this one.
         st.push_assistant_calls(reply_text, calls)
         let fanout = _count_dispatch(calls) >= 2
-        let done = Counter.new()
+        let fanout_results = ToolResults.new(calls.len())
         if fanout {
             st.emit(DisplayEvent.Info("running ${_count_dispatch(calls)} agents in parallel…"))
         }
@@ -103,11 +103,12 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         while i < calls.len() {
             let call = calls[i]
             if fanout && call.name == "dispatch" {
+                let idx = i
+                let spawned_call = call
                 spawn(fun() -> Unit {
-                    let result = _dispatch(st, call, model, api_key, base_url)
-                    st.emit(DisplayEvent.ToolRan(label(call), _short(result)))
-                    st.push_tool_result(call.id, call.name, result)
-                    done.bump()
+                    let result = _dispatch(st, spawned_call, model, api_key, base_url)
+                    st.emit(DisplayEvent.ToolRan(label(spawned_call), _short(result)))
+                    fanout_results.set(idx, result)
                 })
             } else {
                 let result = ""
@@ -121,16 +122,21 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                     }
                 }
                 st.emit(DisplayEvent.ToolRan(label(call), _display(call, result)))
-                st.push_tool_result(call.id, call.name, result)
+                if fanout {
+                    fanout_results.set(i, result)
+                } else {
+                    st.push_tool_result(call.id, call.name, result)
+                }
             }
             i = i + 1
         }
         // Every agent's result must be in the conversation before the next
         // round's request is built.
         if fanout {
-            while done.count() < _count_dispatch(calls) {
+            while fanout_results.count() < calls.len() {
                 sleep_millis(20)
             }
+            _push_tool_results(st, calls, fanout_results)
         }
         round = round + 1
     }
@@ -157,21 +163,31 @@ fun _report_usage(st: AgentState, model: String) {
     return
 }
 
-// A shared completion counter for the fan-out: each agent goroutine bumps
-// it after its result is in the conversation.
-struct Counter {
+// Indexed fan-out results. Dispatch goroutines may finish in any order, but
+// the model-visible tool results are pushed later in the original call order.
+struct ToolResults {
     lock: Mutex,
+    results: List<String>,
     n: Int,
 }
 
-impl Counter {
-    fun new() -> Counter {
-        return Counter { lock: mutex(), n: 0 }
+impl ToolResults {
+    fun new(size: Int) -> ToolResults {
+        let results: List<String> = []
+        let i = 0
+        while i < size {
+            results.push("")
+            i = i + 1
+        }
+        return ToolResults { lock: mutex(), results, n: 0 }
     }
 
-    fun bump(self) {
+    fun set(self, idx: Int, result: String) {
         self.lock.lock()
-        self.n = self.n + 1
+        if idx >= 0 && idx < self.results.len() {
+            self.results[idx] = result
+            self.n = self.n + 1
+        }
         self.lock.unlock()
     }
 
@@ -181,6 +197,25 @@ impl Counter {
         self.lock.unlock()
         return c
     }
+
+    fun get(self, idx: Int) -> String {
+        self.lock.lock()
+        let result = ""
+        if idx >= 0 && idx < self.results.len() {
+            result = self.results[idx]
+        }
+        self.lock.unlock()
+        return result
+    }
+}
+
+fun _push_tool_results(st: AgentState, calls: List<ToolCall>, results: ToolResults) {
+    let i = 0
+    while i < calls.len() {
+        st.push_tool_result(calls[i].id, calls[i].name, results.get(i))
+        i = i + 1
+    }
+    return
 }
 
 fun _count_dispatch(calls: List<ToolCall>) -> Int {
