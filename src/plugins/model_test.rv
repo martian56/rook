@@ -25,6 +25,13 @@ fun test_parse_manifest_rejects_bad_json() {
     assert_eq_str(parse_manifest("not json", "n", "/x").name, "")
 }
 
+fun test_parse_manifest_rejects_unsafe_names() {
+    assert_eq_str(parse_manifest("{\"name\": \"..\"}", "safe-name", "/x").name, "")
+    assert_eq_str(parse_manifest("{\"name\": \"has/slash\"}", "safe-name", "/x").name, "")
+    assert_eq_str(parse_manifest("{\"name\": \"CON\"}", "safe-name", "/x").name, "")
+    assert_eq_str(parse_manifest("{\"version\": \"0.1.0\"}", "..", "/x").name, "")
+}
+
 fun test_read_plugin_from_a_directory() {
     create_dir_all("_rook_plg/skills")
     write(
@@ -55,5 +62,6 @@ fun test_plugin_path_is_under_the_plugins_dir() {
     let dir = plugins_dir()
     if dir != "" {
         assert_true(plugin_path("foo").ends_with("plugins/foo"))
+        assert_eq_str(plugin_path(".."), "")
     }
 }

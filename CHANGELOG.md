@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.12
+
+- Rejected unsafe plugin manifest names with the same validation used for plugin install, remove, and update paths.
+
 ## 0.3.11
 
 - Preserved original tool-call order when parallel subagent dispatches finish out of order.

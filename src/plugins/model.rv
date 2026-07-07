@@ -38,7 +38,7 @@ fun plugin_path(name: String) -> String {
     if dir == "" {
         return ""
     }
-    return "${dir}/${name}"
+    return plugin_target_path(dir, name)
 }
 
 // Every installed plugin: each subdirectory of the plugins dir with a
@@ -109,15 +109,83 @@ fun parse_manifest(text: String, fallback_name: String, path: String) -> Plugin 
             if name == "" {
                 name = fallback_name
             }
-            Plugin {
-                name,
-                version: as_str(field(j, "version")),
-                description: as_str(field(j, "description")),
-                path,
+            let plugin = Plugin { name: "", version: "", description: "", path }
+            if valid_plugin_name(name) {
+                plugin = Plugin {
+                    name,
+                    version: as_str(field(j, "version")),
+                    description: as_str(field(j, "description")),
+                    path,
+                }
             }
+            plugin
         },
         Err(e) -> Plugin { name: "", version: "", description: "", path },
     }
+}
+
+// Whether a plugin directory or manifest name is safe to use as one path
+// segment under the plugin root.
+fun valid_plugin_name(name: String) -> Bool {
+    let n = name.trim()
+    if n != name {
+        return false
+    }
+    if n == "" || n == "." || n == ".." {
+        return false
+    }
+    if n.ends_with(".") || n.ends_with(" ") {
+        return false
+    }
+    if _windows_reserved(n) {
+        return false
+    }
+    let i = 0
+    while i < n.length() {
+        if !_plugin_name_byte(n.byte_at(i)) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+// The target directory for a safe plugin name. An invalid name returns ""
+// instead of a path, so callers never join untrusted path fragments directly.
+fun plugin_target_path(plugins_dir: String, name: String) -> String {
+    if !valid_plugin_name(name) {
+        return ""
+    }
+    return "${plugins_dir}/${name}"
+}
+
+fun _plugin_name_byte(b: Int) -> Bool {
+    if b >= 48 && b <= 57 {
+        return true
+    }
+    if b >= 65 && b <= 90 {
+        return true
+    }
+    if b >= 97 && b <= 122 {
+        return true
+    }
+    return b == 45 || b == 46 || b == 95
+}
+
+fun _windows_reserved(name: String) -> Bool {
+    let base = name.to_lower()
+    let dot = base.index_of(".")
+    if dot >= 0 {
+        base = base.substring(0, dot)
+    }
+    if base == "con" || base == "prn" || base == "aux" || base == "nul" {
+        return true
+    }
+    if base.length() == 4 && (base.starts_with("com") || base.starts_with("lpt")) {
+        let d = base.byte_at(3)
+        return d >= 49 && d <= 57
+    }
+    return false
 }
 
 fun _sort_by_name(xs: List<Plugin>) -> List<Plugin> {

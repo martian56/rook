@@ -7,8 +7,8 @@ import std/string
 import std/env { os_name }
 import std/fs { is_dir, list_dir }
 import std/process { run }
-import "./model" { Plugin, installed_plugins, plugin_path }
-import "./install" { install_plugin, plugin_source, valid_plugin_name }
+import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
+import "./install" { install_plugin, plugin_source }
 import "./market" { browse_text, resolve_name }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
