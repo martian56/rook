@@ -24,6 +24,11 @@ struct SessionMeta {
     title: String,
 }
 
+struct SessionList {
+    sessions: List<SessionMeta>,
+    error: String,
+}
+
 // The restored contents of a session: the display transcript and the
 // model-visible history. `messages` is empty for sessions saved before the
 // history was persisted, in which case the caller rebuilds a text-only
@@ -36,6 +41,7 @@ struct Loaded {
     // reflects the resumed session instead of resetting to zero.
     usage_prompt: Int,
     usage_completion: Int,
+    error: String,
 }
 
 // A fresh session id, unique to the millisecond.
@@ -56,15 +62,38 @@ fun save_session(
     messages: List<Message>,
     usage_prompt: Int,
     usage_completion: Int,
-) {
+) -> String {
     if entries.len() == 0 {
-        return
+        return ""
     }
     let dir = _sessions_dir()
     if dir == "" {
-        return
+        return "session error: no home directory for sessions"
     }
-    create_dir_all(dir)
+    return save_session_to(dir, id, model, entries, messages, usage_prompt, usage_completion)
+}
+
+fun save_session_to(
+    dir: String,
+    id: String,
+    model: String,
+    entries: List<Entry>,
+    messages: List<Message>,
+    usage_prompt: Int,
+    usage_completion: Int,
+) -> String {
+    if entries.len() == 0 {
+        return ""
+    }
+    if dir == "" {
+        return "session error: no session directory"
+    }
+    match create_dir_all(dir) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "session error: could not create session directory: ${e.message}"
+        },
+    }
     let arr: List<JsonValue> = []
     let i = 0
     while i < entries.len() {
@@ -81,16 +110,30 @@ fun save_session(
     doc = doc.str("created", "${now()}").set("entries", JsonValue.Array(arr))
     doc = doc.set("messages", JsonValue.Array(msgs))
     doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
-    write("${dir}/${id}.json", stringify(doc.build()))
-    return
+    return match write("${dir}/${id}.json", stringify(doc.build())) {
+        Ok(ok) -> "",
+        Err(e) -> "session error: could not save session ${id}: ${e.message}",
+    }
 }
 
 // Every saved session, newest first.
 fun list_sessions() -> List<SessionMeta> {
+    return list_sessions_result().sessions
+}
+
+fun list_sessions_result() -> SessionList {
     let out: List<SessionMeta> = []
     let dir = _sessions_dir()
     if dir == "" {
-        return out
+        return SessionList { sessions: out, error: "session error: no home directory for sessions" }
+    }
+    return list_sessions_from(dir)
+}
+
+fun list_sessions_from(dir: String) -> SessionList {
+    let out: List<SessionMeta> = []
+    if dir == "" {
+        return SessionList { sessions: out, error: "session error: no session directory" }
     }
     let names: List<String> = []
     match list_dir(dir) {
@@ -98,78 +141,122 @@ fun list_sessions() -> List<SessionMeta> {
             names = ns
         },
         Err(e) -> {
-            return out
+            return SessionList {
+                sessions: out,
+                error: "session error: could not list sessions: ${e.message}",
+            }
         },
     }
     let i = 0
     while i < names.len() {
         if names[i].ends_with(".json") {
-            let text = _read_opt("${dir}/${names[i]}")
-            match parse(text) {
-                Ok(j) -> {
+            let fallback_id = _id_from_filename(names[i])
+            match read("${dir}/${names[i]}") {
+                Ok(text) -> {
+                    match parse(text) {
+                        Ok(j) -> {
+                            out.push(_meta_from_json(j, fallback_id))
+                        },
+                        Err(e) -> {
+                            out.push(
+                                SessionMeta {
+                                    id: fallback_id,
+                                    created: 0,
+                                    model: "",
+                                    title: "error: invalid session file: ${names[i]}",
+                                },
+                            )
+                        },
+                    }
+                },
+                Err(e) -> {
                     out.push(
                         SessionMeta {
-                            id: as_str(field(j, "id")),
-                            created: _created(j),
-                            model: as_str(field(j, "model")),
-                            title: as_str(field(j, "title")),
+                            id: fallback_id,
+                            created: 0,
+                            model: "",
+                            title: "error: could not read session file: ${names[i]}",
                         },
                     )
                 },
-                Err(e) -> {},
             }
         }
         i = i + 1
     }
-    return _sort_newest(out)
+    return SessionList { sessions: _sort_newest(out), error: "" }
 }
 
 // Restore a session by id.
 fun load_session(id: String) -> Loaded {
-    let empty: List<Entry> = []
-    let no_msgs: List<Message> = []
     let dir = _sessions_dir()
     if dir == "" {
-        return Loaded {
-            model: "",
-            entries: empty,
-            messages: no_msgs,
-            usage_prompt: 0,
-            usage_completion: 0,
-        }
+        return _empty_loaded("session error: no home directory for sessions")
     }
-    let text = _read_opt("${dir}/${id}.json")
+    return load_session_from(dir, id)
+}
+
+fun load_session_from(dir: String, id: String) -> Loaded {
+    if dir == "" {
+        return _empty_loaded("session error: no session directory")
+    }
+    let path = "${dir}/${id}.json"
+    if !exists(path) {
+        return _empty_loaded("session error: no saved session '${id}'")
+    }
+    let text = ""
+    match read(path) {
+        Ok(s) -> {
+            text = s
+        },
+        Err(e) -> {
+            return _empty_loaded("session error: could not read session '${id}': ${e.message}")
+        },
+    }
+    return parse_loaded(text, id)
+}
+
+fun parse_loaded(text: String, id: String) -> Loaded {
     return match parse(text) {
-        Ok(j) -> {
-            let entries: List<Entry> = []
-            let arr = as_list(field(j, "entries"))
-            let i = 0
-            while i < arr.len() {
-                entries.push(_json_entry(arr[i]))
-                i = i + 1
-            }
-            let messages: List<Message> = []
-            let marr = as_list(field(j, "messages"))
-            let k = 0
-            while k < marr.len() {
-                messages.push(_json_msg(marr[k]))
-                k = k + 1
-            }
-            Loaded {
-                model: as_str(field(j, "model")),
-                entries,
-                messages,
-                usage_prompt: _int_field(j, "usage_prompt"),
-                usage_completion: _int_field(j, "usage_completion"),
-            }
-        },
-        Err(e) -> Loaded {
-            model: "",
-            entries: empty,
-            messages: no_msgs,
-            usage_prompt: 0,
-            usage_completion: 0,
-        },
+        Ok(j) -> _loaded_from_json(j),
+        Err(e) -> _empty_loaded("session error: invalid JSON in session '${id}': ${e.message}"),
+    }
+}
+
+fun _loaded_from_json(j: JsonValue) -> Loaded {
+    let entries: List<Entry> = []
+    let arr = as_list(field(j, "entries"))
+    let i = 0
+    while i < arr.len() {
+        entries.push(_json_entry(arr[i]))
+        i = i + 1
+    }
+    let messages: List<Message> = []
+    let marr = as_list(field(j, "messages"))
+    let k = 0
+    while k < marr.len() {
+        messages.push(_json_msg(marr[k]))
+        k = k + 1
+    }
+    return Loaded {
+        model: as_str(field(j, "model")),
+        entries,
+        messages,
+        usage_prompt: _int_field(j, "usage_prompt"),
+        usage_completion: _int_field(j, "usage_completion"),
+        error: "",
+    }
+}
+
+fun _empty_loaded(error: String) -> Loaded {
+    let empty: List<Entry> = []
+    let no_msgs: List<Message> = []
+    return Loaded {
+        model: "",
+        entries: empty,
+        messages: no_msgs,
+        usage_prompt: 0,
+        usage_completion: 0,
+        error,
     }
 }
 
@@ -319,6 +406,19 @@ fun _sort_newest(xs: List<SessionMeta>) -> List<SessionMeta> {
     return out
 }
 
+fun _meta_from_json(j: JsonValue, fallback_id: String) -> SessionMeta {
+    let id = as_str(field(j, "id"))
+    if id == "" {
+        id = fallback_id
+    }
+    return SessionMeta {
+        id,
+        created: _created(j),
+        model: as_str(field(j, "model")),
+        title: as_str(field(j, "title")),
+    }
+}
+
 // The created timestamp, stored as a string.
 fun _created(j: JsonValue) -> Int {
     return match as_str(field(j, "created")).parse_int() {
@@ -327,22 +427,19 @@ fun _created(j: JsonValue) -> Int {
     }
 }
 
+fun _id_from_filename(name: String) -> String {
+    if name.ends_with(".json") {
+        return name.substring(0, name.length() - 5)
+    }
+    return name
+}
+
 fun _sessions_dir() -> String {
     let h = _home()
     if h == "" {
         return ""
     }
     return "${h}/.rook/sessions"
-}
-
-fun _read_opt(path: String) -> String {
-    if !exists(path) {
-        return ""
-    }
-    return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
-    }
 }
 
 fun _home() -> String {

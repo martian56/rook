@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.17
+
+- Reported session save, list, and load failures instead of silently dropping persistence errors.
+
 ## 0.3.16
 
 - Reported plugin removal failures when recursive deletion commands fail or the plugin directory remains on disk.
