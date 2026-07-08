@@ -2,7 +2,7 @@
 
 ## 0.3.17
 
-- Surfaced malformed plugin marketplace index JSON instead of treating parse failures as an empty index.
+- Surfaced malformed plugin marketplace index JSON and fetch failures instead of treating them as an empty index.
 
 ## 0.3.16
 

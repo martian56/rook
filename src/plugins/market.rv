@@ -47,7 +47,7 @@ fun browse_text(query: String) -> String {
     return match request_with_timeout("GET", market_url(), "", headers, TIMEOUT_MS) {
         Ok(resp) -> {
             if resp.status_code >= 400 {
-                "error: the plugin index returned ${resp.status_code}"
+                _http_error(resp.status_code)
             } else {
                 let parsed = parse_index_result(resp.body)
                 if parsed.error != "" {
@@ -76,15 +76,16 @@ fun resolve_name(name: String) -> String {
 fun resolve_name_result(name: String) -> MarketLookup {
     let headers = "User-Agent: rook/1.0\nAccept: application/json"
     return match request_with_timeout("GET", market_url(), "", headers, TIMEOUT_MS) {
-        Ok(resp) -> {
-            if resp.status_code >= 400 {
-                MarketLookup { url: "", error: "" }
-            } else {
-                resolve_name_in_index(resp.body, name)
-            }
-        },
-        Err(e) -> MarketLookup { url: "", error: "" },
+        Ok(resp) -> resolve_name_from_response(resp.status_code, resp.body, name),
+        Err(e) -> MarketLookup { url: "", error: _reach_error(e.message) },
     }
+}
+
+fun resolve_name_from_response(status_code: Int, body: String, name: String) -> MarketLookup {
+    if status_code >= 400 {
+        return MarketLookup { url: "", error: _http_error(status_code) }
+    }
+    return resolve_name_in_index(body, name)
 }
 
 fun resolve_name_in_index(text: String, name: String) -> MarketLookup {
@@ -195,4 +196,12 @@ fun _suffix(query: String) -> String {
 
 fun _index_error(detail: String) -> String {
     return "error: could not parse plugin index (${market_url()}): ${detail}"
+}
+
+fun _http_error(status_code: Int) -> String {
+    return "error: the plugin index returned ${status_code}"
+}
+
+fun _reach_error(detail: String) -> String {
+    return "error: could not reach the plugin index (${market_url()}): ${detail}"
 }

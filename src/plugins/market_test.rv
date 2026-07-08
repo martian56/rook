@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./market" { MarketEntry, parse_index, parse_index_result, filter_entries, resolve_in, resolve_name_in_index, format_entries, market_url }
+import "./market" { MarketEntry, parse_index, parse_index_result, filter_entries, resolve_in, resolve_name_from_response, resolve_name_in_index, format_entries, market_url }
 
 const INDEX: String = "[{\"name\": \"fmt\", \"description\": \"formats on save\", \"url\": \"github.com/u/rook-fmt\"}, {\"name\": \"lint\", \"description\": \"runs the linter\", \"url\": \"github.com/u/rook-lint\"}, {\"name\": \"bad\"}]"
 
@@ -56,6 +56,16 @@ fun test_resolve_name_in_index_reports_parse_errors() {
     let empty = resolve_name_in_index("[]", "fmt")
     assert_eq_str(empty.url, "")
     assert_eq_str(empty.error, "")
+}
+
+fun test_resolve_name_from_response_reports_http_errors() {
+    let missing_index = resolve_name_from_response(503, "temporarily unavailable", "fmt")
+    assert_eq_str(missing_index.url, "")
+    assert_eq_str(missing_index.error, "error: the plugin index returned 503")
+
+    let bad = resolve_name_from_response(200, "not json", "fmt")
+    assert_eq_str(bad.url, "")
+    assert_true(bad.error.starts_with("error: could not parse plugin index"))
 }
 
 fun test_format_shows_name_and_url() {
