@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.3.17
+## 0.3.18
 
 - Counted subagent model calls in turn and session token totals, including parallel dispatches.
+
+## 0.3.17
+
+- Surfaced malformed plugin marketplace index JSON and fetch failures instead of treating them as an empty index.
 
 ## 0.3.16
 
