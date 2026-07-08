@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.17
+
+- Surfaced malformed plugin marketplace index JSON instead of treating parse failures as an empty index.
+
 ## 0.3.16
 
 - Reported plugin removal failures when recursive deletion commands fail or the plugin directory remains on disk.

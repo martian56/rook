@@ -20,6 +20,16 @@ struct MarketEntry {
     url: String,
 }
 
+struct MarketIndex {
+    entries: List<MarketEntry>,
+    error: String,
+}
+
+struct MarketLookup {
+    url: String,
+    error: String,
+}
+
 // The index URL: ROOK_PLUGIN_INDEX when set, else the default.
 fun market_url() -> String {
     if has_env("ROOK_PLUGIN_INDEX") {
@@ -39,7 +49,11 @@ fun browse_text(query: String) -> String {
             if resp.status_code >= 400 {
                 "error: the plugin index returned ${resp.status_code}"
             } else {
-                let entries = filter_entries(parse_index(resp.body), query)
+                let parsed = parse_index_result(resp.body)
+                if parsed.error != "" {
+                    return _index_error(parsed.error)
+                }
+                let entries = filter_entries(parsed.entries, query)
                 if entries.len() == 0 {
                     "no plugins found in the index${_suffix(query)}"
                 } else {
@@ -54,45 +68,70 @@ fun browse_text(query: String) -> String {
 // The git URL for a marketplace plugin by name, or "" when the index has no
 // such name or cannot be reached. Lets /plugins add take a bare name.
 fun resolve_name(name: String) -> String {
+    return resolve_name_result(name).url
+}
+
+// The git URL for a marketplace plugin by name, plus an index parse error
+// when the index response cannot be understood.
+fun resolve_name_result(name: String) -> MarketLookup {
     let headers = "User-Agent: rook/1.0\nAccept: application/json"
     return match request_with_timeout("GET", market_url(), "", headers, TIMEOUT_MS) {
         Ok(resp) -> {
             if resp.status_code >= 400 {
-                ""
+                MarketLookup { url: "", error: "" }
             } else {
-                resolve_in(parse_index(resp.body), name)
+                resolve_name_in_index(resp.body, name)
             }
         },
-        Err(e) -> "",
+        Err(e) -> MarketLookup { url: "", error: "" },
     }
 }
 
+fun resolve_name_in_index(text: String, name: String) -> MarketLookup {
+    let parsed = parse_index_result(text)
+    if parsed.error != "" {
+        return MarketLookup { url: "", error: _index_error(parsed.error) }
+    }
+    return MarketLookup { url: resolve_in(parsed.entries, name), error: "" }
+}
+
 // Parse the index JSON into entries; malformed entries (no name or url) are
-// dropped, and bad JSON yields an empty list.
-fun parse_index(text: String) -> List<MarketEntry> {
-    let out: List<MarketEntry> = []
-    match parse(text) {
+// dropped. Bad JSON or a non-array document is reported in the result.
+fun parse_index_result(text: String) -> MarketIndex {
+    let entries: List<MarketEntry> = []
+    return match parse(text) {
         Ok(j) -> {
-            let arr = as_list(j)
-            let i = 0
-            while i < arr.len() {
-                let name = as_str(field(arr[i], "name"))
-                let url = as_str(field(arr[i], "url"))
-                if name != "" && url != "" {
-                    out.push(
-                        MarketEntry {
-                            name,
-                            description: as_str(field(arr[i], "description")),
-                            url,
-                        },
-                    )
-                }
-                i = i + 1
+            match j {
+                Array(arr) -> {
+                    let i = 0
+                    while i < arr.len() {
+                        let name = as_str(field(arr[i], "name"))
+                        let url = as_str(field(arr[i], "url"))
+                        if name != "" && url != "" {
+                            entries.push(
+                                MarketEntry {
+                                    name,
+                                    description: as_str(field(arr[i], "description")),
+                                    url,
+                                },
+                            )
+                        }
+                        i = i + 1
+                    }
+                    MarketIndex { entries, error: "" }
+                },
+                _ -> MarketIndex { entries, error: "expected a JSON array" },
             }
         },
-        Err(e) -> {},
+        Err(e) -> MarketIndex { entries, error: e.message },
     }
-    return out
+}
+
+// Backward-compatible entry parser for pure callers that only need entries.
+// Bad JSON still returns an empty list; use parse_index_result when the caller
+// needs to report malformed index data.
+fun parse_index(text: String) -> List<MarketEntry> {
+    return parse_index_result(text).entries
 }
 
 // The entries whose name or description contains `query`, ignoring case. An
@@ -152,4 +191,8 @@ fun _suffix(query: String) -> String {
         return ""
     }
     return " for '${query.trim()}'"
+}
+
+fun _index_error(detail: String) -> String {
+    return "error: could not parse plugin index (${market_url()}): ${detail}"
 }

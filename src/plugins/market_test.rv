@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./market" { MarketEntry, parse_index, filter_entries, resolve_in, format_entries, market_url }
+import "./market" { MarketEntry, parse_index, parse_index_result, filter_entries, resolve_in, resolve_name_in_index, format_entries, market_url }
 
 const INDEX: String = "[{\"name\": \"fmt\", \"description\": \"formats on save\", \"url\": \"github.com/u/rook-fmt\"}, {\"name\": \"lint\", \"description\": \"runs the linter\", \"url\": \"github.com/u/rook-lint\"}, {\"name\": \"bad\"}]"
 
@@ -18,6 +18,20 @@ fun test_parse_index_tolerates_bad_json() {
     assert_eq_int(parse_index("[]").len(), 0)
 }
 
+fun test_parse_index_result_reports_bad_documents() {
+    let bad = parse_index_result("not json")
+    assert_eq_int(bad.entries.len(), 0)
+    assert_true(bad.error != "")
+
+    let non_array = parse_index_result("{\"plugins\": []}")
+    assert_eq_int(non_array.entries.len(), 0)
+    assert_true(non_array.error.contains("JSON array"))
+
+    let empty = parse_index_result("[]")
+    assert_eq_int(empty.entries.len(), 0)
+    assert_eq_str(empty.error, "")
+}
+
 fun test_filter_by_name_or_description() {
     let entries = parse_index(INDEX)
     assert_eq_int(filter_entries(entries, "").len(), 2)
@@ -32,6 +46,16 @@ fun test_resolve_name_returns_the_url() {
     assert_eq_str(resolve_in(entries, "fmt"), "github.com/u/rook-fmt")
     assert_eq_str(resolve_in(entries, "FMT"), "github.com/u/rook-fmt")
     assert_eq_str(resolve_in(entries, "missing"), "")
+}
+
+fun test_resolve_name_in_index_reports_parse_errors() {
+    let bad = resolve_name_in_index("not json", "fmt")
+    assert_eq_str(bad.url, "")
+    assert_true(bad.error.starts_with("error: could not parse plugin index"))
+
+    let empty = resolve_name_in_index("[]", "fmt")
+    assert_eq_str(empty.url, "")
+    assert_eq_str(empty.error, "")
 }
 
 fun test_format_shows_name_and_url() {
