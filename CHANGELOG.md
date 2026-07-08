@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.18
+
+- Skipped common build, dependency, cache, and VCS directories during grep unless the ignored directory is searched directly.
+
 ## 0.3.17
 
 - Surfaced malformed plugin marketplace index JSON and fetch failures instead of treating them as an empty index.

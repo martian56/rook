@@ -6,7 +6,7 @@
 
 import std/string
 import std/regex { compile, Regex }
-import std/fs { walk, read, is_file, is_symlink, basename }
+import std/fs { list_dir, read, is_file, is_dir, is_symlink, basename }
 import "./paths" { resolve_path }
 
 const MAX_MATCHES: Int = 50
@@ -47,55 +47,103 @@ fun _grep_with_regexes(
     has_glob: Bool,
 ) -> String {
     let files: List<String> = []
-    let ok = true
-    match walk(root) {
-        Ok(fs) -> {
-            files = fs
-        },
-        Err(e) -> {
-            ok = false
-        },
-    }
+    _collect_files(root, files, _has_ignored_segment(root))
 
     let out = ""
-    if ok {
-        let count = 0
-        let i = 0
-        while i < files.len() && count < MAX_MATCHES {
-            let f = files[i]
-            if is_file(f) && !is_symlink(f) && (!has_glob || name_re.is_match(basename(f))) {
-                let content = ""
-                let rok = true
-                match read(f) {
-                    Ok(s) -> {
-                        content = s
-                    },
-                    Err(e) -> {
-                        rok = false
-                    },
-                }
-                if rok {
-                    let lines = content.lines()
-                    let ln = 0
-                    while ln < lines.len() && count < MAX_MATCHES {
-                        if re.is_match(lines[ln]) {
-                            out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
-                            count = count + 1
-                        }
-                        ln = ln + 1
+    let count = 0
+    let i = 0
+    while i < files.len() && count < MAX_MATCHES {
+        let f = files[i]
+        if !has_glob || name_re.is_match(basename(f)) {
+            let content = ""
+            let rok = true
+            match read(f) {
+                Ok(s) -> {
+                    content = s
+                },
+                Err(e) -> {
+                    rok = false
+                },
+            }
+            if rok {
+                let lines = content.lines()
+                let ln = 0
+                while ln < lines.len() && count < MAX_MATCHES {
+                    if re.is_match(lines[ln]) {
+                        out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
+                        count = count + 1
                     }
+                    ln = ln + 1
                 }
             }
-            i = i + 1
         }
-        if count == 0 {
-            out = "no matches for '${pattern}' under ${root}"
-        }
-    } else {
-        out = "error: cannot search ${root}"
+        i = i + 1
+    }
+    if count == 0 {
+        out = "no matches for '${pattern}' under ${root}"
     }
     name_re.free()
     return out
+}
+
+fun _collect_files(path: String, out: List<String>, include_ignored: Bool) {
+    if is_symlink(path) {
+        return
+    }
+    if is_file(path) {
+        out.push(path)
+        return
+    }
+    if !is_dir(path) {
+        return
+    }
+    let names: List<String> = []
+    match list_dir(path) {
+        Ok(ns) -> {
+            names = ns
+        },
+        Err(e) -> {
+            return
+        },
+    }
+    let i = 0
+    while i < names.len() {
+        let name = names[i]
+        let full = "${path}/${name}"
+        if !is_symlink(full) {
+            if is_dir(full) {
+                if include_ignored || !_ignored(name) {
+                    _collect_files(full, out, include_ignored)
+                }
+            } else if is_file(full) {
+                out.push(full)
+            }
+        }
+        i = i + 1
+    }
+    return
+}
+
+fun _has_ignored_segment(path: String) -> Bool {
+    let parts = path.split("/")
+    let i = 0
+    while i < parts.len() {
+        if _ignored(parts[i]) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _ignored(name: String) -> Bool {
+    if name == "node_modules" || name == "target" || name == "dist" || name == "build" || name == "out" || name == "vendor" || name == "__pycache__" {
+        return true
+    }
+    if name.starts_with(".") {
+        return name != ".agents" && name != ".github"
+    }
+    return false
 }
 
 // Translates a shell-style glob (`*` any run, `?` one char, everything else
