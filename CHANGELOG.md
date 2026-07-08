@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.3.17
+## 0.3.18
 
 - Reported session save, list, and load failures instead of silently dropping persistence errors.
+
+## 0.3.17
+
+- Surfaced malformed plugin marketplace index JSON and fetch failures instead of treating them as an empty index.
 
 ## 0.3.16
 

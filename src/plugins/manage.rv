@@ -9,7 +9,7 @@ import std/fs { is_dir, list_dir }
 import std/process { run, Output }
 import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
 import "./install" { install_plugin, plugin_source }
-import "./market" { browse_text, resolve_name }
+import "./market" { browse_text, resolve_name_result }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
 // ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
@@ -106,7 +106,11 @@ fun add(rest: String) -> String {
     // anything with a slash or scheme is treated as a git URL directly.
     let url = first
     if !_is_url(first) {
-        url = resolve_name(first)
+        let resolved = resolve_name_result(first)
+        if resolved.error != "" {
+            return resolved.error
+        }
+        url = resolved.url
         if url == "" {
             return "no plugin '${first}' in the index; give a git URL, or try /plugins browse"
         }
