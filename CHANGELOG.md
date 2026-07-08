@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.17
+
+- Counted subagent model calls in turn and session token totals, including parallel dispatches.
+
 ## 0.3.16
 
 - Reported plugin removal failures when recursive deletion commands fail or the plugin directory remains on disk.

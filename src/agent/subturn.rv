@@ -63,6 +63,7 @@ fun run_subagent(
             Ok(reply) -> {
                 reply_text = reply.content
                 calls = reply.tool_calls
+                st.add_usage(reply.usage.prompt_tokens, reply.usage.completion_tokens)
             },
             Err(e) -> {
                 err = e.message

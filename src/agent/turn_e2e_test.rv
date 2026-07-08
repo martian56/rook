@@ -122,12 +122,12 @@ fun serve_dispatch() {
 fun fanout_handler(req: Request) -> Response {
     if req.body.contains("echo agent") {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"echo done\"},\"finish_reason\":\"stop\"}]}",
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"echo done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":4}}",
         )
     }
     if req.body.contains("shout agent") {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"SHOUT DONE\"},\"finish_reason\":\"stop\"}]}",
+            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"SHOUT DONE\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":60,\"completion_tokens\":6}}",
         )
     }
     fanout_hits = fanout_hits + 1
@@ -322,6 +322,10 @@ fun test_two_dispatches_fan_out_and_both_results_return() {
     assert_true(got.contains("[dispatch(echoer) => echo done]"))
     assert_true(got.contains("[dispatch(shouter) => SHOUT DONE]"))
     assert_true(got.contains("Both agents reported."))
+    assert_true(got.contains("[info turn: 110 tok]"))
+    let usage = st.turn_tokens()
+    assert_eq_int(usage.prompt, 100)
+    assert_eq_int(usage.completion, 10)
     // user, assistant(two tool_calls), two tool_results, assistant(final).
     let msgs = st.messages()
     assert_eq_int(msgs.len(), 5)
