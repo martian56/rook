@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.22
+
+- Added total character and file-count budgets for `@` file mention attachments with an omitted-files notice.
+
 ## 0.3.19
 
 - Reported session save, list, and load failures instead of silently dropping persistence errors.

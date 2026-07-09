@@ -54,11 +54,40 @@ fun test_mentioned_paths_and_expansion_attach_real_files() {
     assert_true(expanded.contains("--- _rook_mt/a.txt ---"))
     assert_true(expanded.contains("alpha body"))
     assert_true(expanded.contains("beta body"))
+    assert_true(!expanded.contains("mention attachments omitted"))
     // A message with no valid mention is unchanged.
     assert_eq_str(expand_mentions("no refs here"), "no refs here")
     remove_file("_rook_mt/a.txt")
     remove_file("_rook_mt/b.txt")
     remove_dir("_rook_mt")
+    return
+}
+
+fun test_expand_mentions_caps_total_attachment_budget() {
+    create_dir_all("_rook_budget")
+    write("_rook_budget/a.txt", "a".repeat(20001))
+    write("_rook_budget/b.txt", "b".repeat(20001))
+    write("_rook_budget/c.txt", "c".repeat(20001))
+    write("_rook_budget/d.txt", "d".repeat(20001))
+
+    let expanded = expand_mentions(
+        "review @_rook_budget/a.txt @_rook_budget/b.txt @_rook_budget/c.txt @_rook_budget/d.txt",
+    )
+
+    assert_true(expanded.contains("--- _rook_budget/a.txt ---"))
+    assert_true(expanded.contains("--- _rook_budget/b.txt ---"))
+    assert_true(expanded.contains("--- _rook_budget/c.txt ---"))
+    assert_true(expanded.contains("... (truncated)"))
+    assert_true(expanded.contains("--- mention attachments omitted ---"))
+    assert_true(expanded.contains("_rook_budget/d.txt"))
+    assert_true(!expanded.contains("--- _rook_budget/d.txt ---"))
+    assert_true(!expanded.contains("dddddddddd"))
+
+    remove_file("_rook_budget/a.txt")
+    remove_file("_rook_budget/b.txt")
+    remove_file("_rook_budget/c.txt")
+    remove_file("_rook_budget/d.txt")
+    remove_dir("_rook_budget")
     return
 }
 
