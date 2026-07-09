@@ -17,7 +17,7 @@ import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions, load_session }
+import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions_result, load_session }
 import "../config/catalog" { catalog, filter_catalog, index_of }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -199,7 +199,7 @@ fun _tick(m: Chat) -> Step<Chat> {
             // Persist the conversation now that the turn has landed: the
             // display transcript, the model-visible history, and the running
             // token totals together, so a resume restores all three.
-            save_session(
+            let save_err = save_session(
                 m.session_id,
                 m.model,
                 m.entries,
@@ -207,6 +207,9 @@ fun _tick(m: Chat) -> Step<Chat> {
                 m.sess_prompt,
                 m.sess_completion,
             )
+            if save_err != "" {
+                m.entries.push(Entry.Notice(save_err))
+            }
         }
         m.scroll_up = 0
     }
@@ -696,6 +699,10 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
 // that session's file.
 fun _resume(m: Chat, id: String) {
     let loaded = load_session(id)
+    if loaded.error != "" {
+        m.entries.push(Entry.Notice(loaded.error))
+        return
+    }
     replace_entries(m, loaded.entries)
     if loaded.model != "" {
         apply_model(m, loaded.model)
@@ -1039,7 +1046,11 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             return next(m)
         },
         Sessions -> {
-            m.sessions_list = list_sessions()
+            let listed = list_sessions_result()
+            m.sessions_list = listed.sessions
+            if listed.error != "" {
+                m.entries.push(Entry.Notice(listed.error))
+            }
             m.sessions_sel = 0
             m.sessions_open = true
             return next(m)

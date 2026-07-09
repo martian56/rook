@@ -1,8 +1,8 @@
 import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import std/fs { remove_file }
+import std/fs { write, create_dir_all, remove_file, remove_dir }
 import std/env { get_env, has_env }
-import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, list_sessions, load_session }
+import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from }
 import "github.com/martian56/aviary/message" { Message, ToolCall, role_str }
 import "../ui/transcript" { Entry }
 
@@ -30,7 +30,7 @@ fun test_save_list_load_round_trip() {
         Entry.ToolMsg("read_file(x)", "ok"),
         Entry.AgentHeader("explorer", "done"),
     ]
-    save_session(id, "openai/gpt-5.5", entries, _no_msgs(), 0, 0)
+    assert_eq_str(save_session(id, "openai/gpt-5.5", entries, _no_msgs(), 0, 0), "")
 
     // The session appears in the list with its title and model.
     let all = list_sessions()
@@ -55,7 +55,17 @@ fun test_save_list_load_round_trip() {
 
 fun test_title_uses_the_first_user_message() {
     let id = new_session_id()
-    save_session(id, "m", [Entry.Notice("hi"), Entry.UserMsg("second line here")], _no_msgs(), 0, 0)
+    assert_eq_str(
+        save_session(
+            id,
+            "m",
+            [Entry.Notice("hi"), Entry.UserMsg("second line here")],
+            _no_msgs(),
+            0,
+            0,
+        ),
+        "",
+    )
     assert_eq_str(_find(list_sessions(), id).title, "second line here")
     _cleanup(id)
     return
@@ -64,7 +74,7 @@ fun test_title_uses_the_first_user_message() {
 fun test_empty_session_is_not_saved() {
     let id = new_session_id()
     let none: List<Entry> = []
-    save_session(id, "m", none, _no_msgs(), 0, 0)
+    assert_eq_str(save_session(id, "m", none, _no_msgs(), 0, 0), "")
     assert_true(_find(list_sessions(), id).id != id)
 }
 
@@ -75,6 +85,7 @@ fun test_unknown_id_loads_empty() {
     assert_eq_int(loaded.messages.len(), 0)
     assert_eq_int(loaded.usage_prompt, 0)
     assert_eq_int(loaded.usage_completion, 0)
+    assert_true(loaded.error.contains("no saved session"))
 }
 
 // The model-visible history round-trips with full structure: an assistant
@@ -91,7 +102,7 @@ fun test_model_history_round_trips() {
         Message.tool_result("c1", "read_file", "the file contents"),
         Message.assistant("done"),
     ]
-    save_session(id, "m", entries, msgs, 1200, 340)
+    assert_eq_str(save_session(id, "m", entries, msgs, 1200, 340), "")
 
     let loaded = load_session(id)
     assert_eq_int(loaded.messages.len(), 4)
@@ -113,6 +124,96 @@ fun test_model_history_round_trips() {
     assert_eq_int(loaded.usage_completion, 340)
 
     _cleanup(id)
+    return
+}
+
+fun test_save_session_reports_write_failures() {
+    let root = "_rook_session_fail_${new_session_id()}"
+    let id = "blocked"
+    create_dir_all(root)
+    create_dir_all("${root}/${id}.json")
+
+    let err = save_session_to(root, id, "m", [Entry.UserMsg("hello")], _no_msgs(), 0, 0)
+    assert_true(err.starts_with("session error: could not save session blocked"))
+
+    remove_dir("${root}/${id}.json")
+    remove_dir(root)
+    return
+}
+
+fun test_malformed_session_files_are_listed_and_load_reports_error() {
+    let root = "_rook_session_bad_${new_session_id()}"
+    let id = "broken"
+    create_dir_all(root)
+    write("${root}/${id}.json", "{\"entries\":")
+
+    let listed = list_sessions_from(root)
+    assert_eq_str(listed.error, "")
+    let found = _find(listed.sessions, id)
+    assert_eq_str(found.id, id)
+    assert_true(found.title.starts_with("error: invalid session file"))
+
+    let loaded = load_session_from(root, id)
+    assert_eq_int(loaded.entries.len(), 0)
+    assert_true(loaded.error.starts_with("session error: invalid JSON in session"))
+
+    remove_file("${root}/${id}.json")
+    remove_dir(root)
+    return
+}
+
+fun test_shape_mismatched_session_load_reports_error() {
+    let root = "_rook_session_shape_${new_session_id()}"
+    create_dir_all(root)
+
+    write("${root}/not_object.json", "[]")
+    let not_object = load_session_from(root, "not_object")
+    assert_eq_int(not_object.entries.len(), 0)
+    assert_true(not_object.error.contains("expected an object"))
+
+    write("${root}/bad_model.json", "{\"entries\":[],\"messages\":[]}")
+    let bad_model = load_session_from(root, "bad_model")
+    assert_eq_int(bad_model.entries.len(), 0)
+    assert_true(bad_model.error.contains("model"))
+
+    write("${root}/bad_entries.json", "{\"model\":\"m\",\"entries\":{},\"messages\":[]}")
+    let bad_entries = load_session_from(root, "bad_entries")
+    assert_eq_int(bad_entries.entries.len(), 0)
+    assert_true(bad_entries.error.contains("entries"))
+
+    write("${root}/bad_messages.json", "{\"model\":\"m\",\"entries\":[],\"messages\":{}}")
+    let bad_messages = load_session_from(root, "bad_messages")
+    assert_eq_int(bad_messages.entries.len(), 0)
+    assert_true(bad_messages.error.contains("messages"))
+
+    write(
+        "${root}/old_format.json",
+        "{\"model\":\"m\",\"entries\":[{\"k\":\"user\",\"a\":\"hello\"}]}",
+    )
+    let old_format = load_session_from(root, "old_format")
+    assert_eq_str(old_format.error, "")
+    assert_eq_int(old_format.entries.len(), 1)
+    assert_eq_str(_entry_tag(old_format.entries[0]), "u:hello")
+    assert_eq_int(old_format.messages.len(), 0)
+
+    remove_file("${root}/not_object.json")
+    remove_file("${root}/bad_model.json")
+    remove_file("${root}/bad_entries.json")
+    remove_file("${root}/bad_messages.json")
+    remove_file("${root}/old_format.json")
+    remove_dir(root)
+    return
+}
+
+fun test_session_list_reports_directory_errors() {
+    let path = "_rook_session_list_file_${new_session_id()}"
+    write(path, "not a directory")
+
+    let listed = list_sessions_from(path)
+    assert_eq_int(listed.sessions.len(), 0)
+    assert_true(listed.error.starts_with("session error: could not list sessions"))
+
+    remove_file(path)
     return
 }
 
