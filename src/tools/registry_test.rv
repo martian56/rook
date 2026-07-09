@@ -1,4 +1,5 @@
 import std/string
+import std/json { stringify }
 import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./registry" { tools, needs_approval, call_needs_approval, dispatch, label }
@@ -101,6 +102,16 @@ fun test_ask_user_is_labeled_and_turn_only() {
     assert_true(dispatch(call("ask_user", "{}")).starts_with("error:"))
 }
 
+fun test_ask_user_schema_uses_structured_options() {
+    let schema = _tool_schema("ask_user")
+    assert_true(schema.contains("\"options\""))
+    assert_true(schema.contains("\"type\":\"array\""))
+    assert_true(schema.contains("\"minItems\":2"))
+    assert_true(schema.contains("\"maxItems\":5"))
+    assert_true(schema.contains("\"label\""))
+    return
+}
+
 fun test_dispatch_tool_is_auto_run_and_labeled() {
     assert_false(needs_approval("dispatch"))
     assert_eq_str(
@@ -109,4 +120,16 @@ fun test_dispatch_tool_is_auto_run_and_labeled() {
     )
     // The registry itself refuses dispatch: only the turn loop may run it.
     assert_true(dispatch(call("dispatch", "{}")).starts_with("error:"))
+}
+
+fun _tool_schema(name: String) -> String {
+    let ts = tools()
+    let i = 0
+    while i < ts.len() {
+        if ts[i].name == name {
+            return stringify(ts[i].parameters)
+        }
+        i = i + 1
+    }
+    return ""
 }

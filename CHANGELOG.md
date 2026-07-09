@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.21
+
+- Added structured `ask_user` options with array/object parsing while keeping comma-separated options as a fallback.
+
 ## 0.3.19
 
 - Reported session save, list, and load failures instead of silently dropping persistence errors.

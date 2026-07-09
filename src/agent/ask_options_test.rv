@@ -1,0 +1,52 @@
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./ask_options" { parse_ask_options, option_labels, option_count_error }
+
+fun test_array_string_options_keep_commas() {
+    let options = parse_ask_options(
+        "{\"options\":[\"src only\",\"src, tests, and examples\",\"whole repository\"]}",
+    )
+
+    assert_eq_int(options.len(), 3)
+    assert_eq_str(options[1].label, "src, tests, and examples")
+    assert_eq_str(options[1].value, "src, tests, and examples")
+
+    let labels = option_labels(options)
+    assert_eq_int(labels.len(), 3)
+    assert_eq_str(labels[1], "src, tests, and examples")
+    return
+}
+
+fun test_object_options_keep_label_and_value() {
+    let options = parse_ask_options(
+        "{\"options\":[{\"label\":\"src only\",\"value\":\"src\",\"description\":\"source files\"},{\"label\":\"whole repo\",\"value\":\"all\"}]}",
+    )
+
+    assert_eq_int(options.len(), 2)
+    assert_eq_str(options[0].label, "src only")
+    assert_eq_str(options[0].value, "src")
+    assert_eq_str(options[1].label, "whole repo")
+    assert_eq_str(options[1].value, "all")
+    return
+}
+
+fun test_comma_separated_options_still_work() {
+    let options = parse_ask_options("{\"options\":\"fast, safe\"}")
+
+    assert_eq_int(options.len(), 2)
+    assert_eq_str(options[0].label, "fast")
+    assert_eq_str(options[1].label, "safe")
+    return
+}
+
+fun test_option_count_error_validates_two_to_five() {
+    assert_true(
+        option_count_error(parse_ask_options("{\"options\":[\"one\"]}")).contains("two to five"),
+    )
+    assert_true(
+        option_count_error(parse_ask_options("{\"options\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\"]}")).contains(
+            "two to five",
+        ),
+    )
+    assert_eq_str(option_count_error(parse_ask_options("{\"options\":[\"a\",\"b\"]}")), "")
+    return
+}

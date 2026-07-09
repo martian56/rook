@@ -12,6 +12,7 @@ import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request }
 import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
+import "./ask_options" { parse_ask_options, option_labels, option_count_error }
 import "../tools/registry" { tools, needs_approval, call_approval_detail, dispatch_cancelable, label }
 import "../tools/preview" { change_preview }
 import "../tools/permissions" { Verdict, check_permission }
@@ -268,29 +269,21 @@ fun _dispatch(
 // the answer reads naturally in the conversation.
 fun _ask_user(st: AgentState, call: ToolCall) -> String {
     let question = arg(call.arguments, "question").trim()
-    let raw = arg(call.arguments, "options")
     if question == "" {
         return "error: ask_user needs a question"
     }
-    let options: List<String> = []
-    let parts = raw.split(",")
-    let i = 0
-    while i < parts.len() {
-        let o = parts[i].trim()
-        if o != "" {
-            options.push(o)
-        }
-        i = i + 1
+    let options = parse_ask_options(call.arguments)
+    let count_error = option_count_error(options)
+    if count_error != "" {
+        return count_error
     }
-    if options.len() < 2 {
-        return "error: ask_user needs at least two comma-separated options"
-    }
-    let idx = st.ask_question(question, options)
+    let labels = option_labels(options)
+    let idx = st.ask_question(question, labels)
     if idx < 0 || idx >= options.len() {
         return "The user declined to pick an option; ask them in plain chat instead."
     }
-    st.emit(DisplayEvent.Info("you chose: ${options[idx]}"))
-    return "The user chose: ${options[idx]}"
+    st.emit(DisplayEvent.Info("you chose: ${labels[idx]}"))
+    return "The user chose: ${options[idx].value}"
 }
 
 // Run one tool call, gating a mutating one through approval unless its kind

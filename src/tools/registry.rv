@@ -170,12 +170,7 @@ fun tools() -> List<ToolDef> {
         ToolDef.new(
             "ask_user",
             "Ask the user one multiple-choice question when a decision is theirs to make and guessing would be wrong. They pick one option in the UI.",
-            _schema(
-                [
-                    Prop { name: "question", desc: "the question, one sentence" },
-                    Prop { name: "options", desc: "two to five short options, comma-separated" },
-                ],
-            ),
+            _ask_user_schema(),
         ),
         ToolDef.new(
             "dispatch",
@@ -429,6 +424,38 @@ fun _multi_edit_schema() -> JsonValue {
     return Obj.new().str("type", "object").set("properties", props).set(
         "required",
         JsonValue.Array(req),
+    ).build()
+}
+
+fun _ask_user_schema() -> JsonValue {
+    let question = Obj.new().str("type", "string").str("description", "the question, one sentence").build()
+    let label = Obj.new().str("type", "string").str("description", "short text shown to the user").build()
+    let value = Obj.new().str("type", "string").str(
+        "description",
+        "stable value returned to the model; defaults to label",
+    ).build()
+    let description = Obj.new().str("type", "string").str(
+        "description",
+        "optional short context for this option",
+    ).build()
+    let option_props = Obj.new().set("label", label).set("value", value).set(
+        "description",
+        description,
+    ).build()
+    let option_required: List<JsonValue> = [JsonValue.Str("label")]
+    let option_item = Obj.new().str("type", "object").set("properties", option_props).set(
+        "required",
+        JsonValue.Array(option_required),
+    ).build()
+    let options = Obj.new().str("type", "array").str(
+        "description",
+        "two to five options; each item has a label plus optional value and description",
+    ).set("items", option_item).int("minItems", 2).int("maxItems", 5).build()
+    let props = Obj.new().set("question", question).set("options", options).build()
+    let required: List<JsonValue> = [JsonValue.Str("question"), JsonValue.Str("options")]
+    return Obj.new().str("type", "object").set("properties", props).set(
+        "required",
+        JsonValue.Array(required),
     ).build()
 }
 
