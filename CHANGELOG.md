@@ -1,8 +1,12 @@
 # Changelog
 
-## 0.3.18
+## 0.3.19
 
 - Reported session save, list, and load failures instead of silently dropping persistence errors.
+
+## 0.3.18
+
+- Counted subagent model calls in turn and session token totals, including parallel dispatches.
 
 ## 0.3.17
 
