@@ -162,6 +162,49 @@ fun test_malformed_session_files_are_listed_and_load_reports_error() {
     return
 }
 
+fun test_shape_mismatched_session_load_reports_error() {
+    let root = "_rook_session_shape_${new_session_id()}"
+    create_dir_all(root)
+
+    write("${root}/not_object.json", "[]")
+    let not_object = load_session_from(root, "not_object")
+    assert_eq_int(not_object.entries.len(), 0)
+    assert_true(not_object.error.contains("expected an object"))
+
+    write("${root}/bad_model.json", "{\"entries\":[],\"messages\":[]}")
+    let bad_model = load_session_from(root, "bad_model")
+    assert_eq_int(bad_model.entries.len(), 0)
+    assert_true(bad_model.error.contains("model"))
+
+    write("${root}/bad_entries.json", "{\"model\":\"m\",\"entries\":{},\"messages\":[]}")
+    let bad_entries = load_session_from(root, "bad_entries")
+    assert_eq_int(bad_entries.entries.len(), 0)
+    assert_true(bad_entries.error.contains("entries"))
+
+    write("${root}/bad_messages.json", "{\"model\":\"m\",\"entries\":[],\"messages\":{}}")
+    let bad_messages = load_session_from(root, "bad_messages")
+    assert_eq_int(bad_messages.entries.len(), 0)
+    assert_true(bad_messages.error.contains("messages"))
+
+    write(
+        "${root}/old_format.json",
+        "{\"model\":\"m\",\"entries\":[{\"k\":\"user\",\"a\":\"hello\"}]}",
+    )
+    let old_format = load_session_from(root, "old_format")
+    assert_eq_str(old_format.error, "")
+    assert_eq_int(old_format.entries.len(), 1)
+    assert_eq_str(_entry_tag(old_format.entries[0]), "u:hello")
+    assert_eq_int(old_format.messages.len(), 0)
+
+    remove_file("${root}/not_object.json")
+    remove_file("${root}/bad_model.json")
+    remove_file("${root}/bad_entries.json")
+    remove_file("${root}/bad_messages.json")
+    remove_file("${root}/old_format.json")
+    remove_dir(root)
+    return
+}
+
 fun test_session_list_reports_directory_errors() {
     let path = "_rook_session_list_file_${new_session_id()}"
     write(path, "not a directory")

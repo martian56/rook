@@ -217,12 +217,16 @@ fun load_session_from(dir: String, id: String) -> Loaded {
 
 fun parse_loaded(text: String, id: String) -> Loaded {
     return match parse(text) {
-        Ok(j) -> _loaded_from_json(j),
+        Ok(j) -> _loaded_from_json(j, id),
         Err(e) -> _empty_loaded("session error: invalid JSON in session '${id}': ${e.message}"),
     }
 }
 
-fun _loaded_from_json(j: JsonValue) -> Loaded {
+fun _loaded_from_json(j: JsonValue, id: String) -> Loaded {
+    let shape_error = _session_shape_error(j)
+    if shape_error != "" {
+        return _empty_loaded("session error: invalid session '${id}': ${shape_error}")
+    }
     let entries: List<Entry> = []
     let arr = as_list(field(j, "entries"))
     let i = 0
@@ -244,6 +248,47 @@ fun _loaded_from_json(j: JsonValue) -> Loaded {
         usage_prompt: _int_field(j, "usage_prompt"),
         usage_completion: _int_field(j, "usage_completion"),
         error: "",
+    }
+}
+
+fun _session_shape_error(j: JsonValue) -> String {
+    return match j {
+        Object(obj) -> {
+            let err = ""
+            if !_is_str(field(j, "model")) {
+                err = "expected string field 'model'"
+            }
+            if err == "" && !_is_array(field(j, "entries")) {
+                err = "expected array field 'entries'"
+            }
+            let messages = field(j, "messages")
+            if err == "" && !_is_missing(messages) && !_is_array(messages) {
+                err = "expected array field 'messages'"
+            }
+            err
+        },
+        _ -> "expected an object",
+    }
+}
+
+fun _is_str(j: JsonValue) -> Bool {
+    return match j {
+        Str(s) -> true,
+        _ -> false,
+    }
+}
+
+fun _is_array(j: JsonValue) -> Bool {
+    return match j {
+        Array(items) -> true,
+        _ -> false,
+    }
+}
+
+fun _is_missing(j: JsonValue) -> Bool {
+    return match j {
+        Null -> true,
+        _ -> false,
     }
 }
 
