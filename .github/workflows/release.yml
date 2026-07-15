@@ -20,11 +20,14 @@ jobs:
           - os: windows-latest
             name: windows-x86_64
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Raven
         uses: martian56/setup-raven@v1
+        with:
+          raven-version: "2.26.1"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'
@@ -44,7 +47,7 @@ jobs:
           $env:PATH = "C:\Program Files (x86)\WiX Toolset v3.14\bin;$env:PATH"
           rvpm dist --target zip,msi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.name }}
           path: |
@@ -57,8 +60,9 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
 
