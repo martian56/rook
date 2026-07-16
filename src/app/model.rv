@@ -18,6 +18,27 @@ import "../hooks/hooks" { drain_hook_notices }
 import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model }
 import "../tools/permission_menu" { PermissionGrantState }
 
+// The /model picker's data, built once and reused. `ids`/`labels`/`lower` are
+// the whole catalog (labels index-aligned to ids, lower a lowercased id copy
+// for search). `pick_ids`/`pick_labels` are the current filtered view the
+// picker renders, recomputed only when the search query changes.
+struct ModelCatalog {
+    ids: List<String>,
+    labels: List<String>,
+    lower: List<String>,
+    pick_ids: List<String>,
+    pick_labels: List<String>,
+}
+
+fun empty_catalog() -> ModelCatalog {
+    let ids: List<String> = []
+    let labels: List<String> = []
+    let lower: List<String> = []
+    let pick_ids: List<String> = []
+    let pick_labels: List<String> = []
+    return ModelCatalog { ids, labels, lower, pick_ids, pick_labels }
+}
+
 struct Chat {
     entries: List<Entry>,
     // Per-entry rendered-line cache, index-aligned with entries. Kept aligned
@@ -72,6 +93,10 @@ struct Chat {
     picking: Bool,
     pick_sel: Int,
     pick_input: TextInput,
+    // The model catalog, built once on first picker open and reused after.
+    // Bundled into one struct so Chat keeps a single field for it (the GC
+    // descriptor only tracks a struct's first 64 fields).
+    catalog: ModelCatalog,
     // The API-key entry overlay.
     entering_key: Bool,
     key_input: TextInput,
@@ -174,6 +199,7 @@ fun chat_init() -> Chat {
         picking: false,
         pick_sel: 0,
         pick_input: TextInput.new(),
+        catalog: empty_catalog(),
         entering_key: false,
         key_input: TextInput.new(),
         theme: themed(startup_theme(resolve_theme())),

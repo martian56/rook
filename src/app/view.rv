@@ -17,7 +17,6 @@ import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
-import "../config/catalog" { catalog, filter_catalog, catalog_labels }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
@@ -779,9 +778,8 @@ fun _approval_diff_style(line: String, m: Chat) -> Style {
 // The first row is a search bar; typing narrows the list underneath.
 fun _picker(m: Chat, f: Frame) {
     let full = f.area()
-    let items = filter_catalog(catalog(), m.pick_input.value)
-    let labels = catalog_labels(items)
-    let count = items.len()
+    let labels = m.catalog.pick_labels
+    let count = m.catalog.pick_ids.len()
     if count < 1 {
         count = 1
     }
@@ -808,7 +806,7 @@ fun _picker(m: Chat, f: Frame) {
     let sx = f.buf.set_string(inner.x + 1, inner.y, "search: ", m.theme.dim)
     m.pick_input.render(Rect.new(sx, inner.y, inner.x + inner.w - sx - 1, 1), f.buf)
     let list_area = Rect.new(inner.x, inner.y + 2, inner.w, inner.h - 2)
-    if items.len() == 0 {
+    if m.catalog.pick_ids.len() == 0 {
         f.buf.set_string(list_area.x + 1, list_area.y, "(no model matches)", m.theme.dim)
         return
     }

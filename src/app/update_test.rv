@@ -4,7 +4,7 @@ import "github.com/martian56/perch/keys" { Key, MouseEvent, MouseKind }
 import "github.com/martian56/plumage" { Event }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, chat_init }
-import "./update" { apply_events, chat_update, _resume, _run, _after_model_set }
+import "./update" { apply_events, chat_update, _resume, _run, _after_model_set, ensure_catalog, refresh_pick }
 import "../agent/state" { DisplayEvent }
 import "../ui/transcript" { Entry }
 
@@ -71,6 +71,26 @@ fun test_finished_agents_collapse_to_their_header() {
     )
     assert_eq_str(tags(m), "|h:explorer:done · 2 tools|h:reviewer:done · 1 tool")
     assert_true(m.open_agents.len() == 0)
+}
+
+fun test_model_picker_caches_and_filters() {
+    let m = chat_init()
+    ensure_catalog(m)
+    // The cache is built once and its three arms stay index-aligned.
+    assert_true(m.catalog.ids.len() > 0)
+    assert_true(m.catalog.ids.len() == m.catalog.labels.len())
+    assert_true(m.catalog.ids.len() == m.catalog.lower.len())
+    // An empty search shows the whole catalog.
+    m.pick_input = TextInput.new()
+    refresh_pick(m)
+    assert_true(m.catalog.pick_ids.len() == m.catalog.ids.len())
+    assert_true(m.catalog.pick_labels.len() == m.catalog.ids.len())
+    // A query narrows to a strict subset, with ids and labels still aligned.
+    m.pick_input = TextInput.with_value("openrouter/")
+    refresh_pick(m)
+    assert_true(m.catalog.pick_ids.len() > 0)
+    assert_true(m.catalog.pick_ids.len() < m.catalog.ids.len())
+    assert_true(m.catalog.pick_ids.len() == m.catalog.pick_labels.len())
 }
 
 fun test_the_dispatch_row_lands_after_the_collapsed_block() {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.33
+
+- Made the `/model` picker responsive by building its catalog once and filtering the cached copy, instead of rebuilding and re-labeling the whole model list on every frame.
+
 ## 0.3.32
 
 - Imported the OpenRouter model catalog and kept it refreshable from a sync script.
