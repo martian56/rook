@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.47
+
+- /plugins add, update, and browse, and /mcp prompt, run on a background goroutine instead of freezing the UI while they reach the network or clone a repository. Their results arrive as notices when ready, and a fetched prompt starts its turn once it lands. (#254)
+- Plugin manifests are read once and cached for the process instead of re-parsed on every turn round, tool check, and hook fire. The cache is dropped when a plugin is installed, removed, or updated. (#256)
+- The skills, subagents, and memory portion of the system prompt is assembled once per turn rather than rebuilt for every round. (#257)
+- The background-shells panel refreshes on a tick cadence while it is open instead of on every frame, so a running command's output no longer costs several subprocess polls per redraw. (#255)
+- Sending a message checks the already-loaded key instead of re-reading and parsing the auth file each time. (#258)
+
 ## 0.3.46
 
 - Opening /sessions no longer parses every saved session's full transcript. Each session writes a small metadata sidecar that the picker reads instead, falling back to the full file only for sessions saved before this. (#252)
