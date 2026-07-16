@@ -1,60 +1,227 @@
 // Pure parsing for the /mcp command's prompt invocation:
-// "/mcp prompt <server> <name> [key=value ...]". The key=value pairs become
-// the prompt's JSON arguments. Kept here, apart from the manager, so it is
-// tested without touching a connection.
+// "/mcp prompt <server> <name> [key=value ...]". Values may be quoted
+// strings or typed JSON. Complex callers can pass one object after --json.
 
 import std/string
-import std/json { JsonValue, stringify }
+import std/json { JsonValue, parse, stringify }
+import "github.com/martian56/aviary/jsonutil" { Obj }
 
 struct McpInvoke {
     server: String,
     name: String,
     args_json: String,
+    error: String,
 }
 
-// Parse "<server> <name> k=v k2=v2" into an invocation. A missing server or
-// name comes back empty so the caller can report usage; the args are always a
-// valid JSON object (an empty one when no pairs are given).
+struct TokenResult {
+    tokens: List<String>,
+    error: String,
+}
+
+struct ValueResult {
+    ok: Bool,
+    value: JsonValue,
+    error: String,
+}
+
 fun parse_invoke(rest: String) -> McpInvoke {
-    let toks = _tokens(rest)
+    let tokenized = _tokens(rest)
+    if tokenized.error != "" {
+        return _failed(tokenized.error)
+    }
+    let toks = tokenized.tokens
     let server = ""
     let name = ""
     if toks.len() >= 1 {
-        server = toks[0]
+        server = _name_token(toks[0])
     }
     if toks.len() >= 2 {
-        name = toks[1]
+        name = _name_token(toks[1])
     }
-    let obj = "{"
-    let count = 0
+    if toks.len() <= 2 {
+        return McpInvoke { server, name, args_json: "{}", error: "" }
+    }
+
+    if toks[2] == "--json" {
+        if toks.len() != 4 {
+            return _failed("--json needs exactly one JSON object")
+        }
+        let raw = _strip_single_quotes(toks[3])
+        return match parse(raw) {
+            Ok(j) -> match j {
+                Object(fields) -> McpInvoke {
+                    server,
+                    name,
+                    args_json: stringify(j),
+                    error: "",
+                },
+                _ -> _failed("--json value must be an object"),
+            },
+            Err(e) -> _failed("invalid --json object: ${e.message}"),
+        }
+    }
+
+    let obj = Obj.new()
     let i = 2
     while i < toks.len() {
         let eq = toks[i].index_of("=")
-        if eq > 0 {
-            let k = toks[i].substring(0, eq)
-            let v = toks[i].substring(eq + 1, toks[i].length())
-            if count > 0 {
-                obj = obj.concat(",")
-            }
-            obj = obj.concat(stringify(JsonValue.Str(k))).concat(":").concat(stringify(JsonValue.Str(v)))
-            count = count + 1
+        if eq <= 0 {
+            return _failed("argument '${toks[i]}' must use key=value")
         }
+        let key = toks[i].substring(0, eq).trim()
+        if key == "" {
+            return _failed("argument keys cannot be empty")
+        }
+        let raw = toks[i].substring(eq + 1, toks[i].length())
+        let parsed = _value(raw)
+        if !parsed.ok {
+            return _failed("invalid value for '${key}': ${parsed.error}")
+        }
+        obj.set(key, parsed.value)
         i = i + 1
     }
-    obj = obj.concat("}")
-    return McpInvoke { server, name, args_json: obj }
+    return McpInvoke { server, name, args_json: stringify(obj.build()), error: "" }
 }
 
-fun _tokens(s: String) -> List<String> {
+fun _failed(reason: String) -> McpInvoke {
+    return McpInvoke {
+        server: "",
+        name: "",
+        args_json: "{}",
+        error: "error: invalid MCP prompt arguments: ${reason}",
+    }
+}
+
+fun _value(raw: String) -> ValueResult {
+    if raw == "" {
+        return ValueResult { ok: true, value: JsonValue.Str(""), error: "" }
+    }
+    if raw.starts_with("'") {
+        return _single_quoted(raw)
+    }
+    match parse(raw) {
+        Ok(j) -> {
+            return ValueResult { ok: true, value: j, error: "" }
+        },
+        Err(e) -> {
+            if raw.starts_with("\"") || raw.starts_with("[") || raw.starts_with("{") {
+                return ValueResult { ok: false, value: JsonValue.Null, error: e.message }
+            }
+        },
+    }
+    return ValueResult { ok: true, value: JsonValue.Str(raw), error: "" }
+}
+
+fun _single_quoted(raw: String) -> ValueResult {
+    if raw.length() < 2 || !raw.ends_with("'") {
+        return ValueResult {
+            ok: false,
+            value: JsonValue.Null,
+            error: "unterminated single-quoted string",
+        }
+    }
+    let out = ""
+    let i = 1
+    while i < raw.length() - 1 {
+        let ch = raw.char_at(i)
+        if ch == "\\" {
+            if i + 1 >= raw.length() - 1 {
+                return ValueResult {
+                    ok: false,
+                    value: JsonValue.Null,
+                    error: "trailing escape in single-quoted string",
+                }
+            }
+            let next = raw.char_at(i + 1)
+            if next == "'" || next == "\\" {
+                out = out.concat(next)
+            } else {
+                out = out.concat("\\").concat(next)
+            }
+            i = i + 2
+        } else {
+            out = out.concat(ch)
+            i = i + 1
+        }
+    }
+    return ValueResult { ok: true, value: JsonValue.Str(out), error: "" }
+}
+
+fun _name_token(raw: String) -> String {
+    let parsed = _value(raw)
+    if parsed.ok {
+        return match parsed.value {
+            Str(s) -> s,
+            _ -> raw,
+        }
+    }
+    return raw
+}
+
+fun _strip_single_quotes(raw: String) -> String {
+    if raw.length() >= 2 && raw.starts_with("'") && raw.ends_with("'") {
+        return raw.substring(1, raw.length() - 1)
+    }
+    return raw
+}
+
+// Split on whitespace except inside quotes or balanced JSON arrays/objects.
+// Quote characters stay in each token so the value parser can preserve type.
+fun _tokens(s: String) -> TokenResult {
     let out: List<String> = []
-    let parts = s.trim().split(" ")
+    let cur = ""
+    let quote = ""
+    let escaped = false
+    let depth = 0
     let i = 0
-    while i < parts.len() {
-        let p = parts[i].trim()
-        if p != "" {
-            out.push(p)
+    while i < s.length() {
+        let ch = s.char_at(i)
+        if quote != "" {
+            cur = cur.concat(ch)
+            if escaped {
+                escaped = false
+            } else if ch == "\\" {
+                escaped = true
+            } else if ch == quote {
+                quote = ""
+            }
+            i = i + 1
+            continue
+        }
+        if ch == "\"" || ch == "'" {
+            quote = ch
+            cur = cur.concat(ch)
+        } else if ch == "[" || ch == "{" {
+            depth = depth + 1
+            cur = cur.concat(ch)
+        } else if ch == "]" || ch == "}" {
+            depth = depth - 1
+            if depth < 0 {
+                return TokenResult { tokens: out, error: "unexpected '${ch}'" }
+            }
+            cur = cur.concat(ch)
+        } else if _space(ch) && depth == 0 {
+            if cur != "" {
+                out.push(cur)
+                cur = ""
+            }
+        } else {
+            cur = cur.concat(ch)
         }
         i = i + 1
     }
-    return out
+    if quote != "" {
+        return TokenResult { tokens: out, error: "unterminated ${quote} quote" }
+    }
+    if depth != 0 {
+        return TokenResult { tokens: out, error: "unclosed JSON array or object" }
+    }
+    if cur != "" {
+        out.push(cur)
+    }
+    return TokenResult { tokens: out, error: "" }
+}
+
+fun _space(ch: String) -> Bool {
+    return ch == " " || ch == "\t" || ch == "\n" || ch == "\r"
 }

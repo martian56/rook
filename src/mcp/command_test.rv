@@ -1,12 +1,17 @@
 import std/string
+import std/json { JsonValue, parse }
 import std/test { assert_eq_str, assert_true }
 import "./command" { McpInvoke, parse_invoke }
+import "github.com/martian56/aviary/jsonutil" { field, as_str, as_int_or, as_list, is_null }
 
 fun test_parse_invoke_reads_server_name_and_args() {
     let inv = parse_invoke("filesystem review path=src/main.rv depth=2")
     assert_eq_str(inv.server, "filesystem")
     assert_eq_str(inv.name, "review")
-    assert_eq_str(inv.args_json, "{\"path\":\"src/main.rv\",\"depth\":\"2\"}")
+    let args = _json(inv.args_json)
+    assert_eq_str(as_str(field(args, "path")), "src/main.rv")
+    assert_true(as_int_or(field(args, "depth"), 0) == 2)
+    assert_eq_str(inv.error, "")
 }
 
 fun test_parse_invoke_without_args_gives_empty_object() {
@@ -14,10 +19,68 @@ fun test_parse_invoke_without_args_gives_empty_object() {
     assert_eq_str(inv.server, "git")
     assert_eq_str(inv.name, "summarize")
     assert_eq_str(inv.args_json, "{}")
+    assert_eq_str(inv.error, "")
 }
 
 fun test_parse_invoke_missing_name_is_empty() {
     let inv = parse_invoke("onlyserver")
     assert_eq_str(inv.server, "onlyserver")
     assert_eq_str(inv.name, "")
+}
+
+fun test_parse_invoke_keeps_quoted_spaces_and_escapes() {
+    let inv = parse_invoke(
+        "docs summarize query=\"error handling in src/app/update.rv\" note=\"say \\\"hello\\\" at C:\\\\tmp\"",
+    )
+    let args = _json(inv.args_json)
+    assert_eq_str(as_str(field(args, "query")), "error handling in src/app/update.rv")
+    assert_eq_str(as_str(field(args, "note")), "say \"hello\" at C:\\tmp")
+    assert_eq_str(inv.error, "")
+}
+
+fun test_parse_invoke_preserves_typed_json_values() {
+    let inv = parse_invoke(
+        "planner plan limit=20 include_archived=false files=[\"src/a.rv\", \"src/b.rv\"] config={\"mode\": \"fast\"} nothing=null",
+    )
+    let args = _json(inv.args_json)
+    assert_true(as_int_or(field(args, "limit"), 0) == 20)
+    assert_true(
+        match field(args, "include_archived") {
+            Bool(v) -> !v,
+            _ -> false,
+        },
+    )
+    let files = as_list(field(args, "files"))
+    assert_true(files.len() == 2)
+    assert_eq_str(as_str(files[1]), "src/b.rv")
+    assert_eq_str(as_str(field(field(args, "config"), "mode")), "fast")
+    assert_true(is_null(field(args, "nothing")))
+}
+
+fun test_parse_invoke_accepts_a_json_object() {
+    let inv = parse_invoke("db explain --json '{\"limit\": 20, \"include_archived\": false}'")
+    let args = _json(inv.args_json)
+    assert_true(as_int_or(field(args, "limit"), 0) == 20)
+    assert_true(
+        match field(args, "include_archived") {
+            Bool(v) -> !v,
+            _ -> false,
+        },
+    )
+    assert_eq_str(inv.error, "")
+}
+
+fun test_parse_invoke_reports_malformed_arguments() {
+    assert_true(parse_invoke("docs summarize query=\"unterminated").error.contains("unterminated"))
+    assert_true(parse_invoke("docs summarize files=[\"a\"").error.contains("unclosed"))
+    assert_true(parse_invoke("docs summarize missing_equals").error.contains("key=value"))
+    assert_true(parse_invoke("docs summarize config={bad}").error.contains("invalid value"))
+    assert_true(parse_invoke("docs summarize --json '[1,2]'").error.contains("must be an object"))
+}
+
+fun _json(text: String) -> JsonValue {
+    return match parse(text) {
+        Ok(j) -> j,
+        Err(e) -> JsonValue.Null,
+    }
 }

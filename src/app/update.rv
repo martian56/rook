@@ -1132,9 +1132,17 @@ fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
 
 fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
     let inv = parse_invoke(rest)
+    if inv.error != "" {
+        m.entries.push(Entry.UserMsg(text))
+        m.entries.push(Entry.Notice(inv.error))
+        m.scroll_up = 0
+        return next(m)
+    }
     if inv.server == "" || inv.name == "" {
         m.entries.push(Entry.UserMsg(text))
-        m.entries.push(Entry.Notice("usage: /mcp prompt <server> <name> [key=value ...]"))
+        m.entries.push(
+            Entry.Notice("usage: /mcp prompt <server> <name> [key=value ...] or --json '{...}'"),
+        )
         m.scroll_up = 0
         return next(m)
     }

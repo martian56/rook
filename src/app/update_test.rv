@@ -130,3 +130,13 @@ fun test_starting_a_new_command_returns_to_live_tail() {
     let updated = _run(m, "/plan").model
     assert_true(updated.scroll_up == 0)
 }
+
+fun test_malformed_mcp_prompt_arguments_are_visible() {
+    let m = chat_init()
+    let updated = _run(m, "/mcp prompt docs summarize query=\"unterminated").model
+    assert_true(updated.entries.len() == 2)
+    match updated.entries[1] {
+        Notice(text) -> assert_true(text.contains("unterminated")),
+        _ -> assert_true(false),
+    }
+}
