@@ -118,6 +118,36 @@ The provider's key comes from its environment variable
 from a key you entered with `/key` (stored in `~/.rook/auth.json`). Picking a
 model whose provider has no key opens the key prompt automatically.
 
+Rook supports every provider routed by Aviary:
+
+| Model prefix | API key variable |
+|---|---|
+| `openai` | `OPENAI_API_KEY` |
+| `anthropic`, `claude` | `ANTHROPIC_API_KEY` |
+| `gemini`, `google` | `GEMINI_API_KEY` |
+| `cohere` | `COHERE_API_KEY` |
+| `groq` | `GROQ_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
+| `deepseek` | `DEEPSEEK_API_KEY` |
+| `xai`, `grok` | `XAI_API_KEY` |
+| `together` | `TOGETHER_API_KEY` |
+| `fireworks` | `FIREWORKS_API_KEY` |
+| `perplexity` | `PERPLEXITY_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
+| `deepinfra` | `DEEPINFRA_API_KEY` |
+| `nebius` | `NEBIUS_API_KEY` |
+| `moonshot` | `MOONSHOT_API_KEY` |
+| `sakana` | `SAKANA_API_KEY` |
+| `azure` | `AZURE_API_KEY`, with `AZURE_API_BASE` |
+| `ollama` | none |
+| `custom` | optional `AVIARY_API_KEY`, with `ROOK_BASE_URL` or `AVIARY_BASE_URL` |
+
+Sakana's direct models are `sakana/fugu`, `sakana/fugu-ultra`, and
+`sakana/fugu-ultra-20260615`. Rook gives direct Sakana turns a longer stream
+timeout because Fugu may spend several minutes orchestrating before its first
+visible response. Fugu Ultra is also available through OpenRouter as
+`openrouter/sakana/fugu-ultra`.
+
 ## Tools
 
 The model can call:

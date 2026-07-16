@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
-import "./config" { provider_of, key_env, key_present, auth_with_key, save_key_to_path }
+import "./config" { provider_of, key_env, key_present, key_needed, auth_with_key, save_key_to_path }
 import "./catalog" { catalog, filter_catalog, index_of }
 import "./openrouter_catalog" { openrouter_catalog }
 
@@ -16,11 +16,26 @@ fun test_key_env_mapping() {
     assert_eq_str(key_env("claude"), "ANTHROPIC_API_KEY")
     assert_eq_str(key_env("openai"), "OPENAI_API_KEY")
     assert_eq_str(key_env("grok"), "XAI_API_KEY")
+    assert_eq_str(key_env("together"), "TOGETHER_API_KEY")
+    assert_eq_str(key_env("fireworks"), "FIREWORKS_API_KEY")
+    assert_eq_str(key_env("perplexity"), "PERPLEXITY_API_KEY")
+    assert_eq_str(key_env("deepinfra"), "DEEPINFRA_API_KEY")
+    assert_eq_str(key_env("nebius"), "NEBIUS_API_KEY")
+    assert_eq_str(key_env("moonshot"), "MOONSHOT_API_KEY")
+    assert_eq_str(key_env("sakana"), "SAKANA_API_KEY")
+    assert_eq_str(key_env("azure"), "AZURE_API_KEY")
+    assert_eq_str(key_env("custom"), "AVIARY_API_KEY")
     assert_eq_str(key_env("unknown"), "")
 }
 
 fun test_ollama_needs_no_key() {
     assert_true(key_present("ollama/llama3"))
+    assert_false(key_needed("ollama/llama3"))
+}
+
+fun test_custom_endpoint_key_is_optional() {
+    assert_true(key_present("custom/local-model"))
+    assert_false(key_needed("custom/local-model"))
 }
 
 fun test_unknown_provider_has_no_key() {
@@ -105,6 +120,8 @@ fun test_catalog_carries_the_2026_flagships() {
     assert_true(all.contains("kimi-k2.7"))
     assert_true(all.contains("glm-5.2"))
     assert_true(all.contains("grok-4.1"))
+    assert_true(all.contains("sakana/fugu"))
+    assert_true(all.contains("sakana/fugu-ultra"))
 }
 
 fun test_openrouter_catalog_contains_the_complete_snapshot() {

@@ -216,9 +216,10 @@ fun save_key(provider: String, key: String) -> String {
     return save_key_to_path("${dir}/auth.json", provider, key)
 }
 
-// Whether a model can run: its provider has a key, or needs none (Ollama).
+// Whether a model can run: its provider has a key, or accepts a keyless
+// connection such as Ollama and a custom OpenAI-compatible endpoint.
 fun key_present(model: String) -> Bool {
-    if provider_of(model) == "ollama" {
+    if _key_optional(provider_of(model)) {
         return true
     }
     return resolve_key(model) != ""
@@ -226,7 +227,7 @@ fun key_present(model: String) -> Bool {
 
 // Whether a model is missing the key it needs.
 fun key_needed(model: String) -> Bool {
-    if provider_of(model) == "ollama" {
+    if _key_optional(provider_of(model)) {
         return false
     }
     return resolve_key(model) == ""
@@ -271,7 +272,38 @@ fun key_env(provider: String) -> String {
     if provider == "xai" || provider == "grok" {
         return "XAI_API_KEY"
     }
+    if provider == "together" {
+        return "TOGETHER_API_KEY"
+    }
+    if provider == "fireworks" {
+        return "FIREWORKS_API_KEY"
+    }
+    if provider == "perplexity" {
+        return "PERPLEXITY_API_KEY"
+    }
+    if provider == "deepinfra" {
+        return "DEEPINFRA_API_KEY"
+    }
+    if provider == "nebius" {
+        return "NEBIUS_API_KEY"
+    }
+    if provider == "moonshot" {
+        return "MOONSHOT_API_KEY"
+    }
+    if provider == "sakana" {
+        return "SAKANA_API_KEY"
+    }
+    if provider == "azure" {
+        return "AZURE_API_KEY"
+    }
+    if provider == "custom" {
+        return "AVIARY_API_KEY"
+    }
     return ""
+}
+
+fun _key_optional(provider: String) -> Bool {
+    return provider == "ollama" || provider == "custom"
 }
 
 fun _home() -> String {
