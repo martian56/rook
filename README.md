@@ -95,9 +95,8 @@ OpenRouter is the default provider, since one key there reaches most models.
 Models are `provider/model` strings (aviary's format).
 
 - `/model` opens a picker with a search bar: type to filter the
-  catalog (the mid-2026 flagships and the models topping the OpenRouter
-  usage charts), arrow-select and Enter. Your choice is remembered for
-  next time.
+  complete OpenRouter model snapshot plus a smaller set of direct-provider
+  choices, arrow-select and Enter. Your choice is remembered for next time.
 - `/model anthropic/claude-sonnet-5` sets one directly; any
   `provider/model` string aviary can route works, listed or not.
 - The startup model is resolved in order: the `--model` flag
@@ -531,6 +530,10 @@ as a model, so the suite needs no network and no keys. The behavior evals
 run separately with scripted model responses and check exact tool traces
 for inspection before editing, plan mode, permission recovery, instruction
 conflicts, commit restraint, and verification after changes.
+
+The OpenRouter picker snapshot is generated from its official Models API.
+Refresh it with `python scripts/sync_openrouter_catalog.py`, then run the
+tests and commit both the generator and generated Raven module together.
 
 ## Known limits
 
