@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.27
+
+- Made plugin installs and updates transactional so failed replacements leave the working plugin in place.
+
 ## 0.3.26
 
 - Added quoted strings, typed JSON values, and visible parse errors to `/mcp prompt` arguments.
