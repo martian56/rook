@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.34
+
+- Fixed the streaming stutter on long replies: incoming text is folded into the transcript once per frame instead of rebuilding the whole reply on every delta.
+- Moved the end-of-turn session save onto a background thread, so finishing a turn no longer hitches while the transcript is written to disk.
+- Cached the project file list the `@` picker searches, so typing a file path no longer re-walks the tree on every keystroke.
+- Built the theme list once when the picker opens instead of reading theme files from disk on every frame.
+- Cached the welcome-screen logo so it is rasterized once per width rather than on every frame.
+
 ## 0.3.33
 
 - Made the `/model` picker responsive by building its catalog once and filtering the cached copy, instead of rebuilding and re-labeling the whole model list on every frame.
