@@ -240,6 +240,15 @@ fun key_needed(model: String) -> Bool {
     return resolve_key(model) == ""
 }
 
+// key_needed using an already-resolved key, so the send path checks the model's
+// loaded key (m.api_key) instead of re-reading auth.json on every message.
+fun key_needed_with(model: String, key: String) -> Bool {
+    if _key_optional(provider_of(model)) {
+        return false
+    }
+    return key == ""
+}
+
 // The provider part of a "provider/model" string, or "" when malformed.
 fun provider_of(model: String) -> String {
     let slash = model.index_of("/")
