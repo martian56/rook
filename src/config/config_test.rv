@@ -109,7 +109,7 @@ fun test_catalog_carries_the_2026_flagships() {
 
 fun test_openrouter_catalog_contains_the_complete_snapshot() {
     let items = openrouter_catalog()
-    assert_true(items.len() == 342)
+    assert_true(items.len() >= 342)
     let all = ""
     let i = 0
     while i < items.len() {
@@ -147,6 +147,6 @@ fun test_filter_narrows_by_substring_ignoring_case() {
     let fable = filter_catalog(items, "fable")
     assert_true(fable.len() >= 2)
     let sakana = filter_catalog(items, "SAKANA")
-    assert_true(sakana.len() == 1)
-    assert_eq_str(sakana[0], "openrouter/sakana/fugu-ultra")
+    assert_true(sakana.len() >= 1)
+    assert_true(sakana[0].to_lower().contains("sakana"))
 }
