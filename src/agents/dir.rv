@@ -9,6 +9,7 @@
 // tests) can work over any list of directories.
 
 import std/string
+import std/sync { Mutex, mutex }
 import std/env { get_env, has_env }
 import std/fs { exists, is_dir, list_dir }
 import "../plugins/model" { plugin_roots }
@@ -18,7 +19,47 @@ import "../plugins/model" { plugin_roots }
 // So a project entry shadows a plugin's, which shadows the global one. Any
 // may be absent.
 fun roots() -> List<String> {
-    return compose_roots(project_root(), plugin_roots(), global_root())
+    return compose_roots(project_root(), _cached_plugin_roots(), global_root())
+}
+
+// The plugin roots, cached for the process. Only this part of roots() is cached:
+// it reads and parses every plugin manifest, which is the cost that multiplied
+// across a turn's rounds, tool checks, and hook fires. The .agents discovery
+// (project_root/global_root) stays fresh, because it is cheap stat calls and
+// the working directory's .agents can appear mid-run (the behavior evals create
+// one). Invalidated when a plugin is installed, removed, or updated. Locked
+// because roots() is read from both the UI thread and the turn goroutine.
+struct PluginRootsCache {
+    lock: Mutex,
+    ready: Bool,
+    roots: List<String>,
+}
+
+let PLUGIN_ROOTS_CACHE: PluginRootsCache = _new_plugin_roots_cache()
+
+fun _new_plugin_roots_cache() -> PluginRootsCache {
+    let roots: List<String> = []
+    return PluginRootsCache { lock: mutex(), ready: false, roots }
+}
+
+fun _cached_plugin_roots() -> List<String> {
+    PLUGIN_ROOTS_CACHE.lock.lock()
+    if !PLUGIN_ROOTS_CACHE.ready {
+        PLUGIN_ROOTS_CACHE.roots = plugin_roots()
+        PLUGIN_ROOTS_CACHE.ready = true
+    }
+    let out = PLUGIN_ROOTS_CACHE.roots
+    PLUGIN_ROOTS_CACHE.lock.unlock()
+    return out
+}
+
+// Drop the cached plugin roots so the next call rediscovers them, after a
+// plugin change.
+fun invalidate_roots() {
+    PLUGIN_ROOTS_CACHE.lock.lock()
+    PLUGIN_ROOTS_CACHE.ready = false
+    PLUGIN_ROOTS_CACHE.lock.unlock()
+    return
 }
 
 // Assemble the root order from its three parts, skipping empties. Pure, so

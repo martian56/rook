@@ -9,7 +9,7 @@ import "github.com/martian56/aviary" { complete_stream }
 import "github.com/martian56/aviary/request" { ChatRequest, CancelToken }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./state" { AgentState, DisplayEvent }
-import "./session" { build_request }
+import "./session" { build_request, turn_agents_prompt }
 import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
 import "./ask_options" { parse_ask_options, option_labels, option_count_error }
@@ -28,6 +28,9 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
     // Tool kinds the user approved for the rest of this turn.
     let allowed: List<String> = []
     let round = 0
+    // The memory, skills, and subagent parts of the system prompt are read from
+    // disk once here, not on every round.
+    let agents_prompt = turn_agents_prompt()
     while round < MAX_ROUNDS {
         if st.interrupted() {
             st.emit(DisplayEvent.Info("Interrupted"))
@@ -47,9 +50,10 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         }
         st.emit(DisplayEvent.Started)
         let plan = st.plan()
-        let req = _with_tools(build_request(model, st.messages(), api_key, base_url, 0, plan), plan).cancelable(
-            st.token(),
-        )
+        let req = _with_tools(
+            build_request(model, st.messages(), api_key, base_url, 0, plan, agents_prompt),
+            plan,
+        ).cancelable(st.token())
         let on_chunk = fun(d: String) -> Unit = st.chunk(d)
 
         let reply_text = ""
