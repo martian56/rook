@@ -19,7 +19,7 @@ import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, list_sessions_result, load_session }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
-import "../config/config" { provider_of, key_needed, save_key, save_theme }
+import "../config/config" { provider_of, key_needed_with, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
@@ -1043,7 +1043,7 @@ fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
 
 // After a model change, open the key entry if the new provider has no key.
 fun _after_model_set(m: Chat) {
-    if key_needed(m.model) {
+    if key_needed_with(m.model, m.api_key) {
         _open_key_entry(m)
         m.entries.push(Entry.Notice("model set to ${m.model}; enter its API key below"))
     } else {
@@ -1280,7 +1280,7 @@ fun _send(m: Chat, text: String) -> Step<Chat> {
 // one instead of making a doomed request.
 fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
     m.entries.push(Entry.UserMsg(display))
-    if key_needed(m.model) {
+    if key_needed_with(m.model, m.api_key) {
         m.entries.push(
             Entry.Notice("no API key for ${provider_of(m.model)}; enter one, then ask again"),
         )
