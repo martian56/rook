@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.28
+
+- Made hook launch failures visible and added per-hook fail-closed behavior for pre-tool guards.
+
 ## 0.3.27
 
 - Made plugin installs and updates transactional so failed replacements leave the working plugin in place.

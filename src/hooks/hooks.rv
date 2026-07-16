@@ -1,15 +1,17 @@
 // The hook system: user or plugin scripts that fire on lifecycle events.
 // Each root's settings.json may carry a "hooks" object keyed by event, whose
-// value is an array of { match, command }. On an event rook runs every hook
-// whose match glob matches the tool name, handing it a small JSON context on
-// stdin ({ event, tool, args, agent }). A pre-tool hook that exits non-zero
-// blocks the tool; every other event is observe-only. This is the mechanism
+// value is an array of { match, command, fail_closed }. On an event rook runs
+// every hook whose match glob matches the tool name, handing it a small JSON
+// context on stdin ({ event, tool, args, agent }). A pre-tool hook that exits
+// non-zero blocks the tool; every other event is observe-only. Hook launch
+// failures are queued as deduplicated UI notices. This is the mechanism
 // plugins build on to extend rook.
 
 import std/string
 import std/env { os_name }
 import std/json { JsonValue, stringify }
 import std/process { run_with_input, Output }
+import std/sync { Mutex, mutex }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
 import "../agents/dir" { roots }
 import "../agents/settings" { setting_section }
@@ -25,7 +27,27 @@ struct Hook {
     event: String,
     match_glob: String,
     command: String,
+    fail_closed: Bool,
 }
+
+struct HookRun {
+    output: Output,
+    launch_error: String,
+}
+
+struct HookNoticeStore {
+    lock: Mutex,
+    seen: List<String>,
+    pending: List<String>,
+}
+
+fun _new_notice_store() -> HookNoticeStore {
+    let seen: List<String> = []
+    let pending: List<String> = []
+    return HookNoticeStore { lock: mutex(), seen, pending }
+}
+
+let NOTICES: HookNoticeStore = _new_notice_store()
 
 // Every hook configured across the active roots (project .agents, installed
 // plugins, global .agents), in root precedence order.
@@ -63,8 +85,9 @@ fun load_hooks_from_with_project_trust(rs: List<String>, project_trusted: Bool) 
 }
 
 // The hooks declared in one root's "hooks" object: for each known event key
-// (JsonValue has no key iteration), an array of { match, command }. A missing
-// match defaults to "*", and an entry with no command is skipped.
+// (JsonValue has no key iteration), an array of
+// { match, command, fail_closed }. A missing match defaults to "*", an entry
+// with no command is skipped, and launch failures fail open by default.
 fun hooks_from(section: JsonValue) -> List<Hook> {
     let out: List<Hook> = []
     let evs = events()
@@ -79,7 +102,14 @@ fun hooks_from(section: JsonValue) -> List<Hook> {
                 if m == "" {
                     m = "*"
                 }
-                out.push(Hook { event: evs[e], match_glob: m, command })
+                out.push(
+                    Hook {
+                        event: evs[e],
+                        match_glob: m,
+                        command,
+                        fail_closed: _as_bool(field(arr[i], "fail_closed")),
+                    },
+                )
             }
             i = i + 1
         }
@@ -107,8 +137,8 @@ fun hooks_for(hooks: List<Hook>, event: String, tool: String) -> List<Hook> {
 
 // Run every pre-tool hook matching `tool`. A non-zero exit blocks the tool:
 // the returned reason (empty when nothing blocks) is fed back to the model in
-// place of running the tool. A hook that fails to launch does not block, so a
-// misconfigured hook cannot wedge every tool.
+// place of running the tool. A hook that fails to launch emits a notice and
+// blocks only when that hook has fail_closed enabled.
 fun run_pre_tool_hooks(tool: String, args_json: String) -> String {
     return run_pre_tool_hooks_for_agent("", tool, args_json)
 }
@@ -129,9 +159,29 @@ fun run_pre_tool_for_agent(
     tool: String,
     args_json: String,
 ) -> String {
+    return _run_pre_tool_for_agent(hooks, agent, tool, args_json, _shell(), _shell_flag())
+}
+
+fun _run_pre_tool_for_agent(
+    hooks: List<Hook>,
+    agent: String,
+    tool: String,
+    args_json: String,
+    shell: String,
+    flag: String,
+) -> String {
     let i = 0
     while i < hooks.len() {
-        let out = _run(hooks[i], "pre-tool", agent, tool, args_json)
+        let result = _run_with_shell(hooks[i], "pre-tool", agent, tool, args_json, shell, flag)
+        if result.launch_error != "" {
+            _record_launch_failure(hooks[i], "pre-tool", result.launch_error)
+            if hooks[i].fail_closed {
+                return "blocked because pre-tool hook command '${command_name(hooks[i].command)}' could not start: ${result.launch_error}"
+            }
+            i = i + 1
+            continue
+        }
+        let out = result.output
         if out.code != 0 {
             let why = out.stderr.trim()
             if why == "" {
@@ -158,7 +208,10 @@ fun fire_hooks_for_agent(agent: String, event: String, tool: String, args_json: 
     let hooks = hooks_for(load_hooks(), event, tool)
     let i = 0
     while i < hooks.len() {
-        let out = _run(hooks[i], event, agent, tool, args_json)
+        let result = _run(hooks[i], event, agent, tool, args_json)
+        if result.launch_error != "" {
+            _record_launch_failure(hooks[i], event, result.launch_error)
+        }
         i = i + 1
     }
     return
@@ -170,18 +223,131 @@ fun hook_context(event: String, agent: String, tool: String, args_json: String) 
     )
 }
 
-// Run one hook's command through the platform shell with the event context
-// on stdin. A launch failure comes back as exit 0 so it never blocks.
-fun _run(hook: Hook, event: String, agent: String, tool: String, args_json: String) -> Output {
+// Run one hook's command through the platform shell with the event context on
+// stdin, keeping process launch errors separate from hook exit codes.
+fun _run(hook: Hook, event: String, agent: String, tool: String, args_json: String) -> HookRun {
+    return _run_with_shell(hook, event, agent, tool, args_json, _shell(), _shell_flag())
+}
+
+fun _run_with_shell(
+    hook: Hook,
+    event: String,
+    agent: String,
+    tool: String,
+    args_json: String,
+    shell: String,
+    flag: String,
+) -> HookRun {
     let ctx = hook_context(event, agent, tool, args_json)
-    let shell = "sh"
-    let flag = "-c"
-    if os_name() == "windows" {
-        shell = "cmd"
-        flag = "/c"
-    }
     return match run_with_input(shell, [flag, hook.command], ctx) {
-        Ok(out) -> out,
-        Err(e) -> Output { code: 0, stdout: "", stderr: e.message },
+        Ok(out) -> HookRun { output: out, launch_error: _shell_launch_error(out) },
+        Err(e) -> HookRun {
+            output: Output { code: 0, stdout: "", stderr: "" },
+            launch_error: e.message,
+        },
+    }
+}
+
+// Shells report a missing or non-executable command as a normal non-zero
+// exit, not a process spawn error. Recognize the portable exit codes and the
+// Windows diagnostic so these failures follow the same configurable path.
+fun _shell_launch_error(out: Output) -> String {
+    let detail = "${out.stderr}\n${out.stdout}".to_lower()
+    if out.code == 127 && detail.contains("not found") {
+        return "command was not found"
+    }
+    if out.code == 126 && (detail.contains("permission denied") || detail.contains("cannot execute")) {
+        return "command could not be executed"
+    }
+    if detail.contains("is not recognized as an internal or external command") {
+        return "command was not found"
+    }
+    if detail.contains("access is denied") {
+        return "command could not be executed"
+    }
+    return ""
+}
+
+fun _shell() -> String {
+    if os_name() == "windows" {
+        return "cmd"
+    }
+    return "sh"
+}
+
+fun _shell_flag() -> String {
+    if os_name() == "windows" {
+        return "/c"
+    }
+    return "-c"
+}
+
+// Drain launch-failure notices for the UI. Failures remain in the seen list,
+// so an identical broken hook is reported once per rook process.
+fun drain_hook_notices() -> List<String> {
+    NOTICES.lock.lock()
+    let out = NOTICES.pending
+    let empty: List<String> = []
+    NOTICES.pending = empty
+    NOTICES.lock.unlock()
+    return out
+}
+
+fun _record_launch_failure(hook: Hook, event: String, error: String) {
+    let key = "${event}\n${hook.command}\n${error}"
+    NOTICES.lock.lock()
+    if !_contains(NOTICES.seen, key) {
+        NOTICES.seen.push(key)
+        NOTICES.pending.push(
+            "hook launch failed for ${event} command '${command_name(hook.command)}': ${error}",
+        )
+    }
+    NOTICES.lock.unlock()
+    return
+}
+
+// Show only the executable or first command word, keeping hook arguments out
+// of notices in case they carry tokens or other sensitive values.
+fun command_name(command: String) -> String {
+    let c = command.trim()
+    if c == "" {
+        return "(empty)"
+    }
+    let quote = ""
+    if c.starts_with("\"") {
+        quote = "\""
+    } else {
+        if c.starts_with("'") {
+            quote = "'"
+        }
+    }
+    if quote != "" {
+        let end = c.substring(1, c.length()).index_of(quote)
+        if end >= 0 {
+            return c.substring(1, end + 1)
+        }
+    }
+    let space = c.index_of(" ")
+    if space >= 0 {
+        return c.substring(0, space)
+    }
+    return c
+}
+
+fun _contains(xs: List<String>, value: String) -> Bool {
+    let i = 0
+    while i < xs.len() {
+        if xs[i] == value {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _as_bool(j: JsonValue) -> Bool {
+    return match j {
+        Bool(b) -> b,
+        _ -> false,
     }
 }

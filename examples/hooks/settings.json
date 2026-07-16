@@ -1,7 +1,11 @@
 {
   "hooks": {
     "pre-tool": [
-      { "match": "run_command", "command": "sh examples/hooks/deny-dangerous.sh" }
+      {
+        "match": "run_command",
+        "command": "sh examples/hooks/deny-dangerous.sh",
+        "fail_closed": true
+      }
     ],
     "post-tool": [
       { "match": "write_file", "command": "sh examples/hooks/format-on-edit.sh" },
