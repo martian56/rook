@@ -34,42 +34,50 @@ fun unified(old_text: String, new_text: String) -> String {
         new_end = new_end - 1
     }
 
+    // No changed lines but the raw texts differ: the only difference is a
+    // trailing newline (lines() drops a single trailing empty line). Say so
+    // rather than render a diff with content but no highlighted change.
+    if old_end == start && new_end == start {
+        return "(only the trailing newline changed)"
+    }
+
     let out: List<String> = []
     let ctx_from = start - CONTEXT
     if ctx_from < 0 {
         ctx_from = 0
     }
-    let i = ctx_from
-    while i < start {
-        out.push("  ${old_lines[i]}")
-        i = i + 1
-    }
-    i = start
-    while i < old_end {
-        out.push("- ${old_lines[i]}")
-        i = i + 1
-    }
-    i = start
-    while i < new_end {
-        out.push("+ ${new_lines[i]}")
-        i = i + 1
-    }
     let ctx_to = old_end + CONTEXT
     if ctx_to > old_lines.len() {
         ctx_to = old_lines.len()
     }
+    // The full diff length, counted before emitting, so the loops below can
+    // stop at MAX_LINES instead of building the whole thing first (a full-file
+    // rewrite would otherwise materialize about twice the file's lines).
+    let total = (start - ctx_from) + (old_end - start) + (new_end - start) + (ctx_to - old_end)
+
+    let i = ctx_from
+    while i < start && out.len() < MAX_LINES {
+        out.push("  ${old_lines[i]}")
+        i = i + 1
+    }
+    i = start
+    while i < old_end && out.len() < MAX_LINES {
+        out.push("- ${old_lines[i]}")
+        i = i + 1
+    }
+    i = start
+    while i < new_end && out.len() < MAX_LINES {
+        out.push("+ ${new_lines[i]}")
+        i = i + 1
+    }
     i = old_end
-    while i < ctx_to {
+    while i < ctx_to && out.len() < MAX_LINES {
         out.push("  ${old_lines[i]}")
         i = i + 1
     }
 
     // Cap, keeping the head where the change starts.
-    let total = out.len()
-    let shown = total
-    if shown > MAX_LINES {
-        shown = MAX_LINES
-    }
+    let shown = out.len()
     let text = ""
     i = 0
     while i < shown {

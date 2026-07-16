@@ -105,11 +105,11 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
     }
     let swap_error = _move_tree(staging, target)
     if swap_error != "" {
-        let restore_error = ""
-        if had_target {
-            restore_error = _move_tree(backup, target)
-        }
         _remove_tree(staging)
+        if !had_target {
+            return "error: plugin install failed: ${swap_error}"
+        }
+        let restore_error = _move_tree(backup, target)
         if restore_error != "" {
             return "error: plugin update failed: ${swap_error}; the previous plugin is preserved at ${backup}, but could not be restored: ${restore_error}"
         }
