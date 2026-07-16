@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.43
+
+- Copying a mouse selection maps display columns to byte offsets, so text on a line with a marker glyph or other non-ASCII characters is copied correctly instead of shifted. (#231)
+
 ## 0.3.42
 
 - A malformed rook.json is reported as a startup notice instead of being silently ignored, so a typo in the config no longer falls back to defaults with no explanation. (#235)
