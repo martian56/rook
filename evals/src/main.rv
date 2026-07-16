@@ -236,10 +236,11 @@ fun _approve(st: AgentState, count: Int) {
         let approved = 0
         let tries = 0
         while approved < count && tries < 3000 {
-            if st.pending_now() != "" {
+            let pending = st.pending_now()
+            if pending != "" {
                 st.decide(1)
                 approved = approved + 1
-                while st.pending_now() != "" && tries < 3000 {
+                while st.pending_now() == pending && tries < 3000 {
                     sleep_millis(10)
                     tries = tries + 1
                 }
