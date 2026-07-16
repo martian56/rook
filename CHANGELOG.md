@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.31
+
+- Prepared the cumulative release of Rook's recent safety, reliability, workflow, MCP, plugin, and developer-experience improvements.
+
 ## 0.3.30
 
 - Added deterministic behavior evals for planning, verification, permissions, instruction conflicts, and commit safety.
