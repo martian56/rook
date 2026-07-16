@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.41
+
+- A change that only adds or removes a file's trailing newline now says so, instead of showing a diff with content but no highlighted change. (#241)
+- The diff caps its work while building, so replacing a very large file's entire contents no longer materializes the whole diff before trimming it to the display cap. (#240)
+- A failed fresh plugin install no longer claims the previous plugin was restored when there was none. (#237)
+
 ## 0.3.40
 
 - Esc now aborts a running parallel-dispatch batch: each subagent request carries the turn's cancel token, so pressing Esc cancels the in-flight calls instead of waiting out their timeouts. (#229)

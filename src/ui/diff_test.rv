@@ -44,3 +44,21 @@ fun test_a_huge_change_is_capped() {
     assert_true(d.contains("more lines"))
     assert_true(d.lines().len() < 30)
 }
+
+fun test_cap_reports_the_true_remaining_count() {
+    let old = ""
+    let new = ""
+    let i = 0
+    while i < 40 {
+        new = "${new}L${i}\n"
+        i = i + 1
+    }
+    // 40 added lines, shown is capped at 24, so the note counts the real 16
+    // that are hidden even though the output was never fully built.
+    assert_true(unified(old, new).contains("… 16 more lines"))
+}
+
+fun test_trailing_newline_only_change_is_named() {
+    assert_eq_str(unified("a\nb", "a\nb\n"), "(only the trailing newline changed)")
+    assert_eq_str(unified("a\nb\n", "a\nb"), "(only the trailing newline changed)")
+}
