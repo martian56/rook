@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.32
+
+- Imported the OpenRouter model catalog and kept it refreshable from a sync script.
+- Added direct Sakana Fugu support and accepted every Aviary provider credential.
+- Expanded the built-in catalog of direct provider models.
+- Showed tool support in the model picker with capability labels, and preserved OpenRouter tool capabilities.
+- Updated Aviary to 0.3.1.
+
 ## 0.3.31
 
 - Prepared the cumulative release of Rook's recent safety, reliability, workflow, MCP, plugin, and developer-experience improvements.
