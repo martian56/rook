@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.45
+
+- Stabilized the Windows MCP launcher streaming test, which occasionally failed on a transient subprocess-startup hiccup, by retrying a few times and requiring one clean run. (#242)
+
 ## 0.3.44
 
 - edit_file and multi_edit refuse an edit when old_text appears more than once, asking for a more specific snippet, instead of silently changing the first occurrence (which may be the wrong one). (#239)

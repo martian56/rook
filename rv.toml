@@ -1,6 +1,6 @@
 [package]
 name = "rook"
-version = "0.3.44"
+version = "0.3.45"
 edition = "v2"
 
 [dependencies]
