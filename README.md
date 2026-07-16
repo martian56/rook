@@ -96,7 +96,9 @@ Models are `provider/model` strings (aviary's format).
 
 - `/model` opens a picker with a search bar: type to filter the
   complete OpenRouter model snapshot plus more than 100 direct-provider
-  choices, arrow-select and Enter. Your choice is remembered for next time.
+  choices, arrow-select and Enter. `[tools]` marks models that can participate
+  in Rook's normal agent loop. `[no tools]` marks OpenRouter models that do
+  not advertise tool calling. Your choice is remembered for next time.
 - `/model anthropic/claude-sonnet-5` sets one directly; any
   `provider/model` string aviary can route works, listed or not.
 - The startup model is resolved in order: the `--model` flag
@@ -148,6 +150,11 @@ tool-capable hosted models. A provider may restrict models by account, region,
 preview access, or deployment. Ollama entries also require the named model to
 be installed locally. If a model is missing from the picker, enter its full
 `provider/model` string directly.
+
+Rook still allows a `[no tools]` model to be selected, including with
+`/model provider/model`, but adds a warning to the transcript. Such a model
+can answer normally but may be unable to inspect files, edit code, or run
+tests because those actions require tool calls.
 
 Sakana's direct models are `sakana/fugu`, `sakana/fugu-ultra`, and
 `sakana/fugu-ultra-20260615`. Rook gives direct Sakana turns a longer stream
