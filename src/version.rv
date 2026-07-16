@@ -1,0 +1,8 @@
+// rook's version, compiled into the binary so `rook --version` and the
+// welcome screen can show it. The toolchain does not expose the manifest
+// version to the program, so this is kept in step with rv.toml by
+// version_test.rv: bump both together for a release or CI fails.
+
+fun version() -> String {
+    return "0.3.35"
+}
