@@ -31,9 +31,34 @@ fun rendered_height(target_w: Int) -> Int {
     return tr
 }
 
-// Draw the logo at (x, y), scaled to `target_w` cells wide.
-fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
-    let tw = _clamp_w(target_w)
+// The averaged half-block colors for one drawn cell.
+struct LogoCell {
+    top: Option<Color>,
+    bot: Option<Color>,
+}
+
+// The rasterized logo for one target width. The master is static, so the
+// box-average (thousands of substring + alphabet-scan samples) only needs to
+// run when the width changes, not on every welcome-screen frame.
+struct LogoCache {
+    width: Int,
+    tr: Int,
+    cells: List<LogoCell>,
+}
+
+let LOGO_CACHE: LogoCache = _new_logo_cache()
+
+fun _new_logo_cache() -> LogoCache {
+    let cells: List<LogoCell> = []
+    return LogoCache { width: 0 - 1, tr: 0, cells }
+}
+
+// Rasterize the logo for `tw` into the cache, unless it already holds that
+// width.
+fun _ensure_logo(tw: Int) {
+    if LOGO_CACHE.width == tw {
+        return
+    }
     let rows = _rows()
     let pr = _pr()
     let pg = _pg()
@@ -41,13 +66,36 @@ fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
     let mph = rows.len() * 2
     let tr = rendered_height(tw)
     let tph = tr * 2
+    let cells: List<LogoCell> = []
     let ry = 0
     while ry < tr {
         let cx = 0
         while cx < tw {
             let top = _avg(rows, pr, pg, pb, cx, ry * 2, tw, tph, mph)
             let bot = _avg(rows, pr, pg, pb, cx, ry * 2 + 1, tw, tph, mph)
-            _cell(buf, x + cx, y + ry, top, bot)
+            cells.push(LogoCell { top, bot })
+            cx = cx + 1
+        }
+        ry = ry + 1
+    }
+    LOGO_CACHE.width = tw
+    LOGO_CACHE.tr = tr
+    LOGO_CACHE.cells = cells
+    return
+}
+
+// Draw the logo at (x, y), scaled to `target_w` cells wide.
+fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
+    let tw = _clamp_w(target_w)
+    _ensure_logo(tw)
+    let i = 0
+    let ry = 0
+    while ry < LOGO_CACHE.tr {
+        let cx = 0
+        while cx < tw {
+            let cell = LOGO_CACHE.cells[i]
+            _cell(buf, x + cx, y + ry, cell.top, cell.bot)
+            i = i + 1
             cx = cx + 1
         }
         ry = ry + 1

@@ -8,6 +8,7 @@
 // message history existed fall back to a text-only rebuild.
 
 import std/string
+import std/sync { Mutex, mutex }
 import std/env { get_env, has_env }
 import std/fs { read, write, exists, create_dir_all, list_dir }
 import std/json { JsonValue, parse, stringify }
@@ -114,6 +115,87 @@ fun save_session_to(
         Ok(ok) -> "",
         Err(e) -> "session error: could not save session ${id}: ${e.message}",
     }
+}
+
+// Saving runs off the UI thread. The writer goroutine serializes on SAVE_LOCK
+// so overlapping turns cannot corrupt the file, and reports any error through
+// SAVE_ERRORS for the UI to drain on its next tick.
+struct SaveErrors {
+    lock: Mutex,
+    pending: List<String>,
+}
+
+let SAVE_LOCK: Mutex = mutex()
+let SAVE_ERRORS: SaveErrors = _new_save_errors()
+
+fun _new_save_errors() -> SaveErrors {
+    let pending: List<String> = []
+    return SaveErrors { lock: mutex(), pending }
+}
+
+// Persist the session without blocking the UI: snapshot the transcript (the
+// message list is already a fresh copy from the agent) and run the serialize
+// and disk write on a goroutine. A full save at turn end can be hundreds of
+// KB, so keeping it off the render thread removes the per-turn hitch.
+fun save_session_async(
+    id: String,
+    model: String,
+    entries: List<Entry>,
+    messages: List<Message>,
+    usage_prompt: Int,
+    usage_completion: Int,
+) {
+    if entries.len() == 0 {
+        return
+    }
+    let dir = _sessions_dir()
+    if dir == "" {
+        _record_save_error("session error: no home directory for sessions")
+        return
+    }
+    let snapshot = _copy_entries(entries)
+    spawn(fun() -> Unit {
+        SAVE_LOCK.lock()
+        let err = save_session_to(dir, id, model, snapshot, messages, usage_prompt, usage_completion)
+        SAVE_LOCK.unlock()
+        _record_save_error(err)
+        return
+    })
+    return
+}
+
+// The queued save errors, cleared as they are returned. Drained by the UI loop
+// so a failed background write still surfaces as a transcript notice.
+fun drain_save_errors() -> List<String> {
+    SAVE_ERRORS.lock.lock()
+    let out = SAVE_ERRORS.pending
+    let empty: List<String> = []
+    SAVE_ERRORS.pending = empty
+    SAVE_ERRORS.lock.unlock()
+    return out
+}
+
+fun _record_save_error(msg: String) {
+    if msg == "" {
+        return
+    }
+    SAVE_ERRORS.lock.lock()
+    SAVE_ERRORS.pending.push(msg)
+    SAVE_ERRORS.lock.unlock()
+    return
+}
+
+// A shallow copy of the transcript, so the writer reads a stable list while the
+// UI thread keeps appending on later turns. Entries are replaced, never mutated
+// in place, so copying the references is enough.
+fun _copy_entries(entries: List<Entry>) -> List<Entry> {
+    let out: List<Entry> = []
+    let i = 0
+    while i < entries.len() {
+        out.push(entries[i])
+        i = i + 1
+    }
+    return out
 }
 
 // Every saved session, newest first.

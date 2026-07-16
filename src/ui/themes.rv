@@ -12,9 +12,27 @@ import "../agents/dir" { roots }
 import "../agents/palettes" { load_custom_themes }
 
 // Every theme the picker offers: the built-ins (the two defaults first),
-// then any user-defined palettes from .agents/themes.
+// then any user-defined palettes from .agents/themes. Built once and cached:
+// the picker reads this on every frame and keystroke, and it walks the roots
+// and reads/parses each custom palette from disk. Callers only read the list.
+struct ThemeCache {
+    ready: Bool,
+    themes: List<Theme>,
+}
+
+let THEME_CACHE: ThemeCache = _new_theme_cache()
+
+fun _new_theme_cache() -> ThemeCache {
+    let themes: List<Theme> = []
+    return ThemeCache { ready: false, themes }
+}
+
 fun all_themes() -> List<Theme> {
-    return merge_custom(builtin_themes(), load_custom_themes(roots()))
+    if !THEME_CACHE.ready {
+        THEME_CACHE.themes = merge_custom(builtin_themes(), load_custom_themes(roots()))
+        THEME_CACHE.ready = true
+    }
+    return THEME_CACHE.themes
 }
 
 // The curated built-ins. The order here is the picker's order.

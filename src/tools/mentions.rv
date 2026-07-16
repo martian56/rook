@@ -50,6 +50,38 @@ fun list_files() -> List<String> {
     return out
 }
 
+// The walk is expensive, and the @-picker filters the same list on every
+// keystroke while the tree does not change mid-token, so cache it. The cache
+// is rebuilt lazily after each invalidation (when a mention ends, and on
+// submit) so files created between prompts still show up.
+struct FileCache {
+    ready: Bool,
+    files: List<String>,
+}
+
+let FILE_CACHE: FileCache = _new_file_cache()
+
+fun _new_file_cache() -> FileCache {
+    let files: List<String> = []
+    return FileCache { ready: false, files }
+}
+
+// The project files, walking the tree only on the first call after an
+// invalidation and returning the cached list afterwards.
+fun cached_files() -> List<String> {
+    if !FILE_CACHE.ready {
+        FILE_CACHE.files = list_files()
+        FILE_CACHE.ready = true
+    }
+    return FILE_CACHE.files
+}
+
+// Drop the cache so the next cached_files walks fresh.
+fun invalidate_files() {
+    FILE_CACHE.ready = false
+    return
+}
+
 fun _walk_files(dir: String, out: List<String>) {
     if out.len() >= MAX_FILES {
         return
