@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.37
+
+Correctness and safety fixes from a full audit of the codebase:
+
+- multi_edit now obeys path-scoped permission rules like edit_file and write_file; before, a deny or allow rule targeting a path never applied to it.
+- A pre-tool guard hook that exits non-zero with "access is denied" in its message is treated as a real block again, not misread as a launch failure that fails open and runs the tool.
+- Answering an approval or question clears the prompt immediately, closing a race where a tick could re-show the answered prompt and a second keypress could silently approve the following tool.
+- Esc pressed while the model is streaming a tool request now stops the batch before it runs, so a tool pre-approved earlier in the turn no longer executes after you ask to stop.
+- Tool arguments sent as a bare JSON number or boolean (id 3, staged true, depth 5) are coerced to text instead of being read as empty.
+- A glob deny rule whose trailing literal repeats, like write_file(*.env) against a.env.env, now matches at the end instead of silently missing.
+- base_url resolves through the global ~/.config/rook/rook.json, the same chain model and theme already used.
+- The welcome screen no longer nags about a missing API key for the keyless custom provider.
+- Session titles and truncated memory no longer split a UTF-8 character.
+- A subagent on a Sakana model gets the same two-hour timeout the main turn uses instead of failing at 120s.
+- MCP server subprocesses are shut down on quit instead of being left running.
+
 ## 0.3.36
 
 - Fixed the `file_tree` tool: it was offered to the model but never wired to run, so calling it returned "unknown tool". It now executes.

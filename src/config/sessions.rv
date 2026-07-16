@@ -16,6 +16,7 @@ import std/time { now, now_millis }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
 import "github.com/martian56/aviary/message" { Message, ToolCall, Role, role_str }
 import "../ui/transcript" { Entry }
+import "../agents/limits" { safe_cut }
 
 // A saved session's headline, for the picker.
 struct SessionMeta {
@@ -501,7 +502,7 @@ fun _title(entries: List<Entry>) -> String {
                 line = line.substring(0, nl)
             }
             if line.length() > 60 {
-                line = line.substring(0, 60)
+                line = line.substring(0, safe_cut(line, 60))
             }
             return line
         }

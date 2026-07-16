@@ -21,6 +21,11 @@ fun test_glob_matching() {
     assert_true(!glob_match("src/*.rv", "src/main.rs"))
     assert_true(glob_match("exact", "exact"))
     assert_true(!glob_match("exact", "exactly"))
+    // A trailing literal that also occurs earlier must still match at the end,
+    // so a deny rule like write_file(*.env) is not silently skipped.
+    assert_true(glob_match("*.env", "a.env.env"))
+    assert_true(glob_match("*.env", ".env"))
+    assert_true(!glob_match("*.env", "a.env.txt"))
 }
 
 fun test_rule_shapes() {
@@ -100,6 +105,14 @@ fun test_subjects_per_tool() {
     assert_eq_str(subject_of(wf), "src/x.rv")
     let ks = ToolCall { id: "3", name: "kill_shell", arguments: "{\"id\":\"4\"}" }
     assert_eq_str(subject_of(ks), "4")
+    // multi_edit carries a top-level path; without it, path-scoped rules could
+    // not gate the tool.
+    let me = ToolCall {
+        id: "4",
+        name: "multi_edit",
+        arguments: "{\"path\":\"src/x.rv\",\"edits\":[]}",
+    }
+    assert_eq_str(subject_of(me), "src/x.rv")
     let au = ToolCall { id: "4", name: "ask_user", arguments: "{\"question\":\"q\"}" }
     assert_eq_str(subject_of(au), "")
     let fetch = ToolCall {

@@ -28,7 +28,7 @@ import "../tools/shells" { list_shells, kill_all_shells }
 import "../tools/todos" { clear_todos }
 import "../tools/permission_menu" { permission_grant_states, toggle_permission_grant }
 import "../plugins/manage" { run_plugins_command }
-import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt }
+import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
 
@@ -410,6 +410,7 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
             if c == "c" {
                 if m.armed {
                     kill_all_shells()
+                    close_all_servers()
                     return quit(m)
                 }
                 m.armed = true
@@ -1071,6 +1072,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
     match parse_command(text) {
         Quit -> {
             kill_all_shells()
+            close_all_servers()
             return quit(m)
         },
         Clear -> {

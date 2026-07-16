@@ -95,6 +95,20 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         // in one batch fan out to concurrent goroutines; everything else
         // runs in order on this one.
         st.push_assistant_calls(reply_text, calls)
+        // Esc may have landed while the model was streaming this tool request.
+        // Skip running the batch so a tool the user pre-approved this turn does
+        // not execute after they asked to stop, but still record a result for
+        // each call so the conversation stays balanced for a resume.
+        if st.interrupted() {
+            let c = 0
+            while c < calls.len() {
+                st.push_tool_result(calls[c].id, calls[c].name, "(interrupted by user before running)")
+                c = c + 1
+            }
+            st.emit(DisplayEvent.Info("Interrupted"))
+            _end_turn(st)
+            return
+        }
         let fanout = _count_dispatch(calls) >= 2
         let fanout_results = ToolResults.new(calls.len())
         if fanout {

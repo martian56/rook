@@ -11,6 +11,7 @@ import "github.com/martian56/aviary" { complete }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message, ToolCall }
 import "./state" { AgentState, DisplayEvent }
+import "./session" { request_timeout_ms }
 import "../tools/registry" { tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label }
 import "../tools/preview" { change_preview, append_preview }
 import "../tools/permissions" { Verdict, check_permission }
@@ -211,6 +212,12 @@ fun _sub_request(
     }
     if base_url != "" {
         req = req.base(base_url)
+    }
+    // A subagent on a slow model (Sakana's two-hour idle allowance) needs the
+    // same timeout the main turn applies, or it fails at the 120s default.
+    let request_timeout = request_timeout_ms(model, 0)
+    if request_timeout > 0 {
+        req = req.timeout(request_timeout)
     }
     let ts = tools()
     let t = 0

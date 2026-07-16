@@ -112,6 +112,22 @@ fun call_mcp_tool(name: String, arguments: String) -> String {
     }
 }
 
+// Close every connected MCP server, killing its child process, so quitting
+// rook does not leave orphaned server subprocesses. Safe when none connected.
+fun close_all_servers() {
+    MANAGER.lock.lock()
+    let i = 0
+    while i < MANAGER.clients.len() {
+        MANAGER.clients[i].close()
+        i = i + 1
+    }
+    let empty: List<McpClient> = []
+    MANAGER.clients = empty
+    MANAGER.started = false
+    MANAGER.lock.unlock()
+    return
+}
+
 // A snapshot of the connected clients, for the /mcp command.
 fun connected_clients() -> List<McpClient> {
     ensure_started()

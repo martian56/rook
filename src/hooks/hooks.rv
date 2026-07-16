@@ -251,6 +251,14 @@ fun _run_with_shell(
 // Shells report a missing or non-executable command as a normal non-zero
 // exit, not a process spawn error. Recognize the portable exit codes and the
 // Windows diagnostic so these failures follow the same configurable path.
+//
+// A launch failure fails open (the tool still runs) unless the hook is
+// fail_closed, so the detection must not fire on a hook that ran and chose to
+// exit non-zero. Windows gives the same exit code (1) to a missing command and
+// a deliberate `exit 1`, so only cmd's exact "is not recognized" line is safe
+// to treat as a launch failure. A generic "access is denied" is dropped: it is
+// a plausible reason string for a guard that is deliberately blocking, and
+// misreading it as a launch failure would let the tool run unguarded.
 fun _shell_launch_error(out: Output) -> String {
     let detail = "${out.stderr}\n${out.stdout}".to_lower()
     if out.code == 127 && detail.contains("not found") {
@@ -261,9 +269,6 @@ fun _shell_launch_error(out: Output) -> String {
     }
     if detail.contains("is not recognized as an internal or external command") {
         return "command was not found"
-    }
-    if detail.contains("access is denied") {
-        return "command could not be executed"
     }
     return ""
 }
