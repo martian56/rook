@@ -2,6 +2,7 @@
 // it. The transcript (Entry list) is the display; this is what the model
 // actually sees.
 
+import std/env { os_name }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message }
 import "../agents/dir" { roots }
@@ -20,6 +21,15 @@ const HIERARCHY_PROMPT: String = " Instruction hierarchy: follow rook system rul
 // without assembling a full request.
 fun base_system_prompt() -> String {
     return "${SYSTEM_PROMPT}${HIERARCHY_PROMPT}"
+}
+
+// A line naming the host OS and the shell run_command/run_background use, so
+// the model sends the right syntax (cmd.exe on Windows, not POSIX shell).
+fun platform_note() -> String {
+    if os_name() == "windows" {
+        return " You are on Windows: run_command and run_background run through cmd.exe (cmd /c), so use Windows shell syntax (dir, type, `&` to chain), not POSIX syntax like `ls`, `pwd`, or `&&`."
+    }
+    return " You are on ${os_name()}: run_command and run_background run through the POSIX shell (sh -c)."
 }
 
 // Appended to the prompt in plan mode: research only, propose a plan.
@@ -44,7 +54,7 @@ fun build_request(
         plan_note = PLAN_PROMPT
     }
     let req = ChatRequest.new(model).system(
-        "${base_system_prompt()}${plan_note}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}",
+        "${base_system_prompt()}${platform_note()}${plan_note}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}",
     )
     let i = 0
     while i < history.len() {

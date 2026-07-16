@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.36
+
+- Fixed the `file_tree` tool: it was offered to the model but never wired to run, so calling it returned "unknown tool". It now executes.
+- `read_shell` waits briefly for a just-started shell's first output, so reading a dev server right after starting it returns its startup lines (including the URL) instead of nothing.
+- Told the model its operating system and which shell `run_command` uses, so it stops sending POSIX syntax to cmd.exe on Windows.
+
 ## 0.3.35
 
 - Added `rook --version` (and `-V`) to print the installed version, and showed it on the welcome screen. The version is kept in step with rv.toml by a test.

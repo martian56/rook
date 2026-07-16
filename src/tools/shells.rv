@@ -9,7 +9,7 @@
 // while the UI reads from the main loop.
 
 import std/string
-import std/sync { Mutex, mutex }
+import std/sync { Mutex, mutex, sleep_millis }
 import std/env { os_name }
 import std/json { JsonValue }
 import std/time { now_millis }
@@ -247,6 +247,39 @@ fun list_shells() -> List<ShellInfo> {
     return out
 }
 
+// How long the first read of a still-silent shell waits for output, and the
+// poll step. A freshly started process (a dev server announcing its URL) has
+// usually not printed by the time the agent reads right after run_background,
+// so without this the first read returns "(no new output)" and the agent is
+// left to guess.
+const FIRST_READ_WAIT_MS: Int = 2500
+const FIRST_READ_POLL_MS: Int = 100
+
+// Wait briefly for a shell's first output, but only while it has produced
+// nothing, been read nothing, and is still running. An established or exited
+// shell returns at once, so a routine incremental read never stalls.
+fun _await_first_output(id: Int) {
+    let waited = 0
+    while waited < FIRST_READ_WAIT_MS {
+        refresh()
+        STORE.lock.lock()
+        let at = _index_of(id)
+        if at < 0 {
+            STORE.lock.unlock()
+            return
+        }
+        let s = STORE.shells[at]
+        let quiet_fresh = s.read_pos == 0 && s.output.length() == 0 && !s.done
+        STORE.lock.unlock()
+        if !quiet_fresh {
+            return
+        }
+        sleep_millis(FIRST_READ_POLL_MS)
+        waited = waited + FIRST_READ_POLL_MS
+    }
+    return
+}
+
 // The read tool: whatever shell `id` wrote since the last read, behind a
 // status header. Reading advances the shell's read position; a quiet shell
 // answers "(no new output)".
@@ -255,6 +288,7 @@ fun read_shell(id_text: String) -> String {
     if id < 0 {
         return "error: read_shell needs a shell id number"
     }
+    _await_first_output(id)
     refresh()
     STORE.lock.lock()
     let at = _index_of(id)

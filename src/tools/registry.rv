@@ -246,6 +246,9 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
     if call.name == "list_dir" {
         return list_dir(arg(a, "path"))
     }
+    if call.name == "file_tree" {
+        return file_tree(arg(a, "path"), arg(a, "depth"))
+    }
     if call.name == "grep" {
         return grep(arg(a, "pattern"), arg(a, "path"), arg(a, "glob"))
     }
