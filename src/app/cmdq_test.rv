@@ -1,7 +1,7 @@
 import std/test { assert_true, assert_eq_str }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts }
 
-fun test_cmd_queue_round_trips_and_clears() {
+fun test_cmd_notices_round_trip_and_clear() {
     // Clear any residue so the test does not depend on ordering.
     let _ = drain_cmd_notices()
     push_cmd_notice("one")
@@ -12,4 +12,17 @@ fun test_cmd_queue_round_trips_and_clears() {
     assert_eq_str(out[1], "two\nthree")
     // A second drain finds nothing.
     assert_true(drain_cmd_notices().len() == 0)
+}
+
+fun test_cmd_prompts_round_trip_and_clear() {
+    let _ = drain_cmd_prompts()
+    push_cmd_prompt("run this")
+    let out = drain_cmd_prompts()
+    assert_true(out.len() == 1)
+    assert_eq_str(out[0], "run this")
+    assert_true(drain_cmd_prompts().len() == 0)
+    // Prompts and notices are separate queues.
+    push_cmd_prompt("p")
+    assert_true(drain_cmd_notices().len() == 0)
+    assert_true(drain_cmd_prompts().len() == 1)
 }
