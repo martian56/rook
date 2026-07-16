@@ -73,6 +73,7 @@ fun test_subagent_runs_a_tool_round_and_returns_only_the_answer() {
     let st = AgentState.new()
     let got = run_subagent(
         st,
+        "d1",
         open_agent("explorer"),
         "what do the notes say?",
         "custom/local",
@@ -93,13 +94,13 @@ fun test_subagent_runs_a_tool_round_and_returns_only_the_answer() {
     let i = 0
     while i < snap.events.len() {
         match snap.events[i] {
-            AgentStarted(name) -> {
+            AgentStarted(id, name) -> {
                 seen = "${seen}[start ${name}]"
             },
-            AgentTool(agent, name, result) -> {
+            AgentTool(id, agent, name, result) -> {
                 seen = "${seen}[${agent} › ${name}]"
             },
-            AgentFinished(name, used) -> {
+            AgentFinished(id, name, used) -> {
                 seen = "${seen}[done ${name} ${used}]"
             },
             _ -> {},
@@ -128,6 +129,7 @@ fun test_allowlist_refuses_an_off_limits_tool() {
     }
     let got = run_subagent(
         st,
+        "d2",
         scoped,
         "read the notes",
         "custom/local",
@@ -140,7 +142,7 @@ fun test_allowlist_refuses_an_off_limits_tool() {
     let i = 0
     while i < snap.events.len() {
         match snap.events[i] {
-            AgentTool(agent, name, result) -> {
+            AgentTool(id, agent, name, result) -> {
                 seen = "${seen}[${agent} › ${name} => ${result}]"
             },
             _ -> {},

@@ -20,7 +20,11 @@ enum Entry {
 
 // Where a running subagent's block sits in the entries, so new tool rows
 // insert under the right header and the block can collapse when it ends.
+// A running subagent's rows in the transcript. `id` is the dispatch's unique
+// tool-call id, so two dispatches of the same subagent name stay separate
+// blocks instead of collapsing into each other.
 struct AgentBlock {
+    id: String,
     name: String,
     header: Int,
     tools: Int,

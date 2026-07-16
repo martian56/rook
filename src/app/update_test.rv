@@ -48,11 +48,11 @@ fun test_parallel_agent_rows_group_under_their_own_headers() {
     apply_events(
         m,
         [
-            DisplayEvent.AgentStarted("explorer"),
-            DisplayEvent.AgentStarted("reviewer"),
-            DisplayEvent.AgentTool("explorer", "grep(x)", "2 hits"),
-            DisplayEvent.AgentTool("reviewer", "read_file(a)", "ok"),
-            DisplayEvent.AgentTool("explorer", "read_file(b)", "ok"),
+            DisplayEvent.AgentStarted("e1", "explorer"),
+            DisplayEvent.AgentStarted("r1", "reviewer"),
+            DisplayEvent.AgentTool("e1", "explorer", "grep(x)", "2 hits"),
+            DisplayEvent.AgentTool("r1", "reviewer", "read_file(a)", "ok"),
+            DisplayEvent.AgentTool("e1", "explorer", "read_file(b)", "ok"),
         ],
     )
     // Interleaved events, but each agent's rows sit under its own header.
@@ -67,16 +67,36 @@ fun test_finished_agents_collapse_to_their_header() {
     apply_events(
         m,
         [
-            DisplayEvent.AgentStarted("explorer"),
-            DisplayEvent.AgentStarted("reviewer"),
-            DisplayEvent.AgentTool("explorer", "grep(x)", "2 hits"),
-            DisplayEvent.AgentTool("reviewer", "read_file(a)", "ok"),
-            DisplayEvent.AgentTool("explorer", "read_file(b)", "ok"),
-            DisplayEvent.AgentFinished("explorer", 2),
-            DisplayEvent.AgentFinished("reviewer", 1),
+            DisplayEvent.AgentStarted("e1", "explorer"),
+            DisplayEvent.AgentStarted("r1", "reviewer"),
+            DisplayEvent.AgentTool("e1", "explorer", "grep(x)", "2 hits"),
+            DisplayEvent.AgentTool("r1", "reviewer", "read_file(a)", "ok"),
+            DisplayEvent.AgentTool("e1", "explorer", "read_file(b)", "ok"),
+            DisplayEvent.AgentFinished("e1", "explorer", 2),
+            DisplayEvent.AgentFinished("r1", "reviewer", 1),
         ],
     )
     assert_eq_str(tags(m), "|h:explorer:done · 2 tools|h:reviewer:done · 1 tool")
+    assert_true(m.open_agents.len() == 0)
+}
+
+fun test_same_name_parallel_subagents_keep_separate_blocks() {
+    let m = chat_init()
+    apply_events(
+        m,
+        [
+            DisplayEvent.AgentStarted("d1", "researcher"),
+            DisplayEvent.AgentStarted("d2", "researcher"),
+            DisplayEvent.AgentTool("d1", "researcher", "grep(a)", "hit"),
+            DisplayEvent.AgentTool("d2", "researcher", "read(b)", "ok"),
+            DisplayEvent.AgentFinished("d1", "researcher", 1),
+            DisplayEvent.AgentFinished("d2", "researcher", 1),
+        ],
+    )
+    // Two dispatches of the same subagent name are matched by id, so each keeps
+    // its own block and collapses to its own header instead of one swallowing
+    // the other's rows.
+    assert_eq_str(tags(m), "|h:researcher:done · 1 tool|h:researcher:done · 1 tool")
     assert_true(m.open_agents.len() == 0)
 }
 
@@ -142,9 +162,9 @@ fun test_the_dispatch_row_lands_after_the_collapsed_block() {
     apply_events(
         m,
         [
-            DisplayEvent.AgentStarted("explorer"),
-            DisplayEvent.AgentTool("explorer", "grep(x)", "2 hits"),
-            DisplayEvent.AgentFinished("explorer", 1),
+            DisplayEvent.AgentStarted("e1", "explorer"),
+            DisplayEvent.AgentTool("e1", "explorer", "grep(x)", "2 hits"),
+            DisplayEvent.AgentFinished("e1", "explorer", 1),
             DisplayEvent.ToolRan("dispatch(explorer)", "found it in src/x.rv"),
         ],
     )

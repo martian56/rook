@@ -25,9 +25,9 @@ enum DisplayEvent {
     Chunk(String),
     ToolRan(String, String),
     Info(String),
-    AgentStarted(String),
-    AgentTool(String, String, String),
-    AgentFinished(String, Int),
+    AgentStarted(String, String),
+    AgentTool(String, String, String, String),
+    AgentFinished(String, String, Int),
 }
 
 // A drained batch plus the turn's status, read under the lock and handed to
