@@ -1,6 +1,6 @@
 [package]
 name = "rook"
-version = "0.3.29"
+version = "0.3.30"
 edition = "v2"
 
 [dependencies]
@@ -8,6 +8,13 @@ edition = "v2"
 "github.com/martian56/perch" = "v0.1.0"
 "github.com/martian56/wingspan" = "v0.1.0"
 "github.com/martian56/aviary" = "v0.3.0"
+
+[workspace]
+members = ["evals"]
+default-member = "rook"
+
+[commands]
+behavior-evals = { package = "rook-behavior-evals", args = [] }
 
 [dist]
 display_name = "rook"

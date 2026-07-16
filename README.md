@@ -520,14 +520,17 @@ src/
 ## Development
 
 ```
-rvpm test    # 42 tests: tools, config, commands, and end-to-end turns
-             # (streaming, tool calls, and approval) against a local server
+rvpm test
+rvpm run behavior-evals
 rvpm build
 rvpm fmt
 ```
 
 The end-to-end tests drive a full turn against an in-process server posing
-as a model, so the suite needs no network and no keys.
+as a model, so the suite needs no network and no keys. The behavior evals
+run separately with scripted model responses and check exact tool traces
+for inspection before editing, plan mode, permission recovery, instruction
+conflicts, commit restraint, and verification after changes.
 
 ## Known limits
 
