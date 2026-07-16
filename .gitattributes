@@ -1,5 +1,5 @@
 * text=auto
-*.rv text eol=lf
+*.rv text eol=lf linguist-language=Rust
 *.c text eol=lf
 *.h text eol=lf
 *.md text eol=lf
