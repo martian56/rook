@@ -2,7 +2,8 @@ import std/string
 import std/test { assert_true, assert_eq_int, assert_eq_str }
 import std/time { sleep_millis }
 import std/env { os_name }
-import "./shells" { ShellInfo, run_background, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note, cap_output, kill_all_shells, Capped }
+import std/json { JsonValue, parse }
+import "./shells" { ShellInfo, run_background, run_background_with_limit, parse_background_shell_limit, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note, cap_output, kill_all_shells, Capped }
 
 fun test_background_command_returns_an_id_immediately() {
     let before = shell_count()
@@ -192,4 +193,40 @@ fun test_registry_moves_a_shell_from_running_to_exited() {
         }
     }
     assert_true(done)
+}
+
+fun test_running_shell_limit_refuses_the_next_process() {
+    kill_all_shells()
+    let cmd = "sleep 30"
+    if os_name() == "windows" {
+        cmd = "ping -n 31 127.0.0.1 >nul"
+    }
+    let first = run_background_with_limit(cmd, 2)
+    let second = run_background_with_limit(cmd, 2)
+    let refused = run_background_with_limit(cmd, 2)
+    assert_true(first.starts_with("started shell "))
+    assert_true(second.starts_with("started shell "))
+    assert_true(refused.contains("2/2 running"))
+    assert_true(refused.contains("list_shells"))
+    assert_true(refused.contains("kill_shell"))
+    kill_all_shells()
+}
+
+fun test_background_shell_limit_setting_parses_nested_and_flat_values() {
+    assert_eq_int(
+        parse_background_shell_limit(_json("{\"run_background\":{\"max_running\":7}}")),
+        7,
+    )
+    assert_eq_int(parse_background_shell_limit(_json("{\"max_background_shells\":\"3\"}")), 3)
+    assert_eq_int(
+        parse_background_shell_limit(_json("{\"run_background\":{\"max_running\":0}}")),
+        0,
+    )
+}
+
+fun _json(text: String) -> JsonValue {
+    return match parse(text) {
+        Ok(v) -> v,
+        Err(e) -> JsonValue.Null,
+    }
 }
