@@ -461,7 +461,10 @@ connect on first use, or when you run `/mcp connect`.
   reads.
 - **Prompts** are server-provided templates you invoke with
   `/mcp prompt <server> <name> [key=value ...]`; the expanded prompt runs
-  as a turn.
+  as a turn. Values may be quoted strings or typed JSON, for example
+  `query="error handling"`, `limit=20`, `archived=false`, or
+  `files=["src/a.rv","src/b.rv"]`. For a complete object, use
+  `/mcp prompt <server> <name> --json '{"limit":20}'`.
 
 `/mcp` shows the configured servers, whether each connected, and what
 each provides; `/mcp connect` starts the connections in the background.

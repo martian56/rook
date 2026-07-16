@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.26
+
+- Added quoted strings, typed JSON values, and visible parse errors to `/mcp prompt` arguments.
+
 ## 0.3.25
 
 - Limited concurrent background shells to five by default, with a configurable maximum and actionable refusal message.
