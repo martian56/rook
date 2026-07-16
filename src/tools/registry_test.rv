@@ -12,6 +12,29 @@ fun test_all_tools_are_defined() {
     assert_eq_int(tools().len(), 21)
 }
 
+// file_tree was advertised to the model and had a display label but no
+// execution arm, so calling it returned "unknown tool". Guard the class:
+// dispatching a routed tool (empty args take each one's validation-error
+// path) must never fall through to the unknown-tool error.
+fun test_advertised_tools_are_dispatched() {
+    let names = [
+        "read_file",
+        "list_dir",
+        "file_tree",
+        "grep",
+        "set_todos",
+        "list_shells",
+        "read_shell",
+        "ask_user",
+        "dispatch",
+    ]
+    let i = 0
+    while i < names.len() {
+        assert_false(dispatch(call(names[i], "{}")).starts_with("error: unknown tool"))
+        i = i + 1
+    }
+}
+
 fun test_approval_policy() {
     assert_true(needs_approval("write_file"))
     assert_true(needs_approval("edit_file"))
