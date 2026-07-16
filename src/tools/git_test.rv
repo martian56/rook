@@ -21,6 +21,14 @@ fun test_diff_runs_without_error() {
     assert_true(!staged.starts_with("error:"))
 }
 
+fun test_diff_rejects_a_path_outside_the_workspace() {
+    // The pathspec is confined, so an escaping path is refused before git runs.
+    // resolve_path rejects it with an "error: path ..." message before git runs.
+    let out = git_diff("", "../outside.txt")
+    assert_true(out.starts_with("error:"))
+    assert_true(out.contains("workspace") || out.contains("symlink"))
+}
+
 fun test_commit_rejects_an_empty_message() {
     assert_true(git_commit("").starts_with("error:"))
     assert_true(git_commit("   ").starts_with("error:"))

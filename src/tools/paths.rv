@@ -2,6 +2,7 @@
 // one workspace, so tools accept only relative paths that stay inside it.
 
 import std/string
+import std/env { os_name }
 import std/path { normalize }
 import std/fs { exists, is_symlink }
 
@@ -33,7 +34,43 @@ fun resolve_path(raw: String, fallback: String) -> ResolvedPath {
     if _has_symlink_segment(path) {
         return _err("path crosses a symlink and is not allowed: ${raw}")
     }
+    if os_name() == "windows" && _has_reserved_name(path) {
+        return _err("path uses a Windows reserved device name: ${raw}")
+    }
     return ResolvedPath { ok: true, path, error: "" }
+}
+
+// Whether any segment of `path` is a Windows reserved device name (con, prn,
+// aux, nul, com1..com9, lpt1..lpt9), with or without an extension. These map to
+// devices regardless of directory on Windows, so opening one can hang or
+// silently discard data.
+fun _has_reserved_name(path: String) -> Bool {
+    let segs = path.split("/")
+    let i = 0
+    while i < segs.len() {
+        if _is_reserved(segs[i]) {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _is_reserved(seg: String) -> Bool {
+    let stem = seg
+    let dot = stem.index_of(".")
+    if dot >= 0 {
+        stem = stem.substring(0, dot)
+    }
+    let s = stem.to_lower()
+    if s == "con" || s == "prn" || s == "aux" || s == "nul" {
+        return true
+    }
+    if s.length() == 4 && (s.starts_with("com") || s.starts_with("lpt")) {
+        let d = s.substring(3, 4)
+        return d == "1" || d == "2" || d == "3" || d == "4" || d == "5" || d == "6" || d == "7" || d == "8" || d == "9"
+    }
+    return false
 }
 
 fun display_path(raw: String, fallback: String) -> String {
