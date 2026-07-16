@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.21
+
+- Added structured `ask_user` options with array/object parsing while keeping comma-separated options as a fallback.
+
 ## 0.3.20
 
 - Skipped common build, dependency, cache, and VCS directories during grep unless the ignored directory is searched directly.

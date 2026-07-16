@@ -146,7 +146,7 @@ fun ask_handler(req: Request) -> Response {
     ask_hits = ask_hits + 1
     if ask_hits == 1 {
         return Response.text(
-            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"q1\",\"function\":{\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Which path?\\\",\\\"options\\\":\\\"fast, safe\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"q1\",\"function\":{\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Which path?\\\",\\\"options\\\":[\\\"src only\\\",\\\"src, tests, and examples\\\",\\\"whole repository\\\"]}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         )
     }
     return Response.text(
@@ -363,8 +363,8 @@ fun test_ask_user_round_trips_the_pick() {
         }
     })
     let got = e2e_drain(st)
-    assert_true(got.contains("[info you chose: safe]"))
-    assert_true(got.contains("[ask_user(Which path?) => The user chose: safe]"))
+    assert_true(got.contains("[info you chose: src, tests, and examples]"))
+    assert_true(got.contains("[ask_user(Which path?) => The user chose: src, tests, and examples]"))
     assert_true(got.contains("Going the safe way."))
     // user, assistant(tool_calls), tool_result, assistant(final).
     assert_eq_int(st.messages().len(), 4)
