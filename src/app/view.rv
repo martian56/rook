@@ -17,6 +17,7 @@ import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
+import "../version" { version }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
@@ -885,7 +886,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
         }
         below = top + art.len() + 1
     }
-    f.buf.set_string(text_x, below, "a coding agent for your terminal", m.theme.dim)
+    f.buf.set_string(text_x, below, "a coding agent for your terminal · v${version()}", m.theme.dim)
     f.buf.set_string(text_x, below + 1, "model: ${m.model}", m.theme.dim)
 
     let tips = "Esc interrupts a turn · ctrl+c twice to quit."

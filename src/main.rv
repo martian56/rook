@@ -6,17 +6,37 @@
 // PageUp/PageDown or the mouse wheel scroll. Commands: /model /key /clear /help /quit.
 
 import std/io { println }
+import std/env { args }
 import "github.com/martian56/plumage" { App, run }
 import "./app/model" { Chat, chat_init }
 import "./app/update" { chat_update }
 import "./app/view" { chat_view }
 import "./hooks/hooks" { fire_hooks }
+import "./version" { version }
 
 fun main() {
+    if _wants_version() {
+        println("rook ${version()}")
+        return
+    }
     // Let session-start hooks run before the UI takes over the terminal.
     fire_hooks("session-start", "", "")
     let app = App { init: chat_init, update: chat_update, view: chat_view, tick_ms: 45 }
     if !run<Chat>(app) {
         println("rook needs an interactive terminal; run it from a real console")
     }
+}
+
+// Whether the command line asks for the version, so `rook --version` (or -V)
+// prints it and exits instead of starting the UI.
+fun _wants_version() -> Bool {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "--version" || a[i] == "-V" {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }
