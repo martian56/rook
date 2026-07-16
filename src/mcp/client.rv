@@ -11,7 +11,6 @@ import std/fs { exists, remove_file }
 import std/sync { sleep_millis }
 import std/time { now_millis }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list, is_null }
-import "./framing" { LineBuffer }
 import "./transport" { McpConn, RpcResponse }
 
 const PROTOCOL: String = "2024-11-05"
@@ -58,7 +57,12 @@ impl McpClient {
     fun call(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
         return match self.conn {
             Some(c) -> c.request(method, params, timeout_ms),
-            None -> RpcResponse { ok: false, error: "not connected", result: JsonValue.Null },
+            None -> RpcResponse {
+                ok: false,
+                error: "not connected",
+                result: JsonValue.Null,
+                id: 0 - 1,
+            },
         }
     }
 
@@ -92,7 +96,7 @@ fun connect_with_env_file(
                 _remove_env_file(env_file)
                 _failed(name, "Windows environment launcher did not consume its handoff file")
             } else {
-                _handshake(name, McpConn { child, buf: LineBuffer.new(), next_id: 1 })
+                _handshake(name, McpConn.new(child))
             }
         },
         Err(e) -> {

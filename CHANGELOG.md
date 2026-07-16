@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.38
+
+- MCP: a server connection is used under a per-connection lock and matches each response to its request id, so parallel subagents calling the same server no longer swap or drop results, and a late reply after a timeout is discarded instead of answering the next call. (#228)
+- MCP: connecting publishes the client list in one step and hands out a copy, so a turn during a background connect sees either no servers or all of them, never a half-connected list. (#236)
+
 ## 0.3.37
 
 Correctness and safety fixes from a full audit of the codebase:

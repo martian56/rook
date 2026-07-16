@@ -6,7 +6,7 @@
 // response.
 
 import std/string
-import std/sync { sleep_millis }
+import std/sync { Mutex, mutex, sleep_millis }
 import std/json { JsonValue, parse, stringify }
 import std/process { Child }
 import "github.com/martian56/aviary/jsonutil" { field, as_str }
@@ -35,11 +35,14 @@ fun build_notification(method: String, params: String) -> String {
     return head.concat(",\"params\":").concat(params).concat("}\n")
 }
 
-// A parsed JSON-RPC response: ok with a result, or an error message.
+// A parsed JSON-RPC response: ok with a result, or an error message. `id`
+// echoes the request id so the reader can match it (-1 when the line carried
+// no numeric id, or for a locally synthesized error).
 struct RpcResponse {
     ok: Bool,
     error: String,
     result: JsonValue,
+    id: Int,
 }
 
 // Parse one message line. A response (carries result or error) yields Some; a
@@ -53,19 +56,34 @@ fun parse_message(line: String) -> Option<RpcResponse> {
 }
 
 fun _from_value(j: JsonValue) -> Option<RpcResponse> {
+    let id = _resp_id(j)
     match j.get("error") {
         Some(e) -> {
-            return Some(RpcResponse { ok: false, error: _err_text(e), result: JsonValue.Null })
+            return Some(RpcResponse { ok: false, error: _err_text(e), result: JsonValue.Null, id })
         },
         None -> {},
     }
     match j.get("result") {
         Some(r) -> {
-            return Some(RpcResponse { ok: true, error: "", result: r })
+            return Some(RpcResponse { ok: true, error: "", result: r, id })
         },
         None -> {},
     }
     return None
+}
+
+// The numeric id of a response, or -1 when absent or not a number.
+fun _resp_id(j: JsonValue) -> Int {
+    match j.get("id") {
+        Some(v) -> {
+            return match v.as_int() {
+                Some(n) -> n,
+                None -> 0 - 1,
+            }
+        },
+        None -> {},
+    }
+    return 0 - 1
 }
 
 fun _err_text(e: JsonValue) -> String {
@@ -76,16 +94,32 @@ fun _err_text(e: JsonValue) -> String {
     return msg
 }
 
-// A live connection to an MCP server subprocess.
+// A live connection to an MCP server subprocess. `lock` serializes requests:
+// the manager shares one connection per server, and parallel subagents can
+// call it at once, so a request must hold the lock across its write and read
+// to keep only one request outstanding and its response matched by id.
 struct McpConn {
     child: Child,
     buf: LineBuffer,
     next_id: Int,
+    lock: Mutex,
 }
 
 impl McpConn {
-    // Send a request and wait for its response, up to timeout_ms.
+    fun new(child: Child) -> McpConn {
+        return McpConn { child, buf: LineBuffer.new(), next_id: 1, lock: mutex() }
+    }
+
+    // Send a request and wait for its response, up to timeout_ms. Serialized
+    // per connection so concurrent callers cannot interleave on one stdin.
     fun request(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
+        self.lock.lock()
+        let resp = self._request_locked(method, params, timeout_ms)
+        self.lock.unlock()
+        return resp
+    }
+
+    fun _request_locked(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
         let id = self.next_id
         self.next_id = self.next_id + 1
         if !self.child.write_stdin(build_request(id, method, params)) {
@@ -93,23 +127,28 @@ impl McpConn {
                 ok: false,
                 error: "could not write to the server (it may have exited)",
                 result: JsonValue.Null,
+                id: 0 - 1,
             }
         }
-        return self.read_response(timeout_ms)
+        return self.read_response(id, timeout_ms)
     }
 
     // Send a notification; nothing comes back.
     fun notify(self, method: String, params: String) {
+        self.lock.lock()
         let ignored = self.child.write_stdin(build_notification(method, params))
+        self.lock.unlock()
         return
     }
 
-    // Read until a response arrives, the server exits, or the timeout passes.
-    fun read_response(self, timeout_ms: Int) -> RpcResponse {
+    // Read until the response for `want_id` arrives, the server exits, or the
+    // timeout passes. Responses for a different id (a stale reply to an earlier
+    // request that timed out) are discarded rather than returned.
+    fun read_response(self, want_id: Int, timeout_ms: Int) -> RpcResponse {
         let waited = 0
         while waited < timeout_ms {
             self.buf.push(self.child.read_stdout())
-            match self._take_response() {
+            match self._take_matching(want_id) {
                 Some(resp) -> {
                     return resp
                 },
@@ -118,7 +157,7 @@ impl McpConn {
             if !self.child.running() {
                 // The response and the exit can race; drain once more.
                 self.buf.push(self.child.read_stdout())
-                match self._take_response() {
+                match self._take_matching(want_id) {
                     Some(resp) -> {
                         return resp
                     },
@@ -127,6 +166,7 @@ impl McpConn {
                             ok: false,
                             error: "the server exited before responding",
                             result: JsonValue.Null,
+                            id: 0 - 1,
                         }
                     },
                 }
@@ -138,12 +178,15 @@ impl McpConn {
             ok: false,
             error: "the server did not respond within ${timeout_ms}ms",
             result: JsonValue.Null,
+            id: 0 - 1,
         }
     }
 
-    // The next response among the buffered complete lines, skipping blank
-    // lines, notifications, and non-JSON noise. None when none is buffered.
-    fun _take_response(self) -> Option<RpcResponse> {
+    // The next buffered response matching `want_id`, skipping blank lines,
+    // notifications, non-JSON noise, and responses carrying a different id. A
+    // response with no id (-1) is accepted defensively. None when the buffer
+    // holds no matching response yet.
+    fun _take_matching(self, want_id: Int) -> Option<RpcResponse> {
         let scanning = true
         while scanning {
             match self.buf.next_line() {
@@ -151,7 +194,9 @@ impl McpConn {
                     if line.trim() != "" {
                         match parse_message(line) {
                             Some(resp) -> {
-                                return Some(resp)
+                                if resp.id == want_id || resp.id == 0 - 1 {
+                                    return Some(resp)
+                                }
                             },
                             None -> {},
                         }
