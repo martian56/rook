@@ -66,6 +66,50 @@ fun test_grep_glob_filters_files() {
     return
 }
 
+fun test_grep_skips_noise_directories_by_default() {
+    create_dir_all("_rook_gr6/src")
+    create_dir_all("_rook_gr6/target/debug")
+    create_dir_all("_rook_gr6/node_modules/pkg")
+    create_dir_all("_rook_gr6/.git")
+    fs_write("_rook_gr6/src/main.rv", "needle in source")
+    fs_write("_rook_gr6/target/debug/app.txt", "needle in build output")
+    fs_write("_rook_gr6/node_modules/pkg/index.js", "needle in dependency")
+    fs_write("_rook_gr6/.git/config", "needle in metadata")
+
+    let out = grep("needle", "_rook_gr6", "")
+    assert_true(out.contains("src/main.rv"))
+    assert_true(!out.contains("target"))
+    assert_true(!out.contains("node_modules"))
+    assert_true(!out.contains(".git"))
+
+    remove_file("_rook_gr6/src/main.rv")
+    remove_file("_rook_gr6/target/debug/app.txt")
+    remove_file("_rook_gr6/node_modules/pkg/index.js")
+    remove_file("_rook_gr6/.git/config")
+    remove_dir("_rook_gr6/src")
+    remove_dir("_rook_gr6/target/debug")
+    remove_dir("_rook_gr6/target")
+    remove_dir("_rook_gr6/node_modules/pkg")
+    remove_dir("_rook_gr6/node_modules")
+    remove_dir("_rook_gr6/.git")
+    remove_dir("_rook_gr6")
+    return
+}
+
+fun test_grep_can_search_explicit_ignored_directory() {
+    create_dir_all("_rook_gr7/target")
+    fs_write("_rook_gr7/target/out.txt", "needle in build output")
+
+    let out = grep("needle", "_rook_gr7/target", "")
+    assert_true(out.contains("target/out.txt"))
+    assert_true(out.contains("needle in build output"))
+
+    remove_file("_rook_gr7/target/out.txt")
+    remove_dir("_rook_gr7/target")
+    remove_dir("_rook_gr7")
+    return
+}
+
 fun test_grep_rejects_workspace_escape() {
     assert_true(grep("needle", "..", "").contains("workspace"))
 }
