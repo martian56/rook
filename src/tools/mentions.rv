@@ -133,9 +133,17 @@ fun fuzzy_match(query: String, paths: List<String>) -> List<String> {
     return out
 }
 
-// Attach every real file referenced by an @token in `text`, appended under
-// its path. Returns `text` unchanged when nothing valid is referenced.
+// Attach real files referenced by @tokens in `text`, capped as a whole so a
+// prompt cannot balloon from many mentions. Returns `text` unchanged when
+// nothing valid is referenced.
 const MAX_ATTACH: Int = 20000
+const MAX_ATTACH_TOTAL: Int = 60000
+const MAX_ATTACH_FILES: Int = 10
+
+struct Attachment {
+    body: String,
+    used: Int,
+}
 
 fun expand_mentions(text: String) -> String {
     let paths = mentioned_paths(text)
@@ -143,10 +151,23 @@ fun expand_mentions(text: String) -> String {
         return text
     }
     let out = text
+    let omitted: List<String> = []
+    let used = 0
+    let attached = 0
     let i = 0
     while i < paths.len() {
-        out = "${out}\n\n--- ${paths[i]} ---\n${_read_capped(paths[i])}"
+        if attached >= MAX_ATTACH_FILES || used >= MAX_ATTACH_TOTAL {
+            omitted.push(paths[i])
+        } else {
+            let body = _read_budgeted(paths[i], MAX_ATTACH_TOTAL - used)
+            out = "${out}\n\n--- ${paths[i]} ---\n${body.body}"
+            used = used + body.used
+            attached = attached + 1
+        }
         i = i + 1
+    }
+    if omitted.len() > 0 {
+        out = out.concat(_omitted_note(omitted))
     }
     return out
 }
@@ -164,6 +185,34 @@ fun mentioned_paths(text: String) -> List<String> {
                 out.push(r.path)
             }
         }
+        i = i + 1
+    }
+    return out
+}
+
+fun _read_budgeted(path: String, remaining: Int) -> Attachment {
+    let body = match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "(could not read ${path})",
+    }
+    let cap = MAX_ATTACH
+    if remaining < cap {
+        cap = remaining
+    }
+    if body.length() > cap {
+        return Attachment { body: "${body.substring(0, cap)}\n... (truncated)", used: cap }
+    }
+    return Attachment { body, used: body.length() }
+}
+
+fun _omitted_note(paths: List<String>) -> String {
+    let out = "\n\n--- mention attachments omitted ---\n"
+    out = out.concat(
+        "Omitted ${paths.len()} file(s) after the mention attachment budget. Use read_file for any omitted file you need.\n",
+    )
+    let i = 0
+    while i < paths.len() {
+        out = out.concat("- ${paths[i]}\n")
         i = i + 1
     }
     return out

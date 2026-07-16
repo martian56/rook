@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.22
+
+- Added total character and file-count budgets for `@` file mention attachments with an omitted-files notice.
+
 ## 0.3.21
 
 - Added structured `ask_user` options with array/object parsing while keeping comma-separated options as a fallback.
