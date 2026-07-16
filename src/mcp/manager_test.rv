@@ -193,6 +193,12 @@ fun test_status_from_shows_each_server_state() {
         ServerSpec { name: "fs", command: "x", args: no_args, env: no_args },
         ServerSpec { name: "bad", command: "y", args: no_args, env: no_args },
         ServerSpec { name: "later", command: "z", args: no_args, env: no_args },
+        ServerSpec {
+            name: "invalid",
+            command: "z",
+            args: no_args,
+            env: ["TOKEN_WITHOUT_VALUE"],
+        },
     ]
     let text = status_from(specs, [connected, failed])
     assert_true(text.contains("fs: connected (fs-srv 1.0)"))
@@ -200,6 +206,9 @@ fun test_status_from_shows_each_server_state() {
     assert_true(text.contains("bad: failed to connect"))
     assert_true(text.contains("boom"))
     assert_true(text.contains("later: configured, not connected yet"))
+    assert_true(text.contains("invalid: invalid configuration"))
+    assert_true(text.contains("expected KEY=value"))
+    assert_true(!text.contains("TOKEN_WITHOUT_VALUE"))
 }
 
 fun test_status_from_reports_tool_name_collisions() {

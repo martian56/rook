@@ -464,7 +464,10 @@ under an `mcp` key in a `settings.json` at any root rook reads (project
 Each entry is `{ name, command, args, env }`, where `env` is a list of
 `"KEY=value"` strings. Project MCP servers are ignored until project
 settings are trusted. Servers from global settings and installed plugins
-connect on first use, or when you run `/mcp connect`.
+connect on first use, or when you run `/mcp connect`. Environment names
+use the portable form `A-Z`, `a-z`, `0-9`, and `_`, and cannot start with
+a digit. Invalid entries appear in `/mcp` status without showing their
+values.
 
 - **Tools** a server exposes reach the model as `mcp__<server>__<tool>`.
   Being external, they always ask for approval.
@@ -481,11 +484,11 @@ connect on first use, or when you run `/mcp connect`.
 `/mcp` shows the configured servers, whether each connected, and what
 each provides; `/mcp connect` starts the connections in the background.
 
-Two platform notes. Per-server `env` is applied on Unix (through the
-`env` command); on Windows the server inherits rook's own environment
-instead, so set the variables there. And on Windows a `.cmd` launcher
-such as `npx` is not found directly, so use `"command": "cmd", "args":
-["/c", "npx", ...]`.
+Per-server `env` is applied on Unix and Windows. On Windows rook uses a
+fixed PowerShell launcher stored under `~/.rook`; the generated script
+contains no configured names or values. A `.cmd` launcher such as `npx`
+can be used directly when `env` is present. Without `env`, use
+`"command": "cmd", "args": ["/c", "npx", ...]`.
 
 ## How it is built
 

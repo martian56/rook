@@ -78,6 +78,10 @@ fun connect(name: String, command: String, cmd_args: List<String>) -> McpClient 
     }
 }
 
+fun failed_client(name: String, why: String) -> McpClient {
+    return _failed(name, why)
+}
+
 fun _handshake(name: String, conn: McpConn) -> McpClient {
     let resp = conn.request("initialize", _init_params(), HANDSHAKE_TIMEOUT)
     if !resp.ok {

@@ -1,0 +1,197 @@
+// Build the process launch used for one MCP server. Unix uses the `env`
+// executable so the server starts directly without shell quoting. Windows
+// uses a fixed PowerShell helper because Raven 2.26 has no child-environment
+// API; the helper receives validated entries as separate arguments, sets them
+// only in its own process, then launches the server.
+
+import std/string
+import std/env { os_name, get_env, has_env }
+import std/fs { create_dir_all, write }
+import "./config" { ServerSpec }
+
+struct LaunchSpec {
+    command: String,
+    args: List<String>,
+    error: String,
+}
+
+// The runtime launch plan, including creation of the secret-free Windows
+// helper when it is needed.
+fun launch_for(spec: ServerSpec) -> LaunchSpec {
+    let validation_error = env_error(spec.env)
+    if validation_error != "" {
+        return _failed_launch(validation_error)
+    }
+    if os_name() != "windows" || spec.env.len() == 0 {
+        return launch_for_os(spec, os_name(), "")
+    }
+    let path = windows_launcher_path()
+    if path == "" {
+        return _failed_launch("MCP environment error: no home directory for the Windows launcher")
+    }
+    let write_error = write_windows_launcher(path)
+    if write_error != "" {
+        return _failed_launch(write_error)
+    }
+    return launch_for_os(spec, "windows", path)
+}
+
+// Pure launch construction for tests. `launcher_path` is required only for a
+// Windows spec with environment entries.
+fun launch_for_os(spec: ServerSpec, os: String, launcher_path: String) -> LaunchSpec {
+    let validation_error = env_error(spec.env)
+    if validation_error != "" {
+        return _failed_launch(validation_error)
+    }
+    if spec.env.len() == 0 {
+        return LaunchSpec { command: spec.command, args: spec.args, error: "" }
+    }
+    if os == "windows" {
+        if launcher_path == "" {
+            return _failed_launch("MCP environment error: Windows launcher path is empty")
+        }
+        let args = [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            launcher_path,
+            "${spec.env.len()}",
+        ]
+        let i = 0
+        while i < spec.env.len() {
+            args.push(spec.env[i])
+            i = i + 1
+        }
+        args.push(spec.command)
+        let a = 0
+        while a < spec.args.len() {
+            args.push(spec.args[a])
+            a = a + 1
+        }
+        return LaunchSpec { command: "powershell", args, error: "" }
+    }
+    let args: List<String> = []
+    let e = 0
+    while e < spec.env.len() {
+        args.push(spec.env[e])
+        e = e + 1
+    }
+    args.push(spec.command)
+    let a = 0
+    while a < spec.args.len() {
+        args.push(spec.args[a])
+        a = a + 1
+    }
+    return LaunchSpec { command: "env", args, error: "" }
+}
+
+// Validate a portable environment assignment. Errors name only the entry
+// position and expected shape, never the entry text or value.
+fun env_error(entries: List<String>) -> String {
+    let i = 0
+    while i < entries.len() {
+        let entry = entries[i]
+        let equal = entry.index_of("=")
+        if equal <= 0 || !_valid_env_name(entry.substring(0, equal)) || entry.contains(
+            __str_from_byte(0),
+        ) {
+            return "MCP environment error at entry ${i + 1}: expected KEY=value with a portable variable name"
+        }
+        i = i + 1
+    }
+    return ""
+}
+
+fun _valid_env_name(name: String) -> Bool {
+    if name == "" || !_env_start(name.byte_at(0)) {
+        return false
+    }
+    let i = 1
+    while i < name.length() {
+        if !_env_rest(name.byte_at(i)) {
+            return false
+        }
+        i = i + 1
+    }
+    return true
+}
+
+fun _env_start(b: Int) -> Bool {
+    return b == 95 || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+}
+
+fun _env_rest(b: Int) -> Bool {
+    return _env_start(b) || (b >= 48 && b <= 57)
+}
+
+fun windows_launcher_path() -> String {
+    let home = ""
+    if has_env("USERPROFILE") {
+        home = get_env("USERPROFILE")
+    } else {
+        if has_env("HOME") {
+            home = get_env("HOME")
+        }
+    }
+    if home == "" {
+        return ""
+    }
+    return "${home}/.rook/mcp-env-launcher.ps1"
+}
+
+fun write_windows_launcher(path: String) -> String {
+    let slash = path.last_index_of("/")
+    if slash > 0 {
+        let dir = path.substring(0, slash)
+        match create_dir_all(dir) {
+            Ok(ok) -> {},
+            Err(e) -> {
+                return "MCP environment error: could not create Windows launcher directory: ${e.message}"
+            },
+        }
+    }
+    return match write(path, windows_launcher_script()) {
+        Ok(ok) -> "",
+        Err(e) -> "MCP environment error: could not write Windows launcher: ${e.message}",
+    }
+}
+
+// This script contains no configured names or values. They arrive as process
+// arguments, are split at the first equals sign, and are applied only to the
+// PowerShell process and the MCP server it launches.
+fun windows_launcher_script() -> String {
+    let script = "param(\n"
+    script = script.concat("  [Parameter(Mandatory = $true, Position = 0)]\n")
+    script = script.concat("  [int]$EnvironmentCount,\n")
+    script = script.concat("  [Parameter(ValueFromRemainingArguments = $true)]\n")
+    script = script.concat("  [string[]]$Values\n")
+    script = script.concat(")\n\n")
+    script = script.concat("if ($Values.Count -lt $EnvironmentCount + 1) { exit 64 }\n")
+    script = script.concat("for ($i = 0; $i -lt $EnvironmentCount; $i++) {\n")
+    script = script.concat("  $entry = $Values[$i]\n")
+    script = script.concat("  $separator = $entry.IndexOf('=')\n")
+    script = script.concat("  if ($separator -le 0) { exit 64 }\n")
+    script = script.concat("  $name = $entry.Substring(0, $separator)\n")
+    script = script.concat("  $value = $entry.Substring($separator + 1)\n")
+    script = script.concat("  [Environment]::SetEnvironmentVariable($name, $value, 'Process')\n")
+    script = script.concat("}\n\n")
+    script = script.concat("$program = $Values[$EnvironmentCount]\n")
+    script = script.concat("$programArgs = @()\n")
+    script = script.concat("if ($Values.Count -gt $EnvironmentCount + 1) {\n")
+    script = script.concat(
+        "  $programArgs = $Values[($EnvironmentCount + 1)..($Values.Count - 1)]\n",
+    )
+    script = script.concat("}\n")
+    script = script.concat("& $program @programArgs\n")
+    script = script.concat("if ($null -eq $LASTEXITCODE) { exit 0 }\n")
+    script = script.concat("exit $LASTEXITCODE\n")
+    return script
+}
+
+fun _failed_launch(error: String) -> LaunchSpec {
+    let args: List<String> = []
+    return LaunchSpec { command: "", args, error }
+}
