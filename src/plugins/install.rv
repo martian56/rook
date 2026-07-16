@@ -6,7 +6,6 @@
 // user-facing install_plugin uses the real one.
 
 import std/string
-import std/error { Error }
 import std/env { os_name }
 import std/fs { exists, create_dir_all, read, write }
 import std/process { run, Output }
@@ -26,8 +25,9 @@ fun install_plugin(url: String, ref: String) -> String {
     return install_into(dir, url, ref)
 }
 
-// The mechanism: clone `url` at `ref` into `plugins_dir`/<name>, validate the
-// manifest, and write the lock file.
+// The mechanism: clone `url` at `ref` into a staging directory, validate the
+// manifest and write the lock file there, then swap the validated directory
+// into place. An existing plugin is kept as a backup until the swap succeeds.
 fun install_into(plugins_dir: String, url: String, ref: String) -> String {
     let u = url.trim()
     if u == "" {
@@ -42,34 +42,97 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
         return "error: unsafe plugin name derived from ${u}: ${name}"
     }
     create_dir_all(plugins_dir)
-    if exists(target) {
-        _remove_tree(target)
+    let transaction_dir = "${plugins_dir}/.rook-transactions"
+    let staging = "${transaction_dir}/${name}.staging"
+    let backup = "${transaction_dir}/${name}.backup"
+    create_dir_all(transaction_dir)
+
+    // Recover a backup left behind by an interrupted swap before beginning a
+    // new transaction. Never discard the only installed copy.
+    if !exists(target) && exists(backup) {
+        let recover_error = _move_tree(backup, target)
+        if recover_error != "" {
+            return "error: could not restore the previous ${name} plugin: ${recover_error}"
+        }
     }
+    let cleanup_error = _remove_tree(staging)
+    if cleanup_error != "" {
+        return "error: could not prepare plugin staging directory: ${cleanup_error}"
+    }
+    if exists(backup) {
+        cleanup_error = _remove_tree(backup)
+        if cleanup_error != "" {
+            return "error: could not prepare plugin backup directory: ${cleanup_error}"
+        }
+    }
+
     let args = ["clone", "--depth", "1"]
     if ref.trim() != "" {
         args.push("--branch")
         args.push(ref.trim())
     }
     args.push(normalize_url(u))
-    args.push(target)
+    args.push(staging)
     let out = match run("git", args) {
         Ok(o) -> o,
         Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
     }
     if out.code != 0 {
+        _remove_tree(staging)
         return "error: git clone failed: ${out.stderr.trim()}"
     }
-    let plugin = read_plugin(target, name)
+    let plugin = read_plugin(staging, name)
     if plugin.name == "" {
-        _remove_tree(target)
+        _remove_tree(staging)
         return "error: ${u} has no plugin.json; it is not a rook plugin"
     }
-    write("${target}/${LOCK}", _lock_json(u, ref.trim(), plugin.version))
+    let lock_error = match write("${staging}/${LOCK}", _lock_json(u, ref.trim(), plugin.version)) {
+        Ok(ok) -> "",
+        Err(e) -> e.message,
+    }
+    if lock_error != "" {
+        _remove_tree(staging)
+        return "error: could not write plugin lock file: ${lock_error}"
+    }
+
+    let had_target = exists(target)
+    if had_target {
+        let backup_error = _move_tree(target, backup)
+        if backup_error != "" {
+            _remove_tree(staging)
+            return "error: could not back up the installed ${name} plugin: ${backup_error}"
+        }
+    }
+    let swap_error = _move_tree(staging, target)
+    if swap_error != "" {
+        let restore_error = ""
+        if had_target {
+            restore_error = _move_tree(backup, target)
+        }
+        _remove_tree(staging)
+        if restore_error != "" {
+            return "error: plugin update failed: ${swap_error}; the previous plugin is preserved at ${backup}, but could not be restored: ${restore_error}"
+        }
+        return "error: plugin update failed and the previous plugin was restored: ${swap_error}"
+    }
+    if had_target {
+        let backup_cleanup_error = _remove_tree(backup)
+        if backup_cleanup_error != "" {
+            return "installed ${plugin.name} ${_display_version(plugin.version)} from ${u}; warning: could not remove backup ${backup}: ${backup_cleanup_error}"
+        }
+    }
     let v = plugin.version
     if v == "" {
         v = "unversioned"
     }
     return "installed ${plugin.name} ${v} from ${u}"
+}
+
+fun _display_version(version: String) -> String {
+    if version == "" {
+        return "unversioned"
+    }
+    return version
 }
 
 // The repository name from a git URL: the last path segment without a
@@ -129,25 +192,94 @@ fun plugin_source(path: String) -> Plugin {
     }
 }
 
-// Remove a directory tree. On Windows git leaves read-only pack files that
-// rmdir refuses, so clear the read-only attribute across the tree first;
-// otherwise a later re-clone into the leftover fails. attrib and rmdir run
-// as separate calls (a single cmd string with embedded quotes and & does
-// not survive the process-arg quoting).
-fun _remove_tree(path: String) {
-    if os_name() == "windows" {
-        _ignore(run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]))
-        _ignore(run("cmd", ["/c", "rmdir", "/s", "/q", path]))
+// Move a directory within the plugin root. Staging, backups, and live plugins
+// share a filesystem, so the operating system can rename them without copying.
+fun _move_tree(source: String, destination: String) -> String {
+    let result = if os_name() == "windows" {
+        run("cmd", ["/d", "/c", "move", "/y", _windows_path(source), _windows_path(destination)])
     } else {
-        _ignore(run("rm", ["-rf", path]))
+        run("mv", [source, destination])
     }
-    return
+    let out = Output { code: 0 - 1, stdout: "", stderr: "" }
+    match result {
+        Ok(o) -> {
+            out = o
+        },
+        Err(e) -> {
+            return "move failed to start: ${e.message}"
+        },
+    }
+    if out.code != 0 {
+        return _output_error("move", out)
+    }
+    if exists(source) || !exists(destination) {
+        return "move did not place ${destination}"
+    }
+    return ""
 }
 
-fun _ignore(r: Result<Output, Error>) {
-    match r {
-        Ok(o) -> {},
-        Err(e) -> {},
+// Remove a directory tree. On Windows git leaves read-only pack files that
+// rmdir refuses, so clear the read-only attribute across the tree first.
+fun _remove_tree(path: String) -> String {
+    if !exists(path) {
+        return ""
     }
-    return
+    let detail = ""
+    if os_name() == "windows" {
+        let windows_path = _windows_path(path)
+        detail = _append_detail(
+            detail,
+            _run_remove("attrib", ["-r", "-s", "-h", "/s", "/d", "${windows_path}\\*"]),
+        )
+        detail = _append_detail(detail, _run_remove("cmd", ["/c", "rmdir", "/s", "/q", windows_path]))
+    } else {
+        detail = _append_detail(detail, _run_remove("rm", ["-rf", path]))
+    }
+    if !exists(path) {
+        return ""
+    }
+    if detail == "" {
+        return "directory still exists after removal: ${path}"
+    }
+    return "directory still exists after removal: ${path}; ${detail}"
+}
+
+fun _run_remove(command: String, args: List<String>) -> String {
+    return match run(command, args) {
+        Ok(o) -> {
+            if o.code == 0 {
+                ""
+            } else {
+                _output_error(command, o)
+            }
+        },
+        Err(e) -> "${command} failed to start: ${e.message}",
+    }
+}
+
+fun _output_error(command: String, out: Output) -> String {
+    let msg = out.stderr.trim()
+    if msg == "" {
+        msg = out.stdout.trim()
+    }
+    if msg == "" {
+        msg = "exit ${out.code}"
+    } else {
+        msg = "${msg} (exit ${out.code})"
+    }
+    return "${command}: ${msg}"
+}
+
+fun _append_detail(existing: String, next: String) -> String {
+    if next == "" {
+        return existing
+    }
+    if existing == "" {
+        return next
+    }
+    return "${existing}; ${next}"
+}
+
+fun _windows_path(path: String) -> String {
+    return path.replace("/", "\\")
 }

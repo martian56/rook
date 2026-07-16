@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
 import std/env { os_name }
-import std/fs { write, exists, create_dir_all }
+import std/fs { write, read, exists, create_dir_all }
 import std/process { run }
 import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source }
 import "./model" { valid_plugin_name, plugin_target_path }
@@ -88,10 +88,72 @@ fun test_install_from_a_local_repo() {
 }
 
 fun test_install_of_a_missing_repo_errors() {
+    _rmtree("_rook_plugins3")
+    create_dir_all("_rook_plugins3/xyz")
+    write("_rook_plugins3/xyz/plugin.json", "{\"name\":\"xyz\",\"version\":\"1.0.0\"}")
+    write("_rook_plugins3/xyz/working.txt", "keep me")
+
     assert_true(
         install_into("_rook_plugins3", "file:///no/such/repo/xyz", "").starts_with("error:"),
     )
+    assert_true(exists("_rook_plugins3/xyz/plugin.json"))
+    assert_true(exists("_rook_plugins3/xyz/working.txt"))
+    assert_eq_str(_read("_rook_plugins3/xyz/working.txt"), "keep me")
+
     _rmtree("_rook_plugins3")
+    return
+}
+
+fun test_invalid_replacement_keeps_installed_plugin() {
+    _rmtree("_rook_bad_src")
+    _rmtree("_rook_plugins_invalid")
+    create_dir_all("_rook_bad_src")
+    write("_rook_bad_src/plugin.json", "{not json")
+    _init_repo("_rook_bad_src")
+    create_dir_all("_rook_plugins_invalid/_rook_bad_src")
+    write(
+        "_rook_plugins_invalid/_rook_bad_src/plugin.json",
+        "{\"name\":\"old-plugin\",\"version\":\"1.0.0\"}",
+    )
+    write("_rook_plugins_invalid/_rook_bad_src/working.txt", "old copy")
+
+    let r = install_into("_rook_plugins_invalid", "./_rook_bad_src", "")
+    assert_true(r.starts_with("error:"))
+    assert_true(r.contains("no plugin.json"))
+    assert_eq_str(_read("_rook_plugins_invalid/_rook_bad_src/working.txt"), "old copy")
+    assert_true(!exists("_rook_plugins_invalid/.rook-transactions/_rook_bad_src.staging"))
+
+    _rmtree("_rook_bad_src")
+    _rmtree("_rook_plugins_invalid")
+    return
+}
+
+fun test_successful_update_replaces_plugin_and_lock() {
+    _rmtree("_rook_update_src")
+    _rmtree("_rook_plugins_update")
+    create_dir_all("_rook_update_src")
+    write("_rook_update_src/plugin.json", "{\"name\":\"updated-plugin\",\"version\":\"2.0.0\"}")
+    write("_rook_update_src/current.txt", "new copy")
+    _init_repo("_rook_update_src")
+    create_dir_all("_rook_plugins_update/_rook_update_src")
+    write(
+        "_rook_plugins_update/_rook_update_src/plugin.json",
+        "{\"name\":\"updated-plugin\",\"version\":\"1.0.0\"}",
+    )
+    write("_rook_plugins_update/_rook_update_src/old.txt", "old copy")
+
+    let r = install_into("_rook_plugins_update", "./_rook_update_src", "")
+    assert_true(r.starts_with("installed updated-plugin 2.0.0"))
+    assert_true(!exists("_rook_plugins_update/_rook_update_src/old.txt"))
+    assert_eq_str(_read("_rook_plugins_update/_rook_update_src/current.txt"), "new copy")
+    let src = plugin_source("_rook_plugins_update/_rook_update_src")
+    assert_eq_str(src.name, "./_rook_update_src")
+    assert_eq_str(src.version, "2.0.0")
+    assert_true(!exists("_rook_plugins_update/.rook-transactions/_rook_update_src.staging"))
+    assert_true(!exists("_rook_plugins_update/.rook-transactions/_rook_update_src.backup"))
+
+    _rmtree("_rook_update_src")
+    _rmtree("_rook_plugins_update")
     return
 }
 
@@ -101,6 +163,32 @@ fun test_install_rejects_unsafe_derived_name_before_touching_target() {
     assert_true(r.starts_with("error: unsafe plugin name"))
     assert_true(!exists("_rook_plugins_bad"))
     return
+}
+
+fun _init_repo(path: String) {
+    _git(["init", path])
+    _git(["-C", path, "add", "-A"])
+    _git(
+        [
+            "-C",
+            path,
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=Test",
+            "commit",
+            "-m",
+            "init",
+        ],
+    )
+    return
+}
+
+fun _read(path: String) -> String {
+    return match read(path) {
+        Ok(s) -> s,
+        Err(e) -> "",
+    }
 }
 
 fun _git(args: List<String>) {
