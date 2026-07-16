@@ -1,10 +1,10 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
-import "github.com/martian56/perch/keys" { Key }
+import "github.com/martian56/perch/keys" { Key, MouseEvent, MouseKind }
 import "github.com/martian56/plumage" { Event }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, chat_init }
-import "./update" { apply_events, chat_update, _resume }
+import "./update" { apply_events, chat_update, _resume, _run }
 import "../agent/state" { DisplayEvent }
 import "../ui/transcript" { Entry }
 
@@ -95,4 +95,38 @@ fun test_permissions_command_opens_and_esc_closes_the_panel() {
     assert_true(opened.permissions_items.len() == 5)
     let closed = chat_update(opened, Event.KeyPress(Key.Esc)).model
     assert_true(!closed.permissions_open)
+}
+
+fun test_active_ticks_preserve_manual_scroll_until_the_user_returns_to_bottom() {
+    let m = chat_init()
+    m.active = true
+    m.agent.begin()
+
+    let scrolled = chat_update(m, Event.KeyPress(Key.PageUp)).model
+    assert_true(scrolled.scroll_up == 5)
+    let after_tick = chat_update(scrolled, Event.Tick).model
+    assert_true(after_tick.scroll_up == 5)
+
+    let following = chat_update(after_tick, Event.KeyPress(Key.PageDown)).model
+    assert_true(following.scroll_up == 0)
+    let following_tick = chat_update(following, Event.Tick).model
+    assert_true(following_tick.scroll_up == 0)
+}
+
+fun test_active_ticks_preserve_mouse_wheel_scroll() {
+    let m = chat_init()
+    m.active = true
+    m.agent.begin()
+    let wheel = MouseEvent { kind: MouseKind.ScrollUp, button: 0 - 1, x: 0, y: 0 }
+    let scrolled = chat_update(m, Event.Mouse(wheel)).model
+    assert_true(scrolled.scroll_up == 3)
+    let after_tick = chat_update(scrolled, Event.Tick).model
+    assert_true(after_tick.scroll_up == 3)
+}
+
+fun test_starting_a_new_command_returns_to_live_tail() {
+    let m = chat_init()
+    m.scroll_up = 12
+    let updated = _run(m, "/plan").model
+    assert_true(updated.scroll_up == 0)
 }

@@ -211,7 +211,6 @@ fun _tick(m: Chat) -> Step<Chat> {
                 m.entries.push(Entry.Notice(save_err))
             }
         }
-        m.scroll_up = 0
     }
     return next(m)
 }

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.23
+
+- Preserved manual transcript scrolling while a turn is active and resumed live tail after scrolling back to the bottom.
+
 ## 0.3.22
 
 - Added total character and file-count budgets for `@` file mention attachments with an omitted-files notice.
