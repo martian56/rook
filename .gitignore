@@ -1,6 +1,8 @@
 *.exe
 *.o
 *.pdb
+*.pyc
+__pycache__/
 target/
 rv.lock
 !evals/rv.lock
