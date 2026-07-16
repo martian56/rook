@@ -264,13 +264,13 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
             Info(t) -> {
                 m.entries.push(Entry.Notice(t))
             },
-            AgentStarted(name) -> {
+            AgentStarted(id, name) -> {
                 m.entries.push(Entry.AgentHeader(name, "working…"))
-                m.open_agents.push(AgentBlock { name, header: m.entries.len() - 1, tools: 0 })
+                m.open_agents.push(AgentBlock { id, name, header: m.entries.len() - 1, tools: 0 })
                 m.cur_bubble = 0 - 1
             },
-            AgentTool(agent, name, result) -> {
-                let b = _find_block(m, agent)
+            AgentTool(id, agent, name, result) -> {
+                let b = _find_block(m, id)
                 if b < 0 {
                     m.entries.push(Entry.AgentTool(agent, name, result))
                 } else {
@@ -280,8 +280,8 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
                     _shift_blocks(m, at, 1, b)
                 }
             },
-            AgentFinished(name, used) -> {
-                let b = _find_block(m, name)
+            AgentFinished(id, name, used) -> {
+                let b = _find_block(m, id)
                 if b >= 0 {
                     let head = m.open_agents[b].header
                     let count = m.open_agents[b].tools
@@ -316,11 +316,12 @@ fun _flush_stream(m: Chat, added: String) -> String {
     return ""
 }
 
-// The open block for an agent, or -1.
-fun _find_block(m: Chat, name: String) -> Int {
+// The open block for a dispatch id, or -1. Matched by id, not name, so two
+// dispatches of the same subagent name keep separate blocks.
+fun _find_block(m: Chat, id: String) -> Int {
     let i = 0
     while i < m.open_agents.len() {
-        if m.open_agents[i].name == name {
+        if m.open_agents[i].id == id {
             return i
         }
         i = i + 1

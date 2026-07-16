@@ -275,7 +275,7 @@ fun _dispatch(
         }
         return "error: no subagent named '${name}'; available: ${names}"
     }
-    return run_subagent(st, agents[idx], task, model, api_key, base_url)
+    return run_subagent(st, call.id, agents[idx], task, model, api_key, base_url)
 }
 
 // An ask_user call: publish the question and options and block until the

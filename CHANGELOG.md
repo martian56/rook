@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.40
+
+- Esc now aborts a running parallel-dispatch batch: each subagent request carries the turn's cancel token, so pressing Esc cancels the in-flight calls instead of waiting out their timeouts. (#229)
+- Two dispatches of the same subagent name keep separate transcript blocks, matched by the dispatch id, so one no longer collapses and removes the other's rows. (#230)
+
 ## 0.3.39
 
 - git_diff confines its path argument to the workspace like the other file tools, instead of handing a raw path to git. (#233)

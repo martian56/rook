@@ -189,13 +189,13 @@ fun e2e_replay(events: List<DisplayEvent>) -> String {
             Info(t) -> {
                 out = out.concat("[info ${t}]")
             },
-            AgentStarted(name) -> {
+            AgentStarted(id, name) -> {
                 out = out.concat("[agent ${name} started]")
             },
-            AgentTool(agent, name, result) -> {
+            AgentTool(id, agent, name, result) -> {
                 out = out.concat("[${agent} › ${name} => ${result}]")
             },
-            AgentFinished(name, used) -> {
+            AgentFinished(id, name, used) -> {
                 out = out.concat("[agent ${name} done ${used}]")
             },
         }

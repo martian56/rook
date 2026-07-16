@@ -29,6 +29,7 @@ const DEFAULT_SUB_PROMPT: String = "You are a focused assistant working on one d
 // turn; the UI stays live because it only ever reads the shared state.
 fun run_subagent(
     st: AgentState,
+    id: String,
     agent: Subagent,
     task: String,
     model: String,
@@ -46,17 +47,21 @@ fun run_subagent(
         prompt = DEFAULT_SUB_PROMPT
     }
 
-    st.emit(DisplayEvent.AgentStarted(agent.name))
+    st.emit(DisplayEvent.AgentStarted(id, agent.name))
     let used = 0
     let history: List<Message> = [Message.user(task)]
     let allowed: List<String> = []
     let round = 0
     while round < SUB_ROUNDS {
         if st.interrupted() {
-            st.emit(DisplayEvent.AgentFinished(agent.name, used))
+            st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
             return "error: interrupted"
         }
-        let req = _sub_request(use_model, prompt, history, use_key, base_url, agent.tools, st.plan())
+        // Attach the turn's cancel token so Esc aborts the subagent's in-flight
+        // request instead of the parent waiting out the full timeout.
+        let req = _sub_request(use_model, prompt, history, use_key, base_url, agent.tools, st.plan()).cancelable(
+            st.token(),
+        )
 
         let reply_text = ""
         let calls: List<ToolCall> = []
@@ -72,11 +77,11 @@ fun run_subagent(
             },
         }
         if err != "" {
-            st.emit(DisplayEvent.AgentFinished(agent.name, used))
+            st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
             return "error: ${err}"
         }
         if calls.len() == 0 {
-            st.emit(DisplayEvent.AgentFinished(agent.name, used))
+            st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
             return reply_text
         }
 
@@ -85,14 +90,14 @@ fun run_subagent(
         while i < calls.len() {
             let call = calls[i]
             let result = _sub_one(st, agent, call, allowed)
-            st.emit(DisplayEvent.AgentTool(agent.name, label(call), _short(result)))
+            st.emit(DisplayEvent.AgentTool(id, agent.name, label(call), _short(result)))
             history.push(Message.tool_result(call.id, call.name, result))
             used = used + 1
             i = i + 1
         }
         round = round + 1
     }
-    st.emit(DisplayEvent.AgentFinished(agent.name, used))
+    st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
     return "error: the ${agent.name} agent stopped after ${SUB_ROUNDS} tool rounds"
 }
 
