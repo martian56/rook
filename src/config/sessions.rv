@@ -108,14 +108,31 @@ fun save_session_to(
         msgs.push(_msg_json(messages[m]))
         m = m + 1
     }
-    let doc = Obj.new().str("id", id).str("model", model).str("title", _title(entries))
-    doc = doc.str("created", "${now()}").set("entries", JsonValue.Array(arr))
+    let title = _title(entries)
+    let created = "${now()}"
+    let doc = Obj.new().str("id", id).str("model", model).str("title", title)
+    doc = doc.str("created", created).set("entries", JsonValue.Array(arr))
     doc = doc.set("messages", JsonValue.Array(msgs))
     doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
-    return match write("${dir}/${id}.json", stringify(doc.build())) {
+    let save_error = match write("${dir}/${id}.json", stringify(doc.build())) {
         Ok(ok) -> "",
         Err(e) -> "session error: could not save session ${id}: ${e.message}",
     }
+    if save_error != "" {
+        return save_error
+    }
+    // A small sidecar with just the header fields, so listing sessions does not
+    // parse every full transcript. Best effort: listing falls back to the full
+    // file when it is missing (sessions saved before this existed).
+    let meta = Obj.new().str("id", id).str("model", model).str("title", title).str(
+        "created",
+        created,
+    )
+    match write("${dir}/${id}.meta.json", stringify(meta.build())) {
+        Ok(ok) -> {},
+        Err(e) -> {},
+    }
+    return ""
 }
 
 // Saving runs off the UI thread. The writer goroutine serializes on SAVE_LOCK
@@ -232,41 +249,52 @@ fun list_sessions_from(dir: String) -> SessionList {
     }
     let i = 0
     while i < names.len() {
-        if names[i].ends_with(".json") {
-            let fallback_id = _id_from_filename(names[i])
-            match read("${dir}/${names[i]}") {
-                Ok(text) -> {
-                    match parse(text) {
-                        Ok(j) -> {
-                            out.push(_meta_from_json(j, fallback_id))
-                        },
-                        Err(e) -> {
-                            out.push(
-                                SessionMeta {
-                                    id: fallback_id,
-                                    created: 0,
-                                    model: "",
-                                    title: "error: invalid session file: ${names[i]}",
-                                },
-                            )
-                        },
-                    }
-                },
-                Err(e) -> {
-                    out.push(
-                        SessionMeta {
-                            id: fallback_id,
-                            created: 0,
-                            model: "",
-                            title: "error: could not read session file: ${names[i]}",
-                        },
-                    )
-                },
-            }
+        if names[i].ends_with(".json") && !names[i].ends_with(".meta.json") {
+            out.push(_read_meta(dir, names[i], _id_from_filename(names[i])))
         }
         i = i + 1
     }
     return SessionList { sessions: _sort_newest(out), error: "" }
+}
+
+// Read a session's metadata, preferring the small sidecar so the full
+// transcript is not parsed just to list titles. Falls back to the session file
+// itself for sessions saved before the sidecar existed.
+fun _read_meta(dir: String, filename: String, fallback_id: String) -> SessionMeta {
+    match read("${dir}/${fallback_id}.meta.json") {
+        Ok(text) -> {
+            match parse(text) {
+                Ok(j) -> {
+                    return _meta_from_json(j, fallback_id)
+                },
+                Err(e) -> {},
+            }
+        },
+        Err(e) -> {},
+    }
+    return _meta_from_full_file(dir, filename, fallback_id)
+}
+
+// Metadata read from the full session file, for sessions whose sidecar is
+// missing (saved before it existed) or unreadable.
+fun _meta_from_full_file(dir: String, filename: String, fallback_id: String) -> SessionMeta {
+    return match read("${dir}/${filename}") {
+        Ok(text) -> match parse(text) {
+            Ok(j) -> _meta_from_json(j, fallback_id),
+            Err(e) -> SessionMeta {
+                id: fallback_id,
+                created: 0,
+                model: "",
+                title: "error: invalid session file: ${filename}",
+            },
+        },
+        Err(e) -> SessionMeta {
+            id: fallback_id,
+            created: 0,
+            model: "",
+            title: "error: could not read session file: ${filename}",
+        },
+    }
 }
 
 // Restore a session by id.

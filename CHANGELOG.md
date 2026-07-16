@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.46
+
+- Opening /sessions no longer parses every saved session's full transcript. Each session writes a small metadata sidecar that the picker reads instead, falling back to the full file only for sessions saved before this. (#252)
+
 ## 0.3.45
 
 - Stabilized the Windows MCP launcher streaming test, which occasionally failed on a transient subprocess-startup hiccup, by retrying a few times and requiring one clean run. (#242)
