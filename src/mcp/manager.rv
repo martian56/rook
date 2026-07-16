@@ -63,15 +63,19 @@ fun ensure_started() {
     if already {
         return
     }
+    // Connect into a local list, then publish it in one assignment, so a
+    // concurrent reader sees either no clients or the complete set, never a
+    // half-filled list mid-connect.
     let specs = configured_servers()
+    let built: List<McpClient> = []
     let i = 0
     while i < specs.len() {
-        let c = _connect_spec(specs[i])
-        MANAGER.lock.lock()
-        MANAGER.clients.push(c)
-        MANAGER.lock.unlock()
+        built.push(_connect_spec(specs[i]))
         i = i + 1
     }
+    MANAGER.lock.lock()
+    MANAGER.clients = built
+    MANAGER.lock.unlock()
     return
 }
 
@@ -702,9 +706,16 @@ fun _contains_string(xs: List<String>, name: String) -> Bool {
     return false
 }
 
+// A snapshot copy of the connected clients, so a caller iterates a stable list
+// even if a background connect swaps MANAGER.clients while it reads.
 fun _clients() -> List<McpClient> {
     MANAGER.lock.lock()
-    let c = MANAGER.clients
+    let out: List<McpClient> = []
+    let i = 0
+    while i < MANAGER.clients.len() {
+        out.push(MANAGER.clients[i])
+        i = i + 1
+    }
     MANAGER.lock.unlock()
-    return c
+    return out
 }
