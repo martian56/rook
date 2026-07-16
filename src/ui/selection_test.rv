@@ -52,6 +52,17 @@ fun test_extract_single_line() {
     assert_eq_str(extract(texts, sp2), "world")
 }
 
+fun test_extract_maps_cells_to_bytes_past_a_marker() {
+    // The bullet marker is three bytes but one cell, so slicing on raw columns
+    // would copy shifted text. Columns must map through the UTF-8 line.
+    let texts = ["● hello world"]
+    assert_eq_str(
+        extract(texts, SelSpan { lo_line: 0, lo_col: 8, hi_line: 0, hi_col: 13 }),
+        "world",
+    )
+    assert_eq_str(extract(texts, SelSpan { lo_line: 0, lo_col: 2, hi_line: 0, hi_col: 7 }), "hello")
+}
+
 fun test_extract_multi_line_trims_full_line_ends() {
     let texts = ["first line   ", "middle   ", "last line"]
     let sp = SelSpan { lo_line: 0, lo_col: 6, hi_line: 2, hi_col: 4 }

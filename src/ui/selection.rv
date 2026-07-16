@@ -2,10 +2,12 @@
 // (absolute line, column) into the assembled transcript, not screen cells, so
 // scrolling (wheel or auto-scroll while dragging) keeps the selection on the
 // same text. Ordering and text extraction are pure, so they are tested
-// without a terminal. Columns are treated as character positions, which lines
-// up with cells for rook's ASCII and width-1 glyphs.
+// without a terminal. Columns are display cells (what the mouse reports), so
+// extraction maps them to byte offsets through the UTF-8 line: a marker glyph
+// or any non-ASCII character is more bytes than cells.
 
 import std/string
+import "github.com/martian56/wingspan" { decode }
 
 // A selection over the transcript. `active` is a drag in progress; `present`
 // is a finalized selection still shown. When both are false there is none.
@@ -95,14 +97,36 @@ fun extract(texts: List<String>, sp: SelSpan) -> String {
     return out
 }
 
+// Slice `s` between two display-cell columns. The columns come from the
+// terminal (mouse cells), so they are mapped to byte offsets first: slicing on
+// the raw column would cut mid-character and copy shifted text on any line with
+// a marker glyph or other non-ASCII content.
 fun _slice(s: String, start: Int, end: Int) -> String {
-    let n = s.length()
-    let a = _clamp(start, 0, n)
-    let b = _clamp(end, 0, n)
+    let a = _col_to_byte(s, start)
+    let b = _col_to_byte(s, end)
     if a >= b {
         return ""
     }
     return s.substring(a, b)
+}
+
+// The byte offset of display-cell column `col` in `s`, walking whole UTF-8
+// characters and summing their terminal widths. A column at or past the end
+// maps to the end of the string.
+fun _col_to_byte(s: String, col: Int) -> Int {
+    let byte = 0
+    let cells = 0
+    let n = s.length()
+    while byte < n && cells < col {
+        let c = decode(s, byte)
+        if c.size == 0 {
+            byte = n
+        } else {
+            cells = cells + c.width
+            byte = byte + c.size
+        }
+    }
+    return byte
 }
 
 fun _rtrim(s: String) -> String {
