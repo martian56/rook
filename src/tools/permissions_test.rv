@@ -107,7 +107,11 @@ fun test_subjects_per_tool() {
     assert_eq_str(subject_of(ks), "4")
     // multi_edit carries a top-level path; without it, path-scoped rules could
     // not gate the tool.
-    let me = ToolCall { id: "4", name: "multi_edit", arguments: "{\"path\":\"src/x.rv\",\"edits\":[]}" }
+    let me = ToolCall {
+        id: "4",
+        name: "multi_edit",
+        arguments: "{\"path\":\"src/x.rv\",\"edits\":[]}",
+    }
     assert_eq_str(subject_of(me), "src/x.rv")
     let au = ToolCall { id: "4", name: "ask_user", arguments: "{\"question\":\"q\"}" }
     assert_eq_str(subject_of(au), "")

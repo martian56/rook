@@ -121,7 +121,9 @@ fun test_deliberate_block_message_is_not_a_launch_error() {
     // "access is denied" must be treated as a real block, not a launch failure
     // that fails open and runs the tool anyway.
     assert_eq_str(
-        _shell_launch_error(Output { code: 1, stdout: "", stderr: "Access is denied: writing here is blocked" }),
+        _shell_launch_error(
+            Output { code: 1, stdout: "", stderr: "Access is denied: writing here is blocked" },
+        ),
         "",
     )
     // A genuinely missing command is still recognized as a launch failure.
@@ -131,7 +133,11 @@ fun test_deliberate_block_message_is_not_a_launch_error() {
     )
     assert_eq_str(
         _shell_launch_error(
-            Output { code: 1, stdout: "", stderr: "'hookcmd' is not recognized as an internal or external command" },
+            Output {
+                code: 1,
+                stdout: "",
+                stderr: "'hookcmd' is not recognized as an internal or external command",
+            },
         ),
         "command was not found",
     )
