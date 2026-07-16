@@ -37,6 +37,18 @@ fun filter_catalog(items: List<String>, query: String) -> List<String> {
     return out
 }
 
+// A lowercased copy of each entry, built once so the picker can filter on
+// every keystroke without lowercasing the whole catalog each time.
+fun catalog_lower(items: List<String>) -> List<String> {
+    let out: List<String> = []
+    let i = 0
+    while i < items.len() {
+        out.push(items[i].to_lower())
+        i = i + 1
+    }
+    return out
+}
+
 // The picker label keeps capability text separate from the real model ID, so
 // searching and selection still operate on the provider/model string.
 fun catalog_label(model: String) -> String {

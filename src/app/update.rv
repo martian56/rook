@@ -18,7 +18,7 @@ import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions_result, load_session }
-import "../config/catalog" { catalog, filter_catalog, index_of, model_capability_warning }
+import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
@@ -629,12 +629,64 @@ fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
+// Build the model catalog once on first picker open: the full id list, its
+// capability labels, and a lowercased copy for search. Later opens reuse it,
+// so the O(catalog) build and tool-support scan happen a single time.
+fun ensure_catalog(m: Chat) {
+    if m.catalog.ids.len() > 0 {
+        return
+    }
+    let items = catalog()
+    m.catalog.ids = items
+    m.catalog.labels = catalog_labels(items)
+    m.catalog.lower = catalog_lower(items)
+    return
+}
+
+// Recompute the filtered view the picker renders. An empty search reuses the
+// cached catalog directly; otherwise it scans the precomputed lowercased ids
+// once, carrying each match's label across. Called only when the query
+// changes, so a still picker does no work between keystrokes.
+fun refresh_pick(m: Chat) {
+    let q = m.pick_input.value.trim().to_lower()
+    if q == "" {
+        m.catalog.pick_ids = m.catalog.ids
+        m.catalog.pick_labels = m.catalog.labels
+        return
+    }
+    let ids: List<String> = []
+    let labels: List<String> = []
+    let i = 0
+    while i < m.catalog.ids.len() {
+        if m.catalog.lower[i].contains(q) {
+            ids.push(m.catalog.ids[i])
+            labels.push(m.catalog.labels[i])
+        }
+        i = i + 1
+    }
+    m.catalog.pick_ids = ids
+    m.catalog.pick_labels = labels
+    return
+}
+
+// The index of `model` in the cached catalog, or 0 when it is not listed, so
+// the picker opens highlighting the current model.
+fun _catalog_index(m: Chat, model: String) -> Int {
+    let i = 0
+    while i < m.catalog.ids.len() {
+        if m.catalog.ids[i] == model {
+            return i
+        }
+        i = i + 1
+    }
+    return 0
+}
+
 // Navigate the /model picker overlay. Printable keys edit the search bar,
 // which narrows the list; arrows move within the matches.
 fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
-    let items = filter_catalog(catalog(), m.pick_input.value)
-    if m.pick_sel >= items.len() && items.len() > 0 {
-        m.pick_sel = items.len() - 1
+    if m.pick_sel >= m.catalog.pick_ids.len() && m.catalog.pick_ids.len() > 0 {
+        m.pick_sel = m.catalog.pick_ids.len() - 1
     }
     match k {
         Up -> {
@@ -643,13 +695,13 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
             }
         },
         Down -> {
-            if m.pick_sel < items.len() - 1 {
+            if m.pick_sel < m.catalog.pick_ids.len() - 1 {
                 m.pick_sel = m.pick_sel + 1
             }
         },
         Enter -> {
-            if items.len() > 0 {
-                let err = set_model(m, items[m.pick_sel])
+            if m.catalog.pick_ids.len() > 0 {
+                let err = set_model(m, m.catalog.pick_ids[m.pick_sel])
                 m.picking = false
                 _after_model_set(m)
                 if err != "" {
@@ -665,6 +717,7 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
             let before = m.pick_input.value
             m.pick_input.handle_key(k)
             if m.pick_input.value != before {
+                refresh_pick(m)
                 m.pick_sel = 0
             }
         },
@@ -1008,8 +1061,10 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         },
         ModelPicker -> {
             m.picking = true
-            m.pick_sel = index_of(m.model)
             m.pick_input = TextInput.new()
+            ensure_catalog(m)
+            refresh_pick(m)
+            m.pick_sel = _catalog_index(m, m.model)
             return next(m)
         },
         ModelSet(id) -> {
