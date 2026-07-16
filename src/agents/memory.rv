@@ -7,6 +7,7 @@
 import std/string
 import std/env { get_env, has_env }
 import std/fs { read, exists }
+import "./limits" { safe_cut }
 
 // A single memory file may not crowd out the conversation.
 const MAX_MEMORY_CHARS: Int = 8000
@@ -68,7 +69,7 @@ fun _cap(t: String) -> String {
     if t.length() <= MAX_MEMORY_CHARS {
         return t
     }
-    return "${t.substring(0, MAX_MEMORY_CHARS)}\n[truncated]"
+    return "${t.substring(0, safe_cut(t, MAX_MEMORY_CHARS))}\n[truncated]"
 }
 
 fun _home() -> String {

@@ -2,7 +2,8 @@ import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./hooks" { Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool, drain_hook_notices }
+import std/process { Output }
+import "./hooks" { Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool, drain_hook_notices, _shell_launch_error }
 
 const CONFIG: String = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\", \"fail_closed\": true}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
 
@@ -113,6 +114,27 @@ fun test_hook_launch_failure_is_visible_once_and_fails_open_by_default() {
 
     assert_eq_str(run_pre_tool(hook, "write_file", "{}"), "")
     assert_eq_int(drain_hook_notices().len(), 0)
+}
+
+fun test_deliberate_block_message_is_not_a_launch_error() {
+    // A guard that ran and exited non-zero with a deny reason mentioning
+    // "access is denied" must be treated as a real block, not a launch failure
+    // that fails open and runs the tool anyway.
+    assert_eq_str(
+        _shell_launch_error(Output { code: 1, stdout: "", stderr: "Access is denied: writing here is blocked" }),
+        "",
+    )
+    // A genuinely missing command is still recognized as a launch failure.
+    assert_eq_str(
+        _shell_launch_error(Output { code: 127, stdout: "", stderr: "sh: hookcmd: not found" }),
+        "command was not found",
+    )
+    assert_eq_str(
+        _shell_launch_error(
+            Output { code: 1, stdout: "", stderr: "'hookcmd' is not recognized as an internal or external command" },
+        ),
+        "command was not found",
+    )
 }
 
 fun test_pre_tool_hook_launch_failure_can_fail_closed() {

@@ -31,6 +31,13 @@ fun clip_line(text: String, max: Int) -> String {
 // slicing at `max` blindly can split a multi-byte character and emit invalid
 // text; back off over any trailing continuation bytes first. The caller only
 // invokes this when the text is longer than `max`, so `max` is a valid index.
+// The largest cut position at or below `max` that does not split a UTF-8
+// sequence. Public so other truncation sites (session titles, memory) reuse it
+// instead of cutting on a raw byte boundary.
+fun safe_cut(text: String, max: Int) -> Int {
+    return _safe_cut(text, max)
+}
+
 fun _safe_cut(text: String, max: Int) -> Int {
     let cut = max
     while cut > 0 && _is_continuation(text.byte_at(cut)) {

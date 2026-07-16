@@ -1,0 +1,19 @@
+import std/string
+import std/test { assert_eq_str }
+import "./args" { arg }
+
+// The schemas declare these arguments as strings, but a model may send a bare
+// JSON number or boolean; arg must coerce them so the tool still works.
+fun test_arg_reads_string_values() {
+    assert_eq_str(arg("{\"path\":\"src/x.rv\"}", "path"), "src/x.rv")
+    assert_eq_str(arg("{\"path\":\"src/x.rv\"}", "missing"), "")
+    assert_eq_str(arg("", "path"), "")
+    assert_eq_str(arg("not json", "path"), "")
+}
+
+fun test_arg_coerces_numbers_and_booleans() {
+    assert_eq_str(arg("{\"id\":3}", "id"), "3")
+    assert_eq_str(arg("{\"depth\":5}", "depth"), "5")
+    assert_eq_str(arg("{\"staged\":true}", "staged"), "true")
+    assert_eq_str(arg("{\"staged\":false}", "staged"), "false")
+}

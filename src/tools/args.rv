@@ -21,9 +21,31 @@ fun _field(j: JsonValue, key: String) -> String {
     }
 }
 
+// The model's schema declares these arguments as strings, but a model may
+// still send a bare JSON number or boolean (id 3, staged true, depth 5). Coerce
+// those to their text form so the tool does not silently see "" and fail or
+// pick a wrong default.
 fun _as_str(v: JsonValue) -> String {
-    return match v.as_string() {
-        Some(s) -> s,
-        None -> "",
+    match v.as_string() {
+        Some(s) -> {
+            return s
+        },
+        None -> {},
     }
+    match v.as_int() {
+        Some(n) -> {
+            return "${n}"
+        },
+        None -> {},
+    }
+    match v.as_bool() {
+        Some(b) -> {
+            if b {
+                return "true"
+            }
+            return "false"
+        },
+        None -> {},
+    }
+    return ""
 }

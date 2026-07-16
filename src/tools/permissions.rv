@@ -130,12 +130,26 @@ fun glob_match(pattern: String, text: String) -> Bool {
                 }
                 pos = piece.length()
             } else {
-                let rest = text.substring(pos, text.length())
-                let at = rest.index_of(piece)
-                if at < 0 {
-                    return false
+                if i == parts.len() - 1 {
+                    // The trailing literal must end the text, and start at or
+                    // after what earlier pieces already consumed. Anchoring it
+                    // with ends_with (not the first index_of) is what lets
+                    // "*.env" match "a.env.env".
+                    if !text.ends_with(piece) {
+                        return false
+                    }
+                    if text.length() - piece.length() < pos {
+                        return false
+                    }
+                    pos = text.length()
+                } else {
+                    let rest = text.substring(pos, text.length())
+                    let at = rest.index_of(piece)
+                    if at < 0 {
+                        return false
+                    }
+                    pos = pos + at + piece.length()
                 }
-                pos = pos + at + piece.length()
             }
         }
         i = i + 1
@@ -154,7 +168,7 @@ fun subject_of(call: ToolCall) -> String {
     if n == "run_command" || n == "run_background" {
         return arg(a, "command")
     }
-    if n == "read_file" || n == "list_dir" || n == "write_file" || n == "edit_file" || n == "file_tree" {
+    if n == "read_file" || n == "list_dir" || n == "write_file" || n == "edit_file" || n == "multi_edit" || n == "file_tree" {
         return arg(a, "path")
     }
     if n == "grep" {

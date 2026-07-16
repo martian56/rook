@@ -86,6 +86,13 @@ fun resolve_base() -> String {
     if ps != "" {
         return ps
     }
+    let h = _home()
+    if h != "" {
+        let glob = _json_str(_read_opt("${h}/.config/rook/rook.json"), "base_url")
+        if glob != "" {
+            return glob
+        }
+    }
     return setting_str(global_root(), "base_url")
 }
 
@@ -304,6 +311,13 @@ fun key_env(provider: String) -> String {
 
 fun _key_optional(provider: String) -> Bool {
     return provider == "ollama" || provider == "custom"
+}
+
+// Whether `provider` runs without an API key (a local Ollama or a custom
+// endpoint). Public and pure, so the UI can decide whether to nag about a
+// missing key without re-reading auth.json.
+fun key_optional(provider: String) -> Bool {
+    return _key_optional(provider)
 }
 
 fun _home() -> String {

@@ -16,7 +16,7 @@ import "../ui/selection" { normalize, is_empty, contains }
 import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
-import "../config/config" { provider_of, key_env }
+import "../config/config" { provider_of, key_env, key_optional }
 import "../version" { version }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
@@ -890,7 +890,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     f.buf.set_string(text_x, below + 1, "model: ${m.model}", m.theme.dim)
 
     let tips = "Esc interrupts a turn · ctrl+c twice to quit."
-    if m.api_key == "" && provider_of(m.model) != "ollama" {
+    if m.api_key == "" && !key_optional(provider_of(m.model)) {
         let env = key_env(provider_of(m.model))
         let hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
         if env != "" {

@@ -323,8 +323,19 @@ impl AgentState {
         return d
     }
 
-    // UI side: answer the pending approval.
+    // UI side: answer the pending approval. Clear the shared prompt state
+    // before sending so the next drain sees it answered: otherwise a tick that
+    // lands between this send and the goroutine clearing it would re-show the
+    // just-answered prompt, and a second keypress would leak a decision into
+    // the buffered channel that silently answers the following prompt.
     fun decide(self, d: Int) {
+        self.lock.lock()
+        self.pending = ""
+        self.pending_detail = ""
+        self.question = ""
+        let none: List<String> = []
+        self.choices = none
+        self.lock.unlock()
         self.decisions.send(d)
     }
 
