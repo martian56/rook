@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.39
+
+- git_diff confines its path argument to the workspace like the other file tools, instead of handing a raw path to git. (#233)
+- resolve_path rejects Windows reserved device names (con, nul, com1, and so on), so read_file or write_file on one no longer hangs or silently discards data on Windows. (#234)
+
 ## 0.3.38
 
 - MCP: a server connection is used under a per-connection lock and matches each response to its request id, so parallel subagents calling the same server no longer swap or drop results, and a late reply after a timeout is discarded instead of answering the next call. (#228)

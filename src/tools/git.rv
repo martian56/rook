@@ -8,6 +8,7 @@
 
 import std/string
 import std/process { run, run_with_input, Output }
+import "./paths" { resolve_path }
 
 const MAX_DIFF: Int = 6000
 
@@ -33,8 +34,14 @@ fun git_diff(staged: String, path: String) -> String {
         args.push("--cached")
     }
     if path.trim() != "" {
+        // Confine the pathspec to the workspace, like the other file tools,
+        // rather than handing a raw model-supplied path to git.
+        let r = resolve_path(path, "")
+        if !r.ok {
+            return r.error
+        }
         args.push("--")
-        args.push(path)
+        args.push(r.path)
     }
     return _render_diff(args, "(no changes)")
 }

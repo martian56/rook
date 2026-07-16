@@ -1,6 +1,17 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
-import "./paths" { resolve_path, display_path }
+import "./paths" { resolve_path, display_path, _is_reserved }
+
+fun test_windows_reserved_names_are_flagged() {
+    assert_true(_is_reserved("con"))
+    assert_true(_is_reserved("NUL"))
+    assert_true(_is_reserved("com1"))
+    assert_true(_is_reserved("lpt9"))
+    assert_true(_is_reserved("con.txt"))
+    assert_true(!_is_reserved("console"))
+    assert_true(!_is_reserved("com0"))
+    assert_true(!_is_reserved("main.rv"))
+}
 
 fun test_resolve_path_normalizes_relative_paths() {
     let r = resolve_path("./src\\app/../main.rv", "")
