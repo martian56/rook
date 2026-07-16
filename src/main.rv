@@ -1,7 +1,7 @@
 // rook: a terminal coding agent built on plumage. It streams a real model's
 // reply and runs tools (read, search, edit, run commands) with your approval.
 //
-// Run with: rvpm run          (optionally: rvpm run -- --model openai/gpt-4o)
+// Run with: rvpm run          (optionally: rvpm run -- --model openai/gpt-5.6-sol)
 // Keys: type and Enter to send. Esc interrupts. ctrl+c twice quits.
 // PageUp/PageDown or the mouse wheel scroll. Commands: /model /key /clear /help /quit.
 

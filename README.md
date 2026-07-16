@@ -95,19 +95,19 @@ OpenRouter is the default provider, since one key there reaches most models.
 Models are `provider/model` strings (aviary's format).
 
 - `/model` opens a picker with a search bar: type to filter the
-  complete OpenRouter model snapshot plus a smaller set of direct-provider
+  complete OpenRouter model snapshot plus more than 100 direct-provider
   choices, arrow-select and Enter. Your choice is remembered for next time.
 - `/model anthropic/claude-sonnet-5` sets one directly; any
   `provider/model` string aviary can route works, listed or not.
 - The startup model is resolved in order: the `--model` flag
-  (`rvpm run -- --model openai/gpt-4o`), `ROOK_MODEL`, a project
+  (`rvpm run -- --model openai/gpt-5.6-sol`), `ROOK_MODEL`, a project
   `rook.json`, a global `~/.config/rook/rook.json`, the last model you
   picked, then a built-in default.
 
 `rook.json` is a small JSON file:
 
 ```json
-{ "model": "openai/gpt-4o", "base_url": "" }
+{ "model": "openai/gpt-5.6-sol", "base_url": "" }
 ```
 
 `base_url` (or `ROOK_BASE_URL`) points at any OpenAI-compatible endpoint,
@@ -141,6 +141,13 @@ Rook supports every provider routed by Aviary:
 | `azure` | `AZURE_API_KEY`, with `AZURE_API_BASE` |
 | `ollama` | none |
 | `custom` | optional `AVIARY_API_KEY`, with `ROOK_BASE_URL` or `AVIARY_BASE_URL` |
+
+The direct picker catalog was reviewed against provider documentation on
+July 16, 2026. It includes current flagship APIs and a broad selection of
+tool-capable hosted models. A provider may restrict models by account, region,
+preview access, or deployment. Ollama entries also require the named model to
+be installed locally. If a model is missing from the picker, enter its full
+`provider/model` string directly.
 
 Sakana's direct models are `sakana/fugu`, `sakana/fugu-ultra`, and
 `sakana/fugu-ultra-20260615`. Rook gives direct Sakana turns a longer stream
@@ -301,7 +308,7 @@ refine it.
 
 ```json
 {
-  "model": "openai/gpt-4o",
+  "model": "openai/gpt-5.6-sol",
   "theme": "Nord",
   "base_url": "",
   "permissions": {},

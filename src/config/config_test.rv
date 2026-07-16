@@ -3,6 +3,7 @@ import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
 import "./config" { provider_of, key_env, key_present, key_needed, auth_with_key, save_key_to_path }
 import "./catalog" { catalog, filter_catalog, index_of }
+import "./direct_catalog" { direct_catalog }
 import "./openrouter_catalog" { openrouter_catalog }
 
 fun test_provider_of() {
@@ -95,7 +96,7 @@ fun test_save_key_to_path_creates_missing_auth_file() {
 
 fun test_catalog_index_round_trips() {
     let items = catalog()
-    assert_true(items.len() > 340)
+    assert_true(items.len() > 440)
     let pick = "openrouter/deepseek/deepseek-v4-flash"
     assert_eq_str(items[index_of(pick)], pick)
 }
@@ -114,14 +115,75 @@ fun test_catalog_carries_the_2026_flagships() {
     }
     assert_true(all.contains("claude-sonnet-5"))
     assert_true(all.contains("claude-fable-5"))
-    assert_true(all.contains("gpt-5.5"))
+    assert_true(all.contains("openai/gpt-5.6-sol"))
     assert_true(all.contains("gpt-5.6-sol"))
-    assert_true(all.contains("gemini-3.1-pro"))
+    assert_true(all.contains("google/gemini-3.5-flash"))
     assert_true(all.contains("kimi-k2.7"))
     assert_true(all.contains("glm-5.2"))
-    assert_true(all.contains("grok-4.1"))
+    assert_true(all.contains("xai/grok-4.5"))
     assert_true(all.contains("sakana/fugu"))
     assert_true(all.contains("sakana/fugu-ultra"))
+}
+
+fun test_direct_catalog_covers_every_static_picker_provider() {
+    let items = direct_catalog()
+    let all = ""
+    let i = 0
+    while i < items.len() {
+        all = "${all} ${items[i]}"
+        i = i + 1
+    }
+    let providers = [
+        "openai/",
+        "anthropic/",
+        "google/",
+        "cohere/",
+        "groq/",
+        "mistral/",
+        "deepseek/",
+        "xai/",
+        "together/",
+        "fireworks/",
+        "perplexity/",
+        "deepinfra/",
+        "nebius/",
+        "moonshot/",
+        "sakana/",
+        "ollama/",
+    ]
+    i = 0
+    while i < providers.len() {
+        assert_true(all.contains(providers[i]))
+        i = i + 1
+    }
+}
+
+fun test_direct_catalog_has_no_duplicate_ids() {
+    let items = direct_catalog()
+    assert_true(items.len() >= 100)
+    let i = 0
+    while i < items.len() {
+        let j = i + 1
+        while j < items.len() {
+            assert_true(items[i] != items[j])
+            j = j + 1
+        }
+        i = i + 1
+    }
+}
+
+fun test_direct_catalog_excludes_retiring_aliases() {
+    let all = ""
+    let items = direct_catalog()
+    let i = 0
+    while i < items.len() {
+        all = "${all} ${items[i]}"
+        i = i + 1
+    }
+    assert_false(all.contains("deepseek/deepseek-chat"))
+    assert_false(all.contains("deepseek/deepseek-reasoner"))
+    assert_false(all.contains("groq/llama-3.1-8b-instant"))
+    assert_false(all.contains("groq/llama-3.3-70b-versatile"))
 }
 
 fun test_openrouter_catalog_contains_the_complete_snapshot() {
