@@ -36,6 +36,13 @@ fun notice_text(e: Entry) -> String {
     }
 }
 
+fun bot_text(e: Entry) -> String {
+    return match e {
+        BotMsg(t) -> t,
+        _ -> "",
+    }
+}
+
 fun test_parallel_agent_rows_group_under_their_own_headers() {
     let m = chat_init()
     apply_events(
@@ -91,6 +98,43 @@ fun test_model_picker_caches_and_filters() {
     assert_true(m.catalog.pick_ids.len() > 0)
     assert_true(m.catalog.pick_ids.len() < m.catalog.ids.len())
     assert_true(m.catalog.pick_ids.len() == m.catalog.pick_labels.len())
+}
+
+fun test_streamed_chunks_accumulate_into_one_bubble() {
+    let m = chat_init()
+    apply_events(
+        m,
+        [
+            DisplayEvent.Started,
+            DisplayEvent.Chunk("Hel"),
+            DisplayEvent.Chunk("lo, "),
+            DisplayEvent.Chunk("world"),
+        ],
+    )
+    // A batch of deltas folds into a single bubble carrying the full text.
+    assert_eq_str(tags(m), "|b")
+    assert_eq_str(m.stream_text, "Hello, world")
+    assert_eq_str(bot_text(m.entries[m.entries.len() - 1]), "Hello, world")
+}
+
+fun test_chunks_flush_before_a_tool_row_and_reset_on_restart() {
+    let m = chat_init()
+    apply_events(
+        m,
+        [
+            DisplayEvent.Started,
+            DisplayEvent.Chunk("first"),
+            DisplayEvent.ToolRan("read_file(a)", "ok"),
+            DisplayEvent.Started,
+            DisplayEvent.Chunk("second"),
+        ],
+    )
+    // The pending text is flushed into the first bubble before the tool row,
+    // and a new Started opens a fresh bubble.
+    assert_eq_str(tags(m), "|b|t:read_file(a)|b")
+    assert_eq_str(bot_text(m.entries[0]), "first")
+    assert_eq_str(m.stream_text, "second")
+    assert_eq_str(bot_text(m.entries[m.entries.len() - 1]), "second")
 }
 
 fun test_the_dispatch_row_lands_after_the_collapsed_block() {

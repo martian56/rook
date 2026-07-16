@@ -16,8 +16,8 @@ import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
 import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
-import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions_result, load_session }
+import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, expand_mentions }
+import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, list_sessions_result, load_session }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -183,6 +183,12 @@ fun _tick(m: Chat) -> Step<Chat> {
         m.entries.push(Entry.Notice(hook_notices[notice_i]))
         notice_i = notice_i + 1
     }
+    let save_errs = drain_save_errors()
+    let se = 0
+    while se < save_errs.len() {
+        m.entries.push(Entry.Notice(save_errs[se]))
+        se = se + 1
+    }
     if m.active {
         m.elapsed = m.elapsed + 1
         let snap = m.agent.drain()
@@ -205,8 +211,10 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.question = ""
             // Persist the conversation now that the turn has landed: the
             // display transcript, the model-visible history, and the running
-            // token totals together, so a resume restores all three.
-            let save_err = save_session(
+            // token totals together, so a resume restores all three. The write
+            // runs on a goroutine so a large session does not stall the UI at
+            // turn end; any failure surfaces as a notice on a later tick.
+            save_session_async(
                 m.session_id,
                 m.model,
                 m.entries,
@@ -214,9 +222,6 @@ fun _tick(m: Chat) -> Step<Chat> {
                 m.sess_prompt,
                 m.sess_completion,
             )
-            if save_err != "" {
-                m.entries.push(Entry.Notice(save_err))
-            }
         }
     }
     return next(m)
@@ -227,19 +232,30 @@ fun _tick(m: Chat) -> Step<Chat> {
 // under that header (so parallel agents keep their own groups), and a
 // collapse to just the header line when it finishes.
 fun apply_events(m: Chat, events: List<DisplayEvent>) {
+    // Streamed deltas are folded into the bubble once per batch, not once per
+    // delta: `added` collects this batch's chunk text and is flushed (a single
+    // concat plus one cache-invalidating set_entry) before any non-chunk event
+    // and at the end. A reply arrives in many small deltas but only a handful
+    // of ticks, so this turns the old per-delta O(n^2) rebuild into O(n) work.
+    let added = ""
     let i = 0
     while i < events.len() {
-        match events[i] {
+        let ev = events[i]
+        let is_chunk = match ev {
+            Chunk(d) -> true,
+            _ -> false,
+        }
+        if !is_chunk {
+            added = _flush_stream(m, added)
+        }
+        match ev {
             Started -> {
                 m.entries.push(Entry.BotMsg(""))
                 m.cur_bubble = m.entries.len() - 1
                 m.stream_text = ""
             },
             Chunk(d) -> {
-                m.stream_text = m.stream_text.concat(d)
-                if m.cur_bubble >= 0 && m.cur_bubble < m.entries.len() {
-                    set_entry(m, m.cur_bubble, Entry.BotMsg(m.stream_text))
-                }
+                added = added.concat(d)
             },
             ToolRan(name, result) -> {
                 m.entries.push(Entry.ToolMsg(name, result))
@@ -282,7 +298,22 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
         }
         i = i + 1
     }
+    let _ = _flush_stream(m, added)
     return
+}
+
+// Fold this batch's streamed text into the live bubble in one pass: append it
+// to stream_text and refresh the bubble entry (invalidating its one cache
+// slot) a single time. Returns "" so the caller can reset its accumulator.
+fun _flush_stream(m: Chat, added: String) -> String {
+    if added == "" {
+        return ""
+    }
+    m.stream_text = m.stream_text.concat(added)
+    if m.cur_bubble >= 0 && m.cur_bubble < m.entries.len() {
+        set_entry(m, m.cur_bubble, Entry.BotMsg(m.stream_text))
+    }
+    return ""
 }
 
 // The open block for an agent, or -1.
@@ -551,8 +582,9 @@ fun _refresh_mentions(m: Chat) {
     m.mention_sel = 0
     let mn = current_mention(m.entry.value)
     if mn.active {
-        m.mention_matches = fuzzy_match(mn.query, list_files())
+        m.mention_matches = fuzzy_match(mn.query, cached_files())
     } else {
+        invalidate_files()
         let none: List<String> = []
         m.mention_matches = none
     }
@@ -1226,7 +1258,9 @@ fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
 
 fun _send(m: Chat, text: String) -> Step<Chat> {
     // The transcript shows what was typed; the model gets any @-referenced
-    // files attached.
+    // files attached. Drop the mention file cache so the next prompt's picker
+    // reflects any files created during this turn.
+    invalidate_files()
     return _send_prompt(m, text, expand_mentions(text))
 }
 
