@@ -11,12 +11,12 @@
 
 import std/string
 import std/sync { Mutex, mutex }
-import std/env { os_name }
 import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/message" { ToolDef }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
 import "./config" { ServerSpec, configured_servers }
-import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect }
+import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect_with_env_file, failed_client }
+import "./launch" { launch_for, env_error }
 import "./transport" { enc_str }
 import "../agents/limits" { cap_text }
 
@@ -75,26 +75,14 @@ fun ensure_started() {
     return
 }
 
-// Launch one server. Per-server env is applied through the `env` command on
-// Unix (clean argv, no quoting); on Windows the child inherits rook's own
-// environment instead, so set the variables there.
+// Launch one server with its validated per-server environment on every
+// platform. The launch module keeps configuration values out of status errors.
 fun _connect_spec(spec: ServerSpec) -> McpClient {
-    if spec.env.len() > 0 && os_name() != "windows" {
-        let argv: List<String> = []
-        let e = 0
-        while e < spec.env.len() {
-            argv.push(spec.env[e])
-            e = e + 1
-        }
-        argv.push(spec.command)
-        let a = 0
-        while a < spec.args.len() {
-            argv.push(spec.args[a])
-            a = a + 1
-        }
-        return connect(spec.name, "env", argv)
+    let launch = launch_for(spec)
+    if launch.error != "" {
+        return failed_client(spec.name, launch.error)
     }
-    return connect(spec.name, spec.command, spec.args)
+    return connect_with_env_file(spec.name, launch.command, launch.args, launch.env_file)
 }
 
 // The MCP tools across the connected servers, as ToolDefs for the model.
@@ -178,6 +166,10 @@ fun status_from(specs: List<ServerSpec>, clients: List<McpClient>) -> String {
 }
 
 fun _server_status(spec: ServerSpec, clients: List<McpClient>) -> String {
+    let config_error = env_error(spec.env)
+    if config_error != "" {
+        return "${spec.name}: invalid configuration\n  ${config_error}"
+    }
     return match _find(clients, spec.name) {
         Some(c) -> {
             if c.ok {

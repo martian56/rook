@@ -1,0 +1,182 @@
+import std/string
+import std/env { os_name }
+import std/fs { read, write, exists, remove_file }
+import std/process { run, start }
+import std/sync { sleep_millis }
+import std/time { now_millis }
+import std/test { assert_eq_str, assert_eq_int, assert_true }
+import "./config" { ServerSpec }
+import "./client" { connect_with_env_file }
+import "./launch" { env_error, launch_for_os, write_windows_launcher, write_windows_environment, windows_launcher_script }
+
+fun test_mcp_environment_validation_accepts_portable_entries() {
+    assert_eq_str(env_error(["TOKEN=abc", "_ENDPOINT=https://example.test", "EMPTY="]), "")
+}
+
+fun test_mcp_environment_validation_rejects_invalid_entries_without_echoing_values() {
+    let invalid = ["TOKEN", "9TOKEN=secret-one", "BAD-NAME=secret-two"]
+    let i = 0
+    while i < invalid.len() {
+        let error = env_error([invalid[i]])
+        assert_true(error.contains("entry 1"))
+        assert_true(error.contains("KEY=value"))
+        assert_true(!error.contains("secret"))
+        assert_true(!error.contains(invalid[i]))
+        i = i + 1
+    }
+}
+
+fun test_mcp_launch_plans_keep_command_arguments_separate() {
+    let spec = ServerSpec {
+        name: "example",
+        command: "node",
+        args: ["server.js", "--port", "3000"],
+        env: ["TOKEN=value with spaces & symbols"],
+    }
+    let windows = launch_for_os(
+        spec,
+        "windows",
+        "C:/Users/test/.rook/mcp-env-launcher.ps1",
+        "C:/Users/test/.rook/mcp-env-123.pending",
+    )
+    assert_eq_str(windows.command, "powershell")
+    assert_eq_str(windows.args[6], "C:/Users/test/.rook/mcp-env-launcher.ps1")
+    assert_eq_str(windows.args[7], "C:/Users/test/.rook/mcp-env-123.pending")
+    assert_eq_str(windows.args[8], "node")
+    assert_eq_str(windows.args[9], "server.js")
+    assert_eq_str(windows.args[10], "--port")
+    assert_eq_str(windows.args[11], "3000")
+    let joined = ""
+    let i = 0
+    while i < windows.args.len() {
+        joined = joined.concat(windows.args[i]).concat("\n")
+        i = i + 1
+    }
+    assert_true(!joined.contains("TOKEN"))
+    assert_true(!joined.contains("value with spaces"))
+
+    let unix = launch_for_os(spec, "linux", "", "")
+    assert_eq_str(unix.command, "env")
+    assert_eq_str(unix.args[0], "TOKEN=value with spaces & symbols")
+    assert_eq_str(unix.args[1], "node")
+    assert_eq_str(unix.args[2], "server.js")
+}
+
+fun test_mcp_launch_applies_environment_on_the_current_platform() {
+    let value = "value with spaces & symbols"
+    let spec = ServerSpec {
+        name: "probe",
+        command: "sh",
+        args: ["-c", "printf %s \"$ROOK_MCP_ENV_PROBE\""],
+        env: ["ROOK_MCP_ENV_PROBE=${value}"],
+    }
+    let launcher = ""
+    let env_file = ""
+    if os_name() == "windows" {
+        launcher = "_rook_mcp_env_launcher.ps1"
+        env_file = "_rook_mcp_env.pending"
+        assert_eq_str(write_windows_launcher(launcher), "")
+        assert_eq_str(write_windows_environment(env_file, spec.env), "")
+        spec.command = "cmd"
+        spec.args = ["/d", "/c", "set ROOK_MCP_ENV_PROBE"]
+    }
+
+    let plan = launch_for_os(spec, os_name(), launcher, env_file)
+    assert_eq_str(plan.error, "")
+    let code = 0 - 1
+    let stdout = ""
+    let stderr = ""
+    match run(plan.command, plan.args) {
+        Ok(o) -> {
+            code = o.code
+            stdout = o.stdout
+            stderr = o.stderr
+        },
+        Err(e) -> {
+            assert_true(false)
+        },
+    }
+    assert_eq_str(stderr.trim(), "")
+    assert_eq_int(code, 0)
+    if os_name() == "windows" {
+        assert_eq_str(stdout.trim(), "ROOK_MCP_ENV_PROBE=${value}")
+        let script = match read(launcher) {
+            Ok(s) -> s,
+            Err(e) -> "",
+        }
+        assert_eq_str(script, windows_launcher_script())
+        assert_true(!script.contains("ROOK_MCP_ENV_PROBE"))
+        assert_true(!script.contains(value))
+        assert_true(!exists(env_file))
+        match remove_file(launcher) {
+            Ok(ok) -> {},
+            Err(e) -> {},
+        }
+    } else {
+        assert_eq_str(stdout, value)
+    }
+    return
+}
+
+fun test_windows_mcp_launcher_preserves_streaming_stdio() {
+    if os_name() != "windows" {
+        return
+    }
+    let launcher = "_rook_mcp_stream_launcher.ps1"
+    let env_file = "_rook_mcp_stream.pending"
+    assert_eq_str(write_windows_launcher(launcher), "")
+    let spec = ServerSpec {
+        name: "stream-probe",
+        command: "powershell",
+        args: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$line = [Console]::In.ReadLine(); [Console]::Out.WriteLine($env:ROOK_MCP_STREAM_PROBE + ':' + $line)",
+        ],
+        env: ["ROOK_MCP_STREAM_PROBE=ready"],
+    }
+    assert_eq_str(write_windows_environment(env_file, spec.env), "")
+    let plan = launch_for_os(spec, "windows", launcher, env_file)
+    match start(plan.command, plan.args) {
+        Ok(child) -> {
+            assert_true(child.write_stdin("ping\n"))
+            child.close_stdin()
+            let deadline = now_millis() + 5000
+            while child.running() && now_millis() < deadline {
+                sleep_millis(20)
+            }
+            if child.running() {
+                child.kill()
+            }
+            let code = child.wait()
+            sleep_millis(20)
+            let stdout = child.read_stdout()
+            let stderr = child.read_stderr()
+            child.free()
+            assert_eq_str(stderr.trim(), "")
+            assert_eq_int(code, 0)
+            assert_eq_str(stdout.trim(), "ready:ping")
+            assert_true(!exists(env_file))
+        },
+        Err(e) -> {
+            assert_true(false)
+        },
+    }
+    match remove_file(launcher) {
+        Ok(ok) -> {},
+        Err(e) -> {},
+    }
+    return
+}
+
+fun test_failed_process_start_removes_windows_environment_handoff() {
+    let env_file = "_rook_mcp_failed.pending"
+    write(env_file, "TOKEN=secret")
+    let no_args: List<String> = []
+    let client = connect_with_env_file("failed", "_rook_missing_mcp_process", no_args, env_file)
+    assert_true(!client.ok)
+    assert_true(!exists(env_file))
+    assert_true(!client.error.contains("secret"))
+}

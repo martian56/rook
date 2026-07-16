@@ -7,6 +7,9 @@
 import std/string
 import std/json { JsonValue, stringify }
 import std/process { Child, start }
+import std/fs { exists, remove_file }
+import std/sync { sleep_millis }
+import std/time { now_millis }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list, is_null }
 import "./framing" { LineBuffer }
 import "./transport" { McpConn, RpcResponse }
@@ -72,10 +75,57 @@ impl McpClient {
 // Launch and connect to an MCP server: start the process, run the handshake,
 // and list what it offers (tools, resources, prompts) per its capabilities.
 fun connect(name: String, command: String, cmd_args: List<String>) -> McpClient {
+    return connect_with_env_file(name, command, cmd_args, "")
+}
+
+fun connect_with_env_file(
+    name: String,
+    command: String,
+    cmd_args: List<String>,
+    env_file: String,
+) -> McpClient {
     return match start(command, cmd_args) {
-        Ok(child) -> _handshake(name, McpConn { child, buf: LineBuffer.new(), next_id: 1 }),
-        Err(e) -> _failed(name, "could not start '${command}': ${e.message}"),
+        Ok(child) -> {
+            if !_handoff_consumed(env_file) {
+                child.kill()
+                child.free()
+                _remove_env_file(env_file)
+                _failed(name, "Windows environment launcher did not consume its handoff file")
+            } else {
+                _handshake(name, McpConn { child, buf: LineBuffer.new(), next_id: 1 })
+            }
+        },
+        Err(e) -> {
+            _remove_env_file(env_file)
+            _failed(name, "could not start '${command}': ${e.message}")
+        },
     }
+}
+
+fun failed_client(name: String, why: String) -> McpClient {
+    return _failed(name, why)
+}
+
+fun _handoff_consumed(path: String) -> Bool {
+    if path == "" {
+        return true
+    }
+    let deadline = now_millis() + 5000
+    while exists(path) && now_millis() < deadline {
+        sleep_millis(10)
+    }
+    return !exists(path)
+}
+
+fun _remove_env_file(path: String) {
+    if path == "" || !exists(path) {
+        return
+    }
+    match remove_file(path) {
+        Ok(ok) -> {},
+        Err(e) -> {},
+    }
+    return
 }
 
 fun _handshake(name: String, conn: McpConn) -> McpClient {
