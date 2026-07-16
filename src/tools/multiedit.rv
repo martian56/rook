@@ -13,6 +13,7 @@ import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
 import "./paths" { resolve_path }
+import "./files" { count_occurrences }
 
 struct Edit {
     old_text: String,
@@ -82,6 +83,13 @@ fun apply_edits(content: String, edits: List<Edit>) -> EditOutcome {
         let idx = cur.index_of(e.old_text)
         if idx < 0 {
             return EditOutcome { ok: false, text: "edit ${i + 1}: old_text not found", applied: i }
+        }
+        if count_occurrences(cur, e.old_text) > 1 {
+            return EditOutcome {
+                ok: false,
+                text: "edit ${i + 1}: old_text appears more than once; add surrounding context to make it unique",
+                applied: i,
+            }
         }
         let before = cur.substring(0, idx)
         let after = cur.substring(idx + e.old_text.length(), cur.length())

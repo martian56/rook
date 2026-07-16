@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.44
+
+- edit_file and multi_edit refuse an edit when old_text appears more than once, asking for a more specific snippet, instead of silently changing the first occurrence (which may be the wrong one). (#239)
+
 ## 0.3.43
 
 - Copying a mouse selection maps display columns to byte offsets, so text on a line with a marker glyph or other non-ASCII characters is copied correctly instead of shifted. (#231)
