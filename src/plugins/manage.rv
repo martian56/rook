@@ -10,6 +10,7 @@ import std/process { run, Output }
 import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
 import "./install" { install_plugin, plugin_source }
 import "./market" { browse_text, resolve_name_result }
+import "../agents/dir" { invalidate_roots }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
 // ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
@@ -26,13 +27,19 @@ fun run_plugins_command(args: String) -> String {
         rest = a.substring(sp + 1, a.length()).trim()
     }
     if verb == "add" {
-        return add(rest)
+        let r = add(rest)
+        invalidate_roots()
+        return r
     }
     if verb == "remove" || verb == "rm" {
-        return remove(rest)
+        let r = remove(rest)
+        invalidate_roots()
+        return r
     }
     if verb == "update" {
-        return update(rest)
+        let r = update(rest)
+        invalidate_roots()
+        return r
     }
     if verb == "browse" || verb == "search" {
         return browse_text(rest)

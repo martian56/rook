@@ -9,6 +9,7 @@
 // tests) can work over any list of directories.
 
 import std/string
+import std/sync { Mutex, mutex }
 import std/env { get_env, has_env }
 import std/fs { exists, is_dir, list_dir }
 import "../plugins/model" { plugin_roots }
@@ -17,8 +18,42 @@ import "../plugins/model" { plugin_roots }
 // project's .agents, then each installed plugin, then the global .agents.
 // So a project entry shadows a plugin's, which shadows the global one. Any
 // may be absent.
+// The discovered roots, cached for the process so the per-round, per-tool, and
+// per-hook callers do not re-stat the directories and re-read every plugin
+// manifest on each call. Invalidated when a plugin is installed, removed, or
+// updated. Locked because roots() is read from both the UI thread and the turn
+// goroutine.
+struct RootsCache {
+    lock: Mutex,
+    ready: Bool,
+    roots: List<String>,
+}
+
+let ROOTS_CACHE: RootsCache = _new_roots_cache()
+
+fun _new_roots_cache() -> RootsCache {
+    let roots: List<String> = []
+    return RootsCache { lock: mutex(), ready: false, roots }
+}
+
 fun roots() -> List<String> {
-    return compose_roots(project_root(), plugin_roots(), global_root())
+    ROOTS_CACHE.lock.lock()
+    if !ROOTS_CACHE.ready {
+        ROOTS_CACHE.roots = compose_roots(project_root(), plugin_roots(), global_root())
+        ROOTS_CACHE.ready = true
+    }
+    let out = ROOTS_CACHE.roots
+    ROOTS_CACHE.lock.unlock()
+    return out
+}
+
+// Drop the cached roots so the next call rediscovers them, after a plugin
+// change alters the plugin roots.
+fun invalidate_roots() {
+    ROOTS_CACHE.lock.lock()
+    ROOTS_CACHE.ready = false
+    ROOTS_CACHE.lock.unlock()
+    return
 }
 
 // Assemble the root order from its three parts, skipping empties. Pure, so

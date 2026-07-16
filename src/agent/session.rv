@@ -41,6 +41,14 @@ const PLAN_PROMPT: String = " You are in PLAN MODE. The write, edit, and command
 // server). The system prompt carries the AGENTS.md memory and the skill
 // index from .agents when the project or the user defines them, and the
 // plan-mode instruction when `plan` is set.
+// The disk-heavy, turn-constant part of the system prompt: the memory, skills,
+// and subagent definitions read from .agents. Assembled once per turn (see
+// run_turn) so a multi-round turn does not re-read these files on every round.
+fun turn_agents_prompt() -> String {
+    let rs = roots()
+    return "${memory_prompt()}${skills_prompt(load_skills(rs))}${subagents_prompt(all_subagents(rs))}"
+}
+
 fun build_request(
     model: String,
     history: List<Message>,
@@ -48,13 +56,14 @@ fun build_request(
     base_url: String,
     timeout_ms: Int,
     plan: Bool,
+    agents_prompt: String,
 ) -> ChatRequest {
     let plan_note = ""
     if plan {
         plan_note = PLAN_PROMPT
     }
     let req = ChatRequest.new(model).system(
-        "${base_system_prompt()}${platform_note()}${plan_note}${memory_prompt()}${skills_prompt(load_skills(roots()))}${subagents_prompt(all_subagents(roots()))}${shells_note()}",
+        "${base_system_prompt()}${platform_note()}${plan_note}${agents_prompt}${shells_note()}",
     )
     let i = 0
     while i < history.len() {
