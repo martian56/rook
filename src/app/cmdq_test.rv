@@ -1,0 +1,15 @@
+import std/test { assert_true, assert_eq_str }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices }
+
+fun test_cmd_queue_round_trips_and_clears() {
+    // Clear any residue so the test does not depend on ordering.
+    let _ = drain_cmd_notices()
+    push_cmd_notice("one")
+    push_cmd_notice("two\nthree")
+    let out = drain_cmd_notices()
+    assert_true(out.len() == 2)
+    assert_eq_str(out[0], "one")
+    assert_eq_str(out[1], "two\nthree")
+    // A second drain finds nothing.
+    assert_true(drain_cmd_notices().len() == 0)
+}

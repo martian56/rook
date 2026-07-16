@@ -31,6 +31,7 @@ import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -188,6 +189,17 @@ fun _tick(m: Chat) -> Step<Chat> {
     while se < save_errs.len() {
         m.entries.push(Entry.Notice(save_errs[se]))
         se = se + 1
+    }
+    let cmd_notices = drain_cmd_notices()
+    let cn = 0
+    while cn < cmd_notices.len() {
+        let cmd_lines = cmd_notices[cn].lines()
+        let cl = 0
+        while cl < cmd_lines.len() {
+            m.entries.push(Entry.Notice(cmd_lines[cl]))
+            cl = cl + 1
+        }
+        cn = cn + 1
     }
     // Drain background shells at a lower cadence while the panel is open,
     // instead of on every frame from the view, so the live tail costs one
@@ -1163,7 +1175,20 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         },
         Plugins(args) -> {
             m.entries.push(Entry.UserMsg(text))
-            let lines = run_plugins_command(args).lines()
+            // add, update, and browse reach the network or clone a repo, which
+            // would freeze the UI for seconds. Run those on a goroutine and let
+            // the result arrive as a notice; list and remove are local and fast,
+            // so they stay inline.
+            let plugins_arg = args
+            if _plugins_backgrounds(plugins_arg) {
+                m.entries.push(Entry.Notice(_plugins_pending_note(plugins_arg)))
+                spawn(fun() -> Unit {
+                    push_cmd_notice(run_plugins_command(plugins_arg))
+                })
+                m.scroll_up = 0
+                return next(m)
+            }
+            let lines = run_plugins_command(plugins_arg).lines()
             let i = 0
             while i < lines.len() {
                 m.entries.push(Entry.Notice(lines[i]))
@@ -1235,6 +1260,35 @@ fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
     }
     m.scroll_up = 0
     return next(m)
+}
+
+// The verb of a /plugins invocation ("add", "list", "browse", ...).
+fun _plugins_verb(args: String) -> String {
+    let a = args.trim()
+    let sp = a.index_of(" ")
+    if sp >= 0 {
+        return a.substring(0, sp)
+    }
+    return a
+}
+
+// True for the /plugins verbs that hit the network or clone a repo, so they
+// should run off the UI thread.
+fun _plugins_backgrounds(args: String) -> Bool {
+    let v = _plugins_verb(args)
+    return v == "add" || v == "update" || v == "browse" || v == "search"
+}
+
+// The placeholder shown while a backgrounded /plugins verb runs.
+fun _plugins_pending_note(args: String) -> String {
+    let v = _plugins_verb(args)
+    if v == "add" {
+        return "installing plugin…"
+    }
+    if v == "update" {
+        return "updating plugin…"
+    }
+    return "searching the plugin index…"
 }
 
 fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
