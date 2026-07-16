@@ -31,6 +31,8 @@ repository. Point them at wherever you keep the scripts.
 
 - Only `pre-tool` hooks can block; every other event is observe-only, so
   their exit codes are ignored.
+- Hook launch failures produce one notice per command and error. They fail
+  open unless a `pre-tool` hook sets `"fail_closed": true`.
 - `match` is a glob on the tool name and applies only to the tool events
   (`pre-tool`, `post-tool`); omit it, or use `*`, to match every tool.
 - On Windows the command runs through `cmd`, so invoke these `.sh`

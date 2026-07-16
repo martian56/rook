@@ -30,6 +30,7 @@ import "../tools/permission_menu" { permission_grant_states, toggle_permission_g
 import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt }
 import "../mcp/command" { McpInvoke, parse_invoke }
+import "../hooks/hooks" { drain_hook_notices }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -176,6 +177,12 @@ fun _in_transcript(m: Chat, x: Int, y: Int) -> Bool {
 // Advance the spinner and replay any new display events from the goroutine.
 fun _tick(m: Chat) -> Step<Chat> {
     m.tick = m.tick + 1
+    let hook_notices = drain_hook_notices()
+    let notice_i = 0
+    while notice_i < hook_notices.len() {
+        m.entries.push(Entry.Notice(hook_notices[notice_i]))
+        notice_i = notice_i + 1
+    }
     if m.active {
         m.elapsed = m.elapsed + 1
         let snap = m.agent.drain()

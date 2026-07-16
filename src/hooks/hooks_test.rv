@@ -2,9 +2,9 @@ import std/string
 import std/json { parse, JsonValue }
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./hooks" { Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool }
+import "./hooks" { Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool, drain_hook_notices }
 
-const CONFIG: String = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\"}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
+const CONFIG: String = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\", \"fail_closed\": true}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
 
 fun _section() -> JsonValue {
     return match parse(CONFIG) {
@@ -23,6 +23,10 @@ fun test_hooks_from_reads_events_and_defaults_match() {
     while i < hs.len() {
         if hs[i].command == "b" {
             assert_eq_str(hs[i].match_glob, "*")
+            assert_true(!hs[i].fail_closed)
+        }
+        if hs[i].command == "a" {
+            assert_true(hs[i].fail_closed)
         }
         if hs[i].match_glob == "*" {
             starred = starred + 1
@@ -34,9 +38,9 @@ fun test_hooks_from_reads_events_and_defaults_match() {
 
 fun test_hooks_for_filters_by_event_and_match() {
     let hooks = [
-        Hook { event: "pre-tool", match_glob: "write_file", command: "a" },
-        Hook { event: "pre-tool", match_glob: "*", command: "b" },
-        Hook { event: "post-tool", match_glob: "*", command: "c" },
+        Hook { event: "pre-tool", match_glob: "write_file", command: "a", fail_closed: false },
+        Hook { event: "pre-tool", match_glob: "*", command: "b", fail_closed: false },
+        Hook { event: "post-tool", match_glob: "*", command: "c", fail_closed: false },
     ]
     // write_file matches the exact glob and the wildcard.
     assert_eq_int(hooks_for(hooks, "pre-tool", "write_file").len(), 2)
@@ -63,15 +67,69 @@ fun test_project_hooks_are_ignored_until_trusted() {
 fun test_pre_tool_hook_blocks_on_nonzero_exit() {
     // A non-zero exit blocks; exit 0 does not. "exit N" runs in both sh and
     // cmd, so this holds on every platform.
-    let blocker = [Hook { event: "pre-tool", match_glob: "*", command: "exit 7" }]
+    let blocker = [
+        Hook {
+            event: "pre-tool",
+            match_glob: "*",
+            command: "exit 7",
+            fail_closed: false,
+        },
+    ]
     assert_true(run_pre_tool(blocker, "write_file", "{}").starts_with("blocked by a pre-tool hook"))
 
-    let passer = [Hook { event: "pre-tool", match_glob: "*", command: "exit 0" }]
+    let passer = [
+        Hook {
+            event: "pre-tool",
+            match_glob: "*",
+            command: "exit 0",
+            fail_closed: false,
+        },
+    ]
     assert_eq_str(run_pre_tool(passer, "write_file", "{}"), "")
 
     // With no hooks, nothing ever blocks.
     let none: List<Hook> = []
     assert_eq_str(run_pre_tool(none, "write_file", "{}"), "")
+}
+
+fun test_hook_launch_failure_is_visible_once_and_fails_open_by_default() {
+    drain_hook_notices()
+    let hook = [
+        Hook {
+            event: "pre-tool",
+            match_glob: "*",
+            command: "_rook_missing_hook_command --token secret-value",
+            fail_closed: false,
+        },
+    ]
+
+    assert_eq_str(run_pre_tool(hook, "write_file", "{}"), "")
+    let notices = drain_hook_notices()
+    assert_eq_int(notices.len(), 1)
+    assert_true(notices[0].contains("pre-tool"))
+    assert_true(notices[0].contains("_rook_missing_hook_command"))
+    assert_true(notices[0].contains("not found"))
+    assert_true(!notices[0].contains("secret-value"))
+
+    assert_eq_str(run_pre_tool(hook, "write_file", "{}"), "")
+    assert_eq_int(drain_hook_notices().len(), 0)
+}
+
+fun test_pre_tool_hook_launch_failure_can_fail_closed() {
+    drain_hook_notices()
+    let hook = [
+        Hook {
+            event: "pre-tool",
+            match_glob: "*",
+            command: "_rook_missing_required_guard --policy strict",
+            fail_closed: true,
+        },
+    ]
+    let result = run_pre_tool(hook, "run_command", "{}")
+    assert_true(
+        result.starts_with("blocked because pre-tool hook command '_rook_missing_required_guard'"),
+    )
+    assert_eq_int(drain_hook_notices().len(), 1)
 }
 
 fun test_hook_context_includes_subagent_name() {

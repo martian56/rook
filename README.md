@@ -404,7 +404,13 @@ under a `hooks` key in a `settings.json` at any root rook reads (project
 ```json
 {
   "hooks": {
-    "pre-tool": [{ "match": "write_file", "command": "./deny-secrets.sh" }],
+    "pre-tool": [
+      {
+        "match": "write_file",
+        "command": "./deny-secrets.sh",
+        "fail_closed": true
+      }
+    ],
     "post-tool": [{ "command": "git add -A" }],
     "turn-end": [{ "command": "notify-send 'rook is done'" }]
   }
@@ -422,6 +428,12 @@ platform shell with a small JSON context on stdin: `{ "event", "tool",
 hook that exits non-zero blocks the tool, and its output is fed back to
 the model as the reason; every other event is observe-only. Because
 plugins are just another root, a plugin can ship hooks the same way.
+
+If a hook process cannot start, rook shows one notice for that command
+and error instead of repeating it on every matching event. Launch
+failures are fail-open by default. Set `"fail_closed": true` on a
+`pre-tool` hook when the tool must be blocked if its guard command cannot
+start. Notices show the command name without its arguments.
 
 Working examples are in [`examples/hooks/`](examples/hooks/): block a
 dangerous command, format a file after an edit, and notify when a turn
