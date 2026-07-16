@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.35
+
+- Added `rook --version` (and `-V`) to print the installed version, and showed it on the welcome screen. The version is kept in step with rv.toml by a test.
+
 ## 0.3.34
 
 - Fixed the streaming stutter on long replies: incoming text is folded into the transcript once per frame instead of rebuilding the whole reply on every delta.
