@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.25
+
+- Limited concurrent background shells to five by default, with a configurable maximum and actionable refusal message.
+
 ## 0.3.24
 
 - Added mutation previews to subagent approvals and successful subagent tool results.

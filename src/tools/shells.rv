@@ -11,8 +11,11 @@
 import std/string
 import std/sync { Mutex, mutex }
 import std/env { os_name }
+import std/json { JsonValue }
 import std/time { now_millis }
 import std/process { Child, start }
+import "../agents/dir" { roots }
+import "../agents/settings" { setting_section }
 
 // One background shell. `done` says the child exited and `code` is its
 // exit code; while running, `code` is meaningless. `output` accumulates
@@ -57,8 +60,17 @@ let STORE: ShellStore = _new_store()
 // Start `command` through the platform shell without waiting. Returns a
 // line naming the new shell id, or an error string.
 fun run_background(command: String) -> String {
+    return run_background_with_limit(command, background_shell_limit())
+}
+
+fun run_background_with_limit(command: String, limit: Int) -> String {
     if command.trim() == "" {
         return "error: no command given"
+    }
+    refresh()
+    let max_running = limit
+    if max_running <= 0 {
+        max_running = DEFAULT_RUNNING_LIMIT
     }
     let shell = "sh"
     let flag = "-c"
@@ -66,13 +78,54 @@ fun run_background(command: String) -> String {
         shell = "cmd"
         flag = "/c"
     }
+    STORE.lock.lock()
+    let running = _running_count_locked()
+    if running >= max_running {
+        STORE.lock.unlock()
+        return "error: background shell limit reached (${running}/${max_running} running); use list_shells to inspect them and kill_shell to stop one before starting another"
+    }
     return match start(shell, [flag, command]) {
         Ok(child) -> {
-            let id = _add(command, child)
+            let id = _add_locked(command, child)
+            STORE.lock.unlock()
             "started shell ${id}: ${command}"
         },
-        Err(e) -> "error: ${e.message}",
+        Err(e) -> {
+            STORE.lock.unlock()
+            "error: ${e.message}"
+        },
     }
+}
+
+fun background_shell_limit() -> Int {
+    let rs = roots()
+    let i = 0
+    while i < rs.len() {
+        match setting_section(rs[i], "tools") {
+            Some(section) -> {
+                let n = parse_background_shell_limit(section)
+                if n > 0 {
+                    return n
+                }
+            },
+            None -> {},
+        }
+        i = i + 1
+    }
+    return DEFAULT_RUNNING_LIMIT
+}
+
+fun parse_background_shell_limit(section: JsonValue) -> Int {
+    match section.get("run_background") {
+        Some(tool) -> {
+            let n = _json_int_field(tool, "max_running")
+            if n > 0 {
+                return n
+            }
+        },
+        None -> {},
+    }
+    return _json_int_field(section, "max_background_shells")
 }
 
 // Advance every shell: drain new output from the runtime buffers, and move
@@ -287,6 +340,9 @@ const MAX_STORE_OUTPUT: Int = 262144
 // How many exited shells the registry keeps before pruning the oldest.
 const KEEP_DONE: Int = 20
 
+// Conservative default for simultaneously running child processes.
+const DEFAULT_RUNNING_LIMIT: Int = 5
+
 // The store-side cap, pure for tests: trim `output` to `max` keeping the
 // tail, and slide `read_pos` down with the trimmed prefix.
 struct Capped {
@@ -389,8 +445,19 @@ fun shell_count() -> Int {
     return n
 }
 
-fun _add(command: String, child: Child) -> Int {
-    STORE.lock.lock()
+fun _running_count_locked() -> Int {
+    let running = 0
+    let i = 0
+    while i < STORE.shells.len() {
+        if !STORE.shells[i].done {
+            running = running + 1
+        }
+        i = i + 1
+    }
+    return running
+}
+
+fun _add_locked(command: String, child: Child) -> Int {
     let id = STORE.next
     STORE.next = STORE.next + 1
     STORE.shells.push(
@@ -405,6 +472,31 @@ fun _add(command: String, child: Child) -> Int {
             read_pos: 0,
         },
     )
-    STORE.lock.unlock()
     return id
+}
+
+fun _json_int_field(j: JsonValue, key: String) -> Int {
+    return match j.get(key) {
+        Some(v) -> _json_int(v),
+        None -> 0,
+    }
+}
+
+fun _json_int(v: JsonValue) -> Int {
+    match v.as_int() {
+        Some(n) -> {
+            return n
+        },
+        None -> {},
+    }
+    match v.as_string() {
+        Some(s) -> {
+            return match s.trim().parse_int() {
+                Some(n) -> n,
+                None -> 0,
+            }
+        },
+        None -> {},
+    }
+    return 0
 }

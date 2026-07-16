@@ -148,6 +148,21 @@ output is capped so a chatty process cannot grow memory without bound,
 old finished shells fall off the list, and quitting rook kills
 everything still running so no child is orphaned.
 
+Rook allows up to five running background shells by default. When the
+limit is reached, the tool asks the model to inspect `list_shells` and
+stop one with `kill_shell`. You can choose another positive limit in
+`.agents/settings.json`:
+
+```json
+{
+  "tools": {
+    "run_background": {
+      "max_running": 3
+    }
+  }
+}
+```
+
 `/plan` toggles plan mode: the model may read, search, and inspect but
 its write, edit, and command tools are withheld, so it studies the task
 and proposes an ordered plan instead of changing anything. The status
