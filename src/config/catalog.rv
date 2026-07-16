@@ -1,32 +1,16 @@
 // The models the /model picker offers. The complete generated OpenRouter
-// snapshot comes first, followed by a small set of direct-provider choices.
+// snapshot comes first, followed by curated direct-provider choices.
 // This is a convenience list, not a limit: /model <provider/model> accepts
 // any string aviary can route, so a newly released model is still reachable
 // by typing it before the next catalog refresh.
 
 import std/string
 import "./openrouter_catalog" { openrouter_catalog }
+import "./direct_catalog" { direct_catalog }
 
 fun catalog() -> List<String> {
     let items = openrouter_catalog()
-    let direct = [
-        "anthropic/claude-sonnet-5",
-        "anthropic/claude-fable-5",
-        "anthropic/claude-opus-4-8",
-        "anthropic/claude-haiku-4-5",
-        "openai/gpt-5.5",
-        "openai/gpt-4o",
-        "google/gemini-3.1-pro",
-        "google/gemini-3.1-flash",
-        "deepseek/deepseek-chat",
-        "xai/grok-4.1",
-        "sakana/fugu",
-        "sakana/fugu-ultra",
-        "sakana/fugu-ultra-20260615",
-        "groq/llama-3.3-70b-versatile",
-        "mistral/mistral-large-latest",
-        "ollama/llama3",
-    ]
+    let direct = direct_catalog()
     let i = 0
     while i < direct.len() {
         items.push(direct[i])

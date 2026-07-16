@@ -1,0 +1,153 @@
+// Curated direct-provider models reviewed against official provider catalogs
+// on 2026-07-16. Keep this list limited to text/chat models that Rook can call
+// through Aviary. Account, region, preview, and local Ollama availability may
+// still differ.
+//
+// Sources:
+// https://developers.openai.com/api/docs/models
+// https://platform.claude.com/docs/en/about-claude/models/overview
+// https://ai.google.dev/gemini-api/docs/models
+// https://docs.x.ai/developers/models
+// https://api-docs.deepseek.com/quick_start/pricing
+// https://docs.mistral.ai/models/overview
+// https://docs.cohere.com/v2/docs/models
+// https://console.groq.com/docs/models
+// https://docs.together.ai/docs/serverless/models
+// https://fireworks.ai/models
+// https://docs.perplexity.ai/docs/sonar/models
+// https://api.deepinfra.com/models/list
+// https://studio.nebius.ai/models/text2text
+// https://platform.moonshot.ai/docs
+// https://console.sakana.ai/models
+// https://ollama.com/library
+
+fun direct_catalog() -> List<String> {
+    return [
+        // OpenAI. These models support Chat Completions and function calling.
+        "openai/gpt-5.6",
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        // Anthropic Claude API.
+        "anthropic/claude-fable-5",
+        "anthropic/claude-opus-4-8",
+        "anthropic/claude-sonnet-5",
+        "anthropic/claude-haiku-4-5",
+        "anthropic/claude-sonnet-4-6",
+        "anthropic/claude-opus-4-7",
+        // Google Gemini API. The first two are stable 2026 models.
+        "google/gemini-3.5-flash",
+        "google/gemini-3.1-flash-lite",
+        "google/gemini-3.1-pro-preview",
+        "google/gemini-3-flash-preview",
+        "google/gemini-2.5-pro",
+        "google/gemini-2.5-flash",
+        "google/gemini-2.5-flash-lite",
+        // xAI.
+        "xai/grok-4.5",
+        "xai/grok-4.5-latest",
+        "xai/grok-build-latest",
+        // DeepSeek. The older deepseek-chat and deepseek-reasoner aliases are
+        // scheduled for retirement on 2026-07-24.
+        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
+        // Sakana AI Fugu.
+        "sakana/fugu",
+        "sakana/fugu-ultra",
+        "sakana/fugu-ultra-20260615",
+        // Mistral API. All entries expose Chat Completions and function calls.
+        "mistral/mistral-medium-3-5",
+        "mistral/mistral-small-2603",
+        "mistral/mistral-large-2512",
+        "mistral/ministral-14b-2512",
+        "mistral/ministral-8b-2512",
+        "mistral/ministral-3b-2512",
+        "mistral/mistral-medium-latest",
+        "mistral/mistral-small-latest",
+        "mistral/mistral-large-latest",
+        // Cohere Chat API.
+        "cohere/command-a-plus-05-2026",
+        "cohere/command-a-03-2025",
+        "cohere/command-a-reasoning-08-2025",
+        "cohere/command-r7b-12-2024",
+        "cohere/command-r-08-2024",
+        "cohere/command-r-plus-08-2024",
+        "cohere/tiny-aya-global",
+        "cohere/tiny-aya-earth",
+        "cohere/tiny-aya-fire",
+        "cohere/tiny-aya-water",
+        "cohere/c4ai-aya-expanse-32b",
+        // Groq production models and systems. Retiring Llama aliases are not
+        // included.
+        "groq/openai/gpt-oss-120b",
+        "groq/openai/gpt-oss-20b",
+        "groq/groq/compound",
+        "groq/groq/compound-mini",
+        // Together serverless chat models with documented function calling.
+        "together/MiniMaxAI/MiniMax-M2.7",
+        "together/Qwen/Qwen3.5-397B-A17B",
+        "together/Qwen/Qwen3.5-9B",
+        "together/moonshotai/Kimi-K2.6",
+        "together/zai-org/GLM-5.1",
+        "together/zai-org/GLM-5",
+        "together/openai/gpt-oss-120b",
+        "together/openai/gpt-oss-20b",
+        "together/deepseek-ai/DeepSeek-V4-Pro",
+        "together/Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+        "together/meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        "together/essentialai/rnj-1-instruct",
+        "together/Qwen/Qwen2.5-7B-Instruct-Turbo",
+        "together/google/gemma-4-31B-it",
+        // Fireworks serverless models with function calling.
+        "fireworks/accounts/fireworks/models/kimi-k2p6",
+        "fireworks/accounts/fireworks/models/minimax-m2p7",
+        "fireworks/accounts/fireworks/models/glm-5p1",
+        "fireworks/accounts/fireworks/models/deepseek-v4-pro",
+        "fireworks/accounts/fireworks/models/deepseek-v4-flash",
+        "fireworks/accounts/fireworks/models/gpt-oss-120b",
+        "fireworks/accounts/fireworks/models/gpt-oss-20b",
+        // Perplexity Sonar API.
+        "perplexity/sonar",
+        "perplexity/sonar-pro",
+        "perplexity/sonar-reasoning-pro",
+        "perplexity/sonar-deep-research",
+        // DeepInfra models tagged for tool use by its live models API.
+        "deepinfra/deepseek-ai/DeepSeek-V4-Pro",
+        "deepinfra/deepseek-ai/DeepSeek-V4-Flash",
+        "deepinfra/anthropic/claude-fable-5",
+        "deepinfra/anthropic/claude-opus-4-8",
+        "deepinfra/anthropic/claude-sonnet-5",
+        "deepinfra/google/gemini-3.5-flash",
+        "deepinfra/google/gemini-3.1-flash-lite",
+        "deepinfra/Qwen/Qwen3.7-Max",
+        "deepinfra/Qwen/Qwen3.6-27B",
+        "deepinfra/Qwen/Qwen3.5-397B-A17B",
+        "deepinfra/moonshotai/Kimi-K2.7-Code",
+        "deepinfra/moonshotai/Kimi-K2.6",
+        "deepinfra/MiniMaxAI/MiniMax-M3",
+        "deepinfra/MiniMaxAI/MiniMax-M2.7",
+        "deepinfra/zai-org/GLM-5.2",
+        "deepinfra/zai-org/GLM-5.1",
+        "deepinfra/stepfun-ai/Step-3.7-Flash",
+        "deepinfra/ByteDance/Seed-2.0-code",
+        "deepinfra/XiaomiMiMo/MiMo-V2.5-Pro",
+        "deepinfra/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B",
+        // Nebius AI Studio. The models endpoint is authoritative for each
+        // account, so these are widely documented starting points.
+        "nebius/Qwen/Qwen3-30B-A3B",
+        "nebius/Qwen/Qwen2.5-72B-Instruct",
+        "nebius/meta-llama/Llama-3.3-70B-Instruct",
+        "nebius/deepseek-ai/DeepSeek-V3",
+        "nebius/openai/gpt-oss-120b",
+        // Moonshot's direct platform.
+        "moonshot/kimi-k2.5",
+        // Common Ollama library names. These work when the model is installed
+        // locally and can always be replaced by typing another Ollama name.
+        "ollama/gpt-oss",
+        "ollama/qwen3",
+        "ollama/deepseek-r1",
+        "ollama/gemma3",
+        "ollama/llama3.2",
+        "ollama/mistral",
+    ]
+}
