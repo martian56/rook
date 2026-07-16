@@ -18,41 +18,47 @@ import "../plugins/model" { plugin_roots }
 // project's .agents, then each installed plugin, then the global .agents.
 // So a project entry shadows a plugin's, which shadows the global one. Any
 // may be absent.
-// The discovered roots, cached for the process so the per-round, per-tool, and
-// per-hook callers do not re-stat the directories and re-read every plugin
-// manifest on each call. Invalidated when a plugin is installed, removed, or
-// updated. Locked because roots() is read from both the UI thread and the turn
-// goroutine.
-struct RootsCache {
+fun roots() -> List<String> {
+    return compose_roots(project_root(), _cached_plugin_roots(), global_root())
+}
+
+// The plugin roots, cached for the process. Only this part of roots() is cached:
+// it reads and parses every plugin manifest, which is the cost that multiplied
+// across a turn's rounds, tool checks, and hook fires. The .agents discovery
+// (project_root/global_root) stays fresh, because it is cheap stat calls and
+// the working directory's .agents can appear mid-run (the behavior evals create
+// one). Invalidated when a plugin is installed, removed, or updated. Locked
+// because roots() is read from both the UI thread and the turn goroutine.
+struct PluginRootsCache {
     lock: Mutex,
     ready: Bool,
     roots: List<String>,
 }
 
-let ROOTS_CACHE: RootsCache = _new_roots_cache()
+let PLUGIN_ROOTS_CACHE: PluginRootsCache = _new_plugin_roots_cache()
 
-fun _new_roots_cache() -> RootsCache {
+fun _new_plugin_roots_cache() -> PluginRootsCache {
     let roots: List<String> = []
-    return RootsCache { lock: mutex(), ready: false, roots }
+    return PluginRootsCache { lock: mutex(), ready: false, roots }
 }
 
-fun roots() -> List<String> {
-    ROOTS_CACHE.lock.lock()
-    if !ROOTS_CACHE.ready {
-        ROOTS_CACHE.roots = compose_roots(project_root(), plugin_roots(), global_root())
-        ROOTS_CACHE.ready = true
+fun _cached_plugin_roots() -> List<String> {
+    PLUGIN_ROOTS_CACHE.lock.lock()
+    if !PLUGIN_ROOTS_CACHE.ready {
+        PLUGIN_ROOTS_CACHE.roots = plugin_roots()
+        PLUGIN_ROOTS_CACHE.ready = true
     }
-    let out = ROOTS_CACHE.roots
-    ROOTS_CACHE.lock.unlock()
+    let out = PLUGIN_ROOTS_CACHE.roots
+    PLUGIN_ROOTS_CACHE.lock.unlock()
     return out
 }
 
-// Drop the cached roots so the next call rediscovers them, after a plugin
-// change alters the plugin roots.
+// Drop the cached plugin roots so the next call rediscovers them, after a
+// plugin change.
 fun invalidate_roots() {
-    ROOTS_CACHE.lock.lock()
-    ROOTS_CACHE.ready = false
-    ROOTS_CACHE.lock.unlock()
+    PLUGIN_ROOTS_CACHE.lock.lock()
+    PLUGIN_ROOTS_CACHE.ready = false
+    PLUGIN_ROOTS_CACHE.lock.unlock()
     return
 }
 
