@@ -1,6 +1,6 @@
 import unittest
 
-from sync_openrouter_catalog import model_ids, render
+from sync_openrouter_catalog import model_ids, model_ids_without_tools, render
 
 
 class ModelIdsTest(unittest.TestCase):
@@ -37,6 +37,14 @@ class ModelIdsTest(unittest.TestCase):
             {"data": [None]},
             {"data": [{"id": ""}]},
             {"data": [{"id": "missing-provider"}]},
+            {
+                "data": [
+                    {
+                        "id": "provider/model",
+                        "supported_parameters": "not a list",
+                    }
+                ]
+            },
         ]
 
         for document in invalid_documents:
@@ -44,14 +52,37 @@ class ModelIdsTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     model_ids(document)
 
+    def test_preserves_models_without_advertised_tools(self) -> None:
+        document = {
+            "data": [
+                {
+                    "id": "provider/agent",
+                    "created": 20,
+                    "supported_parameters": ["tools", "temperature"],
+                },
+                {
+                    "id": "provider/text",
+                    "created": 10,
+                    "supported_parameters": ["temperature"],
+                },
+            ]
+        }
+
+        self.assertEqual(model_ids_without_tools(document), ["provider/text"])
+
 
 class RenderTest(unittest.TestCase):
     def test_prefixes_every_model_for_aviary(self) -> None:
-        output = render(["sakana/fugu-ultra", "openai/gpt-example"])
+        output = render(
+            ["sakana/fugu-ultra", "openai/gpt-example"],
+            ["openai/gpt-example"],
+        )
 
         self.assertIn('"openrouter/sakana/fugu-ultra"', output)
         self.assertIn('"openrouter/openai/gpt-example"', output)
         self.assertIn("Contains 2 models", output)
+        self.assertIn("1 without advertised tool support", output)
+        self.assertIn("fun openrouter_models_without_tools()", output)
 
 
 if __name__ == "__main__":
