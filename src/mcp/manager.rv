@@ -15,7 +15,7 @@ import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/message" { ToolDef }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
 import "./config" { ServerSpec, configured_servers }
-import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect, failed_client }
+import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect_with_env_file, failed_client }
 import "./launch" { launch_for, env_error }
 import "./transport" { enc_str }
 import "../agents/limits" { cap_text }
@@ -82,7 +82,7 @@ fun _connect_spec(spec: ServerSpec) -> McpClient {
     if launch.error != "" {
         return failed_client(spec.name, launch.error)
     }
-    return connect(spec.name, launch.command, launch.args)
+    return connect_with_env_file(spec.name, launch.command, launch.args, launch.env_file)
 }
 
 // The MCP tools across the connected servers, as ToolDefs for the model.

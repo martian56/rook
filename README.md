@@ -486,9 +486,12 @@ each provides; `/mcp connect` starts the connections in the background.
 
 Per-server `env` is applied on Unix and Windows. On Windows rook uses a
 fixed PowerShell launcher stored under `~/.rook`; the generated script
-contains no configured names or values. A `.cmd` launcher such as `npx`
-can be used directly when `env` is present. Without `env`, use
-`"command": "cmd", "args": ["/c", "npx", ...]`.
+contains no configured names or values. Values are handed to it through a
+short-lived file in the same per-user directory, which is deleted before
+the MCP server starts, so they do not remain in the launcher command line.
+A `.cmd` launcher such as `npx` can be used directly when `env` is
+present. Without `env`, use `"command": "cmd", "args": ["/c", "npx",
+...]`.
 
 ## How it is built
 
