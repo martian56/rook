@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.20
+
+- Skipped common build, dependency, cache, and VCS directories during grep unless the ignored directory is searched directly.
+
 ## 0.3.19
 
 - Reported session save, list, and load failures instead of silently dropping persistence errors.
