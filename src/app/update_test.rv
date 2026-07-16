@@ -4,7 +4,7 @@ import "github.com/martian56/perch/keys" { Key, MouseEvent, MouseKind }
 import "github.com/martian56/plumage" { Event }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, chat_init }
-import "./update" { apply_events, chat_update, _resume, _run }
+import "./update" { apply_events, chat_update, _resume, _run, _after_model_set }
 import "../agent/state" { DisplayEvent }
 import "../ui/transcript" { Entry }
 
@@ -27,6 +27,13 @@ fun tags(m: Chat) -> String {
         i = i + 1
     }
     return out
+}
+
+fun notice_text(e: Entry) -> String {
+    return match e {
+        Notice(t) -> t,
+        _ -> "",
+    }
 }
 
 fun test_parallel_agent_rows_group_under_their_own_headers() {
@@ -85,6 +92,18 @@ fun test_resume_error_is_a_notice() {
     m.entries.push(Entry.UserMsg("keep this"))
     _resume(m, "no-such-session-id")
     assert_eq_str(tags(m), "|u|n")
+}
+
+fun test_text_only_model_selection_warns_without_reverting() {
+    let m = chat_init()
+    let selected = "openrouter/perceptron/perceptron-mk1"
+    m.model = selected
+    _after_model_set(m)
+    assert_eq_str(m.model, selected)
+    assert_true(m.entries.len() >= 2)
+    let warning = notice_text(m.entries[m.entries.len() - 1])
+    assert_true(warning.contains("does not advertise tool calling"))
+    assert_true(warning.contains("Rook will use it"))
 }
 
 fun test_permissions_command_opens_and_esc_closes_the_panel() {

@@ -18,7 +18,7 @@ import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, list_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session, list_sessions_result, load_session }
-import "../config/catalog" { catalog, filter_catalog, index_of }
+import "../config/catalog" { catalog, filter_catalog, index_of, model_capability_warning }
 import "../config/config" { provider_of, key_needed, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
@@ -955,6 +955,10 @@ fun _after_model_set(m: Chat) {
         m.entries.push(Entry.Notice("model set to ${m.model}; enter its API key below"))
     } else {
         m.entries.push(Entry.Notice("model set to ${m.model}"))
+    }
+    let warning = model_capability_warning(m.model)
+    if warning != "" {
+        m.entries.push(Entry.Notice(warning))
     }
     return
 }

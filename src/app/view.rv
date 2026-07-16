@@ -17,7 +17,7 @@ import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env }
-import "../config/catalog" { catalog, filter_catalog }
+import "../config/catalog" { catalog, filter_catalog, catalog_labels }
 import "../commands" { CmdInfo, menu_matches }
 import "../tools/shells" { ShellInfo, list_shells, shell_tail }
 import "../tools/todos" { Todo, current_todos }
@@ -780,6 +780,7 @@ fun _approval_diff_style(line: String, m: Chat) -> Style {
 fun _picker(m: Chat, f: Frame) {
     let full = f.area()
     let items = filter_catalog(catalog(), m.pick_input.value)
+    let labels = catalog_labels(items)
     let count = items.len()
     if count < 1 {
         count = 1
@@ -788,7 +789,7 @@ fun _picker(m: Chat, f: Frame) {
     if h > full.h {
         h = full.h
     }
-    let w = 52
+    let w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
@@ -811,7 +812,7 @@ fun _picker(m: Chat, f: Frame) {
         f.buf.set_string(list_area.x + 1, list_area.y, "(no model matches)", m.theme.dim)
         return
     }
-    ListView.new(items).selected(m.pick_sel).highlight_style(m.theme.modal.reverse()).render(
+    ListView.new(labels).selected(m.pick_sel).highlight_style(m.theme.modal.reverse()).render(
         list_area,
         f.buf,
     )

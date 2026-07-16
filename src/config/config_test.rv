@@ -2,9 +2,9 @@ import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
 import "./config" { provider_of, key_env, key_present, key_needed, auth_with_key, save_key_to_path }
-import "./catalog" { catalog, filter_catalog, index_of }
+import "./catalog" { catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning }
 import "./direct_catalog" { direct_catalog }
-import "./openrouter_catalog" { openrouter_catalog }
+import "./openrouter_catalog" { openrouter_catalog, openrouter_models_without_tools }
 
 fun test_provider_of() {
     assert_eq_str(provider_of("openai/gpt-4o"), "openai")
@@ -214,6 +214,38 @@ fun test_openrouter_catalog_has_no_duplicate_ids() {
         }
         i = i + 1
     }
+}
+
+fun test_openrouter_catalog_preserves_tool_capabilities() {
+    let without = openrouter_models_without_tools()
+    assert_true(without.len() >= 75)
+    assert_true(supports_tools("openrouter/openai/gpt-5.6-sol"))
+    assert_false(supports_tools("openrouter/perceptron/perceptron-mk1"))
+    assert_true(supports_tools("sakana/fugu-ultra"))
+}
+
+fun test_catalog_labels_distinguish_tool_support() {
+    assert_eq_str(
+        catalog_label("openrouter/openai/gpt-5.6-sol"),
+        "[tools] openrouter/openai/gpt-5.6-sol",
+    )
+    assert_eq_str(
+        catalog_label("openrouter/perceptron/perceptron-mk1"),
+        "[no tools] openrouter/perceptron/perceptron-mk1",
+    )
+    let labels = catalog_labels(
+        ["openrouter/openai/gpt-5.6-sol", "openrouter/perceptron/perceptron-mk1"],
+    )
+    assert_true(labels.len() == 2)
+    assert_true(labels[0].starts_with("[tools]"))
+    assert_true(labels[1].starts_with("[no tools]"))
+}
+
+fun test_model_capability_warning_does_not_block_selection() {
+    assert_eq_str(model_capability_warning("openrouter/openai/gpt-5.6-sol"), "")
+    let warning = model_capability_warning("openrouter/perceptron/perceptron-mk1")
+    assert_true(warning.contains("does not advertise tool calling"))
+    assert_true(warning.contains("Rook will use it"))
 }
 
 fun test_filter_narrows_by_substring_ignoring_case() {
