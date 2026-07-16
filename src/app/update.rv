@@ -24,7 +24,7 @@ import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
-import "../tools/shells" { list_shells, kill_all_shells }
+import "../tools/shells" { list_shells, kill_all_shells, refresh }
 import "../tools/todos" { clear_todos }
 import "../tools/permission_menu" { permission_grant_states, toggle_permission_grant }
 import "../plugins/manage" { run_plugins_command }
@@ -188,6 +188,12 @@ fun _tick(m: Chat) -> Step<Chat> {
     while se < save_errs.len() {
         m.entries.push(Entry.Notice(save_errs[se]))
         se = se + 1
+    }
+    // Drain background shells at a lower cadence while the panel is open,
+    // instead of on every frame from the view, so the live tail costs one
+    // refresh every few ticks rather than several per frame.
+    if m.shells_open && m.tick % 3 == 0 {
+        refresh()
     }
     if m.active {
         m.elapsed = m.elapsed + 1

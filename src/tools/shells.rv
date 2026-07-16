@@ -225,6 +225,13 @@ fun kill_all_shells() {
 // A snapshot of every shell, oldest first, after a refresh.
 fun list_shells() -> List<ShellInfo> {
     refresh()
+    return shells_snapshot()
+}
+
+// A snapshot of every shell without draining, for the per-frame view. The
+// panel relies on _tick to refresh at a lower cadence, so rendering does not
+// drain pipes and re-cap output on every frame.
+fun shells_snapshot() -> List<ShellInfo> {
     let out: List<ShellInfo> = []
     let now = now_millis()
     STORE.lock.lock()
@@ -427,6 +434,11 @@ fun _parse_id(text: String) -> Int {
 // unknown id.
 fun shell_tail(id: Int, max_chars: Int) -> String {
     refresh()
+    return shell_tail_at(id, max_chars)
+}
+
+// The last `max_chars` of a shell's output without draining, for the view.
+fun shell_tail_at(id: Int, max_chars: Int) -> String {
     STORE.lock.lock()
     let at = _index_of(id)
     if at < 0 {
