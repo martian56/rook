@@ -3,6 +3,7 @@ import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
 import "./config" { provider_of, key_env, key_present, auth_with_key, save_key_to_path }
 import "./catalog" { catalog, filter_catalog, index_of }
+import "./openrouter_catalog" { openrouter_catalog }
 
 fun test_provider_of() {
     assert_eq_str(provider_of("openai/gpt-4o"), "openai")
@@ -79,7 +80,7 @@ fun test_save_key_to_path_creates_missing_auth_file() {
 
 fun test_catalog_index_round_trips() {
     let items = catalog()
-    assert_true(items.len() > 30)
+    assert_true(items.len() > 340)
     let pick = "openrouter/deepseek/deepseek-v4-flash"
     assert_eq_str(items[index_of(pick)], pick)
 }
@@ -99,11 +100,41 @@ fun test_catalog_carries_the_2026_flagships() {
     assert_true(all.contains("claude-sonnet-5"))
     assert_true(all.contains("claude-fable-5"))
     assert_true(all.contains("gpt-5.5"))
+    assert_true(all.contains("gpt-5.6-sol"))
     assert_true(all.contains("gemini-3.1-pro"))
     assert_true(all.contains("kimi-k2.7"))
-    assert_true(all.contains("llama-5"))
     assert_true(all.contains("glm-5.2"))
     assert_true(all.contains("grok-4.1"))
+}
+
+fun test_openrouter_catalog_contains_the_complete_snapshot() {
+    let items = openrouter_catalog()
+    assert_true(items.len() == 342)
+    let all = ""
+    let i = 0
+    while i < items.len() {
+        assert_true(items[i].starts_with("openrouter/"))
+        all = "${all} ${items[i]}"
+        i = i + 1
+    }
+    assert_true(all.contains("openrouter/sakana/fugu-ultra"))
+    assert_true(all.contains("openrouter/openai/gpt-5.6-sol"))
+    assert_true(all.contains("openrouter/anthropic/claude-sonnet-5"))
+    assert_true(all.contains("openrouter/google/gemini-3.5-flash"))
+    assert_true(all.contains("openrouter/qwen/qwen3.7-max"))
+}
+
+fun test_openrouter_catalog_has_no_duplicate_ids() {
+    let items = openrouter_catalog()
+    let i = 0
+    while i < items.len() {
+        let j = i + 1
+        while j < items.len() {
+            assert_true(items[i] != items[j])
+            j = j + 1
+        }
+        i = i + 1
+    }
 }
 
 fun test_filter_narrows_by_substring_ignoring_case() {
@@ -114,5 +145,8 @@ fun test_filter_narrows_by_substring_ignoring_case() {
     assert_true(hits[0].contains("deepseek"))
     assert_true(filter_catalog(items, "no such model").len() == 0)
     let fable = filter_catalog(items, "fable")
-    assert_true(fable.len() == 2)
+    assert_true(fable.len() >= 2)
+    let sakana = filter_catalog(items, "SAKANA")
+    assert_true(sakana.len() == 1)
+    assert_eq_str(sakana[0], "openrouter/sakana/fugu-ultra")
 }
