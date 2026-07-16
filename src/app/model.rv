@@ -15,7 +15,7 @@ import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, command_infos }
 import "../agents/settings" { settings_errors_from }
 import "../hooks/hooks" { drain_hook_notices }
-import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model }
+import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors }
 import "../tools/permission_menu" { PermissionGrantState }
 
 // The /model picker's data, built once and reused. `ids`/`labels`/`lower` are
@@ -151,6 +151,12 @@ fun chat_init() -> Chat {
     let model = resolve_model()
     let rs = roots()
     let startup_notices = settings_errors_from(rs)
+    let cfg_errors = rook_json_errors()
+    let ci = 0
+    while ci < cfg_errors.len() {
+        startup_notices.push(cfg_errors[ci])
+        ci = ci + 1
+    }
     let hook_notices = drain_hook_notices()
     let i = 0
     while i < hook_notices.len() {

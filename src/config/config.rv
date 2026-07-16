@@ -433,6 +433,34 @@ fun _json_str(text: String, key: String) -> String {
     }
 }
 
+// Parse errors in the rook.json config files, as startup notices, so a typo
+// does not silently fall back to defaults the way it did before (settings.json
+// errors already surface this way). Checks the project ./rook.json and the
+// global ~/.config/rook/rook.json.
+fun rook_json_errors() -> List<String> {
+    let out: List<String> = []
+    _check_rook_json("rook.json", out)
+    let h = _home()
+    if h != "" {
+        _check_rook_json("${h}/.config/rook/rook.json", out)
+    }
+    return out
+}
+
+fun _check_rook_json(path: String, out: List<String>) {
+    let text = _read_opt(path)
+    if text.trim() == "" {
+        return
+    }
+    match parse(text) {
+        Ok(j) -> {},
+        Err(e) -> {
+            out.push("config error: invalid JSON in ${path}, ignored: ${e.message}")
+        },
+    }
+    return
+}
+
 fun _field_str(j: JsonValue, key: String) -> String {
     return match j.get(key) {
         Some(v) -> _as_str(v),

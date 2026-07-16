@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
-import "./config" { provider_of, key_env, key_present, key_needed, auth_with_key, save_key_to_path }
+import "./config" { provider_of, key_env, key_present, key_needed, auth_with_key, save_key_to_path, _check_rook_json }
 import "./catalog" { catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning }
 import "./direct_catalog" { direct_catalog }
 import "./openrouter_catalog" { openrouter_catalog, openrouter_models_without_tools }
@@ -260,4 +260,24 @@ fun test_filter_narrows_by_substring_ignoring_case() {
     let sakana = filter_catalog(items, "SAKANA")
     assert_true(sakana.len() >= 1)
     assert_true(sakana[0].to_lower().contains("sakana"))
+}
+
+fun test_malformed_rook_json_is_flagged() {
+    write("_rook_cfg_bad.json", "{\"model\": ")
+    let bad: List<String> = []
+    _check_rook_json("_rook_cfg_bad.json", bad)
+    assert_true(bad.len() == 1)
+    assert_true(bad[0].contains("invalid JSON"))
+    remove_file("_rook_cfg_bad.json")
+
+    write("_rook_cfg_ok.json", "{\"model\": \"openai/gpt-5.6\"}")
+    let ok: List<String> = []
+    _check_rook_json("_rook_cfg_ok.json", ok)
+    assert_true(ok.len() == 0)
+    remove_file("_rook_cfg_ok.json")
+
+    // A missing file is not an error.
+    let none: List<String> = []
+    _check_rook_json("_rook_cfg_absent.json", none)
+    assert_true(none.len() == 0)
 }

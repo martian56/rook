@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.42
+
+- A malformed rook.json is reported as a startup notice instead of being silently ignored, so a typo in the config no longer falls back to defaults with no explanation. (#235)
+
 ## 0.3.41
 
 - A change that only adds or removes a file's trailing newline now says so, instead of showing a diff with content but no highlighted change. (#241)
