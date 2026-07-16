@@ -108,7 +108,7 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "edit_file",
-            "Replace the first exact occurrence of old_text with new_text in a file.",
+            "Replace old_text with new_text in a file. old_text must occur exactly once; if it appears more than once the edit is refused, so include enough surrounding context to make it unique.",
             _schema(
                 [
                     Prop { name: "path", desc: "file path to edit" },
@@ -119,7 +119,7 @@ fun tools() -> List<ToolDef> {
         ),
         ToolDef.new(
             "multi_edit",
-            "Apply several find-and-replace edits to one file in a single call, in order and all-or-nothing (if any old_text is missing, nothing is written). Prefer this over multiple edit_file calls on the same file: it is one approval.",
+            "Apply several find-and-replace edits to one file in a single call, in order and all-or-nothing (if any old_text is missing or occurs more than once at that point, nothing is written). Each old_text must be unique in the file as it stands when its edit runs. Prefer this over multiple edit_file calls on the same file: it is one approval.",
             _multi_edit_schema(),
         ),
         ToolDef.new(

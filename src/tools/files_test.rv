@@ -25,6 +25,18 @@ fun test_edit_replaces_the_first_occurrence() {
     return
 }
 
+fun test_edit_refuses_an_ambiguous_old_text() {
+    let p = "_rook_ft_dup.txt"
+    write_file(p, "a a a")
+    let r = edit_file(p, "a", "b")
+    assert_true(r.starts_with("error:"))
+    assert_true(r.contains("more than once"))
+    // The file is left unchanged.
+    assert_eq_str(read_file(p), "a a a")
+    remove_file(p)
+    return
+}
+
 fun test_edit_missing_old_text_is_an_error() {
     let p = "_rook_ft_c.txt"
     write_file(p, "abc")

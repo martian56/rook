@@ -36,6 +36,23 @@ fun write_file(path: String, content: String) -> String {
     return _write_result(r.path, content, "wrote ${content.length()} bytes to ${r.path}")
 }
 
+// How many non-overlapping times `needle` occurs in `haystack`. An empty
+// needle counts as zero. Used to refuse an ambiguous edit.
+fun count_occurrences(haystack: String, needle: String) -> Int {
+    if needle == "" {
+        return 0
+    }
+    let count = 0
+    let rest = haystack
+    let at = rest.index_of(needle)
+    while at >= 0 {
+        count = count + 1
+        rest = rest.substring(at + needle.length(), rest.length())
+        at = rest.index_of(needle)
+    }
+    return count
+}
+
 fun edit_file(path: String, old_text: String, new_text: String) -> String {
     let r = resolve_path(path, "")
     if !r.ok {
@@ -64,6 +81,9 @@ fun edit_file(path: String, old_text: String, new_text: String) -> String {
     let idx = content.index_of(old_text)
     if idx < 0 {
         return "error: old_text not found in ${r.path}"
+    }
+    if count_occurrences(content, old_text) > 1 {
+        return "error: old_text appears more than once in ${r.path}; include more surrounding context so it matches exactly one place"
     }
     let before = content.substring(0, idx)
     let after = content.substring(idx + old_text.length(), content.length())
