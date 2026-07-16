@@ -3,6 +3,7 @@
 *.pdb
 target/
 rv.lock
+!evals/rv.lock
 _rook_*
 rook.json
 testing/

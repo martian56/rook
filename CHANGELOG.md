@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.30
+
+- Added deterministic behavior evals for planning, verification, permissions, instruction conflicts, and commit safety.
+
 ## 0.3.29
 
 - Applied per-server MCP environment variables on Windows and surfaced invalid entries without exposing their values.

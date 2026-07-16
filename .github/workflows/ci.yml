@@ -36,6 +36,9 @@ jobs:
       - name: Test
         run: rvpm test
 
+      - name: Behavior evals
+        run: rvpm run behavior-evals
+
       - name: Format check
         run: rvpm fmt --check
 

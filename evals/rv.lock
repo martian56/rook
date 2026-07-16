@@ -1,0 +1,21 @@
+version = 1
+
+[[package]]
+source = "github.com/martian56/aviary"
+version = "v0.3.0"
+hash = "sha256:b2a8abad22e8c83070b67c515f3172d9faf6ec0cc12205dc41a6c09b9ce3ad54"
+
+[[package]]
+source = "github.com/martian56/perch"
+version = "v0.1.0"
+hash = "sha256:06619a0a27ee02eae2975e8cbcddf672de646f89f7e39fbd83d02f75734c878a"
+
+[[package]]
+source = "github.com/martian56/plumage"
+version = "v0.1.0"
+hash = "sha256:c066327b9b0fc145495c633618d33c85518c9f6e22734968e2fdf686849416cc"
+
+[[package]]
+source = "github.com/martian56/wingspan"
+version = "v0.1.0"
+hash = "sha256:62a44a25ce83a6a93a99439972ae79837e43d2ffd1dfa134fa48609b85a1887d"
