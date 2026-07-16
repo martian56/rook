@@ -1,0 +1,59 @@
+// A queue for results from backgrounded slash commands. A command that would
+// otherwise block the UI on a network call or a subprocess (a plugin install,
+// a marketplace search, fetching an MCP prompt) runs on a goroutine and drops
+// its result here; the main loop drains the queue each tick. Two kinds of
+// result: a notice is shown as transcript text; a prompt starts a turn once it
+// arrives. Same shape as the hook-notice and save-error queues.
+
+import std/sync { Mutex, mutex }
+
+struct CmdQueue {
+    lock: Mutex,
+    notices: List<String>,
+    prompts: List<String>,
+}
+
+let CMD_QUEUE: CmdQueue = _new_cmd_queue()
+
+fun _new_cmd_queue() -> CmdQueue {
+    let notices: List<String> = []
+    let prompts: List<String> = []
+    return CmdQueue { lock: mutex(), notices, prompts }
+}
+
+// Record a finished command's output as a notice. Safe to call from a goroutine.
+fun push_cmd_notice(text: String) {
+    CMD_QUEUE.lock.lock()
+    CMD_QUEUE.notices.push(text)
+    CMD_QUEUE.lock.unlock()
+    return
+}
+
+// Take and clear the queued notices. Called on the main loop each tick.
+fun drain_cmd_notices() -> List<String> {
+    CMD_QUEUE.lock.lock()
+    let out = CMD_QUEUE.notices
+    let empty: List<String> = []
+    CMD_QUEUE.notices = empty
+    CMD_QUEUE.lock.unlock()
+    return out
+}
+
+// Record a prompt to run as a turn once the main loop picks it up. Safe to call
+// from a goroutine.
+fun push_cmd_prompt(prompt: String) {
+    CMD_QUEUE.lock.lock()
+    CMD_QUEUE.prompts.push(prompt)
+    CMD_QUEUE.lock.unlock()
+    return
+}
+
+// Take and clear the queued prompts. Called on the main loop each tick.
+fun drain_cmd_prompts() -> List<String> {
+    CMD_QUEUE.lock.lock()
+    let out = CMD_QUEUE.prompts
+    let empty: List<String> = []
+    CMD_QUEUE.prompts = empty
+    CMD_QUEUE.lock.unlock()
+    return out
+}

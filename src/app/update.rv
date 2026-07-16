@@ -31,6 +31,7 @@ import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -188,6 +189,29 @@ fun _tick(m: Chat) -> Step<Chat> {
     while se < save_errs.len() {
         m.entries.push(Entry.Notice(save_errs[se]))
         se = se + 1
+    }
+    let cmd_notices = drain_cmd_notices()
+    let cn = 0
+    while cn < cmd_notices.len() {
+        let cmd_lines = cmd_notices[cn].lines()
+        let cl = 0
+        while cl < cmd_lines.len() {
+            m.entries.push(Entry.Notice(cmd_lines[cl]))
+            cl = cl + 1
+        }
+        cn = cn + 1
+    }
+    let cmd_prompts = drain_cmd_prompts()
+    let cp = 0
+    while cp < cmd_prompts.len() {
+        if m.active {
+            m.entries.push(
+                Entry.Notice("a turn is already running; send the /mcp prompt again once it finishes"),
+            )
+        } else {
+            let _ = _begin_turn(m, cmd_prompts[cp])
+        }
+        cp = cp + 1
     }
     // Drain background shells at a lower cadence while the panel is open,
     // instead of on every frame from the view, so the live tail costs one
@@ -1163,7 +1187,20 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         },
         Plugins(args) -> {
             m.entries.push(Entry.UserMsg(text))
-            let lines = run_plugins_command(args).lines()
+            // add, update, and browse reach the network or clone a repo, which
+            // would freeze the UI for seconds. Run those on a goroutine and let
+            // the result arrive as a notice; list and remove are local and fast,
+            // so they stay inline.
+            let plugins_arg = args
+            if _plugins_backgrounds(plugins_arg) {
+                m.entries.push(Entry.Notice(_plugins_pending_note(plugins_arg)))
+                spawn(fun() -> Unit {
+                    push_cmd_notice(run_plugins_command(plugins_arg))
+                })
+                m.scroll_up = 0
+                return next(m)
+            }
+            let lines = run_plugins_command(plugins_arg).lines()
             let i = 0
             while i < lines.len() {
                 m.entries.push(Entry.Notice(lines[i]))
@@ -1237,6 +1274,35 @@ fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
     return next(m)
 }
 
+// The verb of a /plugins invocation ("add", "list", "browse", ...).
+fun _plugins_verb(args: String) -> String {
+    let a = args.trim()
+    let sp = a.index_of(" ")
+    if sp >= 0 {
+        return a.substring(0, sp)
+    }
+    return a
+}
+
+// True for the /plugins verbs that hit the network or clone a repo, so they
+// should run off the UI thread.
+fun _plugins_backgrounds(args: String) -> Bool {
+    let v = _plugins_verb(args)
+    return v == "add" || v == "update" || v == "browse" || v == "search"
+}
+
+// The placeholder shown while a backgrounded /plugins verb runs.
+fun _plugins_pending_note(args: String) -> String {
+    let v = _plugins_verb(args)
+    if v == "add" {
+        return "installing plugin…"
+    }
+    if v == "update" {
+        return "updating plugin…"
+    }
+    return "searching the plugin index…"
+}
+
 fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
     let inv = parse_invoke(rest)
     if inv.error != "" {
@@ -1253,16 +1319,25 @@ fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
         m.scroll_up = 0
         return next(m)
     }
-    let expanded = get_prompt(inv.server, inv.name, inv.args_json)
-    if expanded.starts_with("error:") {
-        m.entries.push(Entry.UserMsg(text))
-        m.entries.push(Entry.Notice(expanded))
-        m.scroll_up = 0
-        return next(m)
-    }
-    // Run the expanded prompt as a turn: the transcript shows what was typed,
-    // the model gets the server's prompt text.
-    return _send_prompt(m, text, expanded)
+    // Fetch off the UI thread: the first call connects every configured server
+    // (up to the MCP timeout) before it round-trips the request, which would
+    // otherwise freeze the UI. The transcript shows what was typed; when the
+    // server's prompt text arrives, the main loop starts a turn with it.
+    m.entries.push(Entry.UserMsg(text))
+    m.entries.push(Entry.Notice("fetching prompt from ${inv.server}…"))
+    let server = inv.server
+    let name = inv.name
+    let args_json = inv.args_json
+    spawn(fun() -> Unit {
+        let expanded = get_prompt(server, name, args_json)
+        if expanded.starts_with("error:") {
+            push_cmd_notice(expanded)
+        } else {
+            push_cmd_prompt(expanded)
+        }
+    })
+    m.scroll_up = 0
+    return next(m)
 }
 
 fun _send(m: Chat, text: String) -> Step<Chat> {
@@ -1280,6 +1355,13 @@ fun _send(m: Chat, text: String) -> Step<Chat> {
 // one instead of making a doomed request.
 fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
     m.entries.push(Entry.UserMsg(display))
+    return _begin_turn(m, prompt)
+}
+
+// Record `prompt` in the conversation and spawn the agent goroutine. The caller
+// has already echoed whatever the user typed. With no key for the provider,
+// prompt for one instead of making a doomed request.
+fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
     if key_needed_with(m.model, m.api_key) {
         m.entries.push(
             Entry.Notice("no API key for ${provider_of(m.model)}; enter one, then ask again"),
