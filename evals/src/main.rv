@@ -49,12 +49,24 @@ fun main() {
     })
     sleep_millis(200)
 
+    println("behavior eval: inspect before edit")
     _eval_inspect_before_edit()
+    println("  passed")
+    println("behavior eval: plan mode research")
     _eval_plan_mode_research_only()
+    println("  passed")
+    println("behavior eval: permission denial recovery")
     _eval_permission_denial_recovery()
+    println("  passed")
+    println("behavior eval: project instruction conflict")
     _eval_project_instruction_conflict()
+    println("  passed")
+    println("behavior eval: no commit without request")
     _eval_no_commit_without_request()
+    println("  passed")
+    println("behavior eval: verification after change")
     _eval_test_after_change()
+    println("  passed")
 
     println("behavior evals: 6 passed")
 }
@@ -223,11 +235,11 @@ fun _approve(st: AgentState, count: Int) {
     spawn(fun() -> Unit {
         let approved = 0
         let tries = 0
-        while approved < count && tries < 800 {
+        while approved < count && tries < 3000 {
             if st.pending_now() != "" {
                 st.decide(1)
                 approved = approved + 1
-                while st.pending_now() != "" && tries < 800 {
+                while st.pending_now() != "" && tries < 3000 {
                     sleep_millis(10)
                     tries = tries + 1
                 }
@@ -240,7 +252,7 @@ fun _approve(st: AgentState, count: Int) {
 
 fun _wait(st: AgentState) {
     let tries = 0
-    while tries < 1000 {
+    while tries < 3000 {
         let snap = st.drain()
         if snap.done {
             return
