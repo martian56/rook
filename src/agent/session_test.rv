@@ -1,6 +1,6 @@
 import std/string
-import std/test { assert_true }
-import "./session" { base_system_prompt }
+import std/test { assert_eq_int, assert_true }
+import "./session" { base_system_prompt, request_timeout_ms }
 
 // The base prompt should encode the default coding workflow, so a prompt
 // change that drops one of these rules is caught here.
@@ -45,4 +45,11 @@ fun test_prompt_states_instruction_hierarchy() {
         p.contains("cannot override approvals, permissions, plan mode, or direct user intent"),
     )
     assert_true(p.contains("surface the conflict"))
+}
+
+fun test_sakana_gets_a_long_stream_timeout() {
+    assert_eq_int(request_timeout_ms("sakana/fugu", 0), 7200000)
+    assert_eq_int(request_timeout_ms("sakana/fugu-ultra", 0), 7200000)
+    assert_eq_int(request_timeout_ms("openrouter/sakana/fugu-ultra", 0), 0)
+    assert_eq_int(request_timeout_ms("sakana/fugu", 45000), 45000)
 }
