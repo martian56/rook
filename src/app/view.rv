@@ -19,7 +19,7 @@ import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env, key_optional }
 import "../version" { version }
 import "../commands" { CmdInfo, menu_matches }
-import "../tools/shells" { ShellInfo, list_shells, shell_tail }
+import "../tools/shells" { ShellInfo, shells_snapshot, shell_tail_at }
 import "../tools/todos" { Todo, current_todos }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
@@ -250,7 +250,7 @@ fun _shell_pane(m: Chat, f: Frame) {
     f.buf.fill(area, " ", m.theme.dim)
 
     // The shell's current status for the title.
-    let infos = list_shells()
+    let infos = shells_snapshot()
     let title = "shell ${m.shells_focus}  (esc)"
     let i = 0
     while i < infos.len() {
@@ -274,7 +274,7 @@ fun _shell_pane(m: Chat, f: Frame) {
 
     // The newest output that fits: take a generous tail, split to lines,
     // and show the last rows.
-    let text = shell_tail(m.shells_focus, inner.h * inner.w + 4000)
+    let text = shell_tail_at(m.shells_focus, inner.h * inner.w + 4000)
     if text == "" {
         f.buf.set_string(inner.x + 1, inner.y, "(no output yet)", m.theme.dim)
         return
@@ -301,7 +301,7 @@ fun _shell_pane(m: Chat, f: Frame) {
 // move the highlight; esc closes.
 fun _shells_panel(m: Chat, f: Frame) {
     let full = f.area()
-    let infos = list_shells()
+    let infos = shells_snapshot()
     let count = infos.len()
     if count < 1 {
         count = 1
