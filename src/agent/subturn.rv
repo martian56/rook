@@ -11,7 +11,8 @@ import "github.com/martian56/aviary" { complete }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message, ToolCall }
 import "./state" { AgentState, DisplayEvent }
-import "../tools/registry" { tools, needs_approval, call_needs_approval, dispatch_cancelable, label }
+import "../tools/registry" { tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label }
+import "../tools/preview" { change_preview, append_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../hooks/hooks" { run_pre_tool_hooks_for_agent, fire_hooks_for_agent }
 import "../agents/subagents" { Subagent }
@@ -105,6 +106,7 @@ fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<Stri
         allowed,
         run_pre_tool_hooks_for_agent,
         _fire_post_tool_hook,
+        check_permission,
     )
 }
 
@@ -115,6 +117,7 @@ fun _sub_one_with_hooks(
     allowed: List<String>,
     pre_hook: fun(String, String, String) -> String,
     post_hook: fun(String, String, String) -> Unit,
+    permission: fun(ToolCall) -> Verdict,
 ) -> String {
     if call.name == "dispatch" {
         return "error: subagents cannot dispatch further agents; do the work yourself"
@@ -136,7 +139,7 @@ fun _sub_one_with_hooks(
     // The user's permission rules bind subagents the same way.
     let denied = ""
     let pre_allowed = false
-    match check_permission(call) {
+    match permission(call) {
         Deny(rule) -> {
             denied = rule
         },
@@ -149,18 +152,22 @@ fun _sub_one_with_hooks(
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or report back."
     }
     if !approval_needed {
-        return _sub_do(st, agent, call, post_hook)
+        return _sub_do(st, agent, call, "", post_hook)
+    }
+    let preview = call_approval_detail(call)
+    if preview == "" {
+        preview = change_preview(call)
     }
     if pre_allowed || _contains(allowed, call.name) {
-        return _sub_do(st, agent, call, post_hook)
+        return _sub_do(st, agent, call, preview, post_hook)
     }
-    let decision = st.ask("${agent.name}: ${label(call)}")
+    let decision = st.ask_detail("${agent.name}: ${label(call)}", preview)
     if decision == 2 {
         allowed.push(call.name)
-        return _sub_do(st, agent, call, post_hook)
+        return _sub_do(st, agent, call, preview, post_hook)
     }
     if decision == 1 {
-        return _sub_do(st, agent, call, post_hook)
+        return _sub_do(st, agent, call, preview, post_hook)
     }
     return "The user denied this action. Do not retry it; try another way or report back."
 }
@@ -169,9 +176,10 @@ fun _sub_do(
     st: AgentState,
     agent: Subagent,
     call: ToolCall,
+    preview: String,
     post_hook: fun(String, String, String) -> Unit,
 ) -> String {
-    let result = dispatch_cancelable(call, st.token())
+    let result = append_preview(dispatch_cancelable(call, st.token()), preview)
     post_hook(agent.name, call.name, call.arguments)
     return result
 }

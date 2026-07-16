@@ -62,6 +62,15 @@ fun change_preview(call: ToolCall) -> String {
     return ""
 }
 
+// Append a successful mutation preview to the tool result. Errors stay short
+// because a failed mutation did not apply the proposed change.
+fun append_preview(result: String, preview: String) -> String {
+    if preview == "" || result.starts_with("error:") {
+        return result
+    }
+    return "${result}\n${preview}"
+}
+
 fun _read_opt(path: String) -> String {
     if path == "" || !exists(path) {
         return ""

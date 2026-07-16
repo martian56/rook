@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.24
+
+- Added mutation previews to subagent approvals and successful subagent tool results.
+
 ## 0.3.23
 
 - Preserved manual transcript scrolling while a turn is active and resumed live tail after scrolling back to the bottom.

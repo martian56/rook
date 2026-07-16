@@ -14,7 +14,7 @@ import "./compact" { maybe_compact }
 import "./subturn" { run_subagent }
 import "./ask_options" { parse_ask_options, option_labels, option_count_error }
 import "../tools/registry" { tools, needs_approval, call_approval_detail, dispatch_cancelable, label }
-import "../tools/preview" { change_preview }
+import "../tools/preview" { change_preview, append_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
 import "../tools/args" { arg }
@@ -344,18 +344,9 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
 // Run the tool, then fire the post-tool hooks so they observe what ran. The
 // diff (when any) is appended for the transcript and the model.
 fun _do(token: CancelToken, call: ToolCall, preview: String) -> String {
-    let result = _with_preview(dispatch_cancelable(call, token), preview)
+    let result = append_preview(dispatch_cancelable(call, token), preview)
     fire_hooks("post-tool", call.name, call.arguments)
     return result
-}
-
-// Append the diff under a successful result, so the transcript (and the
-// model) see what changed; errors pass through bare.
-fun _with_preview(result: String, preview: String) -> String {
-    if preview == "" || result.starts_with("error:") {
-        return result
-    }
-    return "${result}\n${preview}"
 }
 
 // Attach the tools the model may use. In plan mode the mutating tools are

@@ -1,10 +1,12 @@
 import std/string
 import std/fs { write, exists, remove_file }
+import std/sync { sleep_millis }
 import std/test { assert_true, assert_eq_str }
 import "github.com/martian56/aviary/message" { ToolCall }
 import "./state" { AgentState }
 import "./subturn" { _sub_one_with_hooks }
 import "../agents/subagents" { Subagent }
+import "../tools/permissions" { Verdict }
 
 let hook_agent = ""
 let hook_tool = ""
@@ -12,6 +14,7 @@ let hook_args = ""
 let post_agent = ""
 let post_tool = ""
 let post_args = ""
+let approval_result = ""
 
 fun full_agent(name: String) -> Subagent {
     let all: List<String> = []
@@ -59,6 +62,10 @@ fun record_post_hook(agent: String, tool: String, args_json: String) {
     return
 }
 
+fun ask_permission(call: ToolCall) -> Verdict {
+    return Verdict.Ask
+}
+
 fun test_subagent_pre_tool_hook_blocks_mutation() {
     reset_hooks()
     let allowed: List<String> = []
@@ -69,6 +76,7 @@ fun test_subagent_pre_tool_hook_blocks_mutation() {
         allowed,
         blocking_pre_hook,
         record_post_hook,
+        ask_permission,
     )
     assert_eq_str(result, "blocked by test hook")
     assert_eq_str(hook_agent, "worker")
@@ -89,6 +97,7 @@ fun test_subagent_post_tool_hook_observes_tool_call() {
         allowed,
         allowing_pre_hook,
         record_post_hook,
+        ask_permission,
     )
     assert_true(result.contains("observed"))
     assert_eq_str(hook_agent, "reader")
@@ -97,5 +106,53 @@ fun test_subagent_post_tool_hook_observes_tool_call() {
     assert_eq_str(post_tool, "read_file")
     assert_true(post_args.contains("_rook_sub_hook_read.txt"))
     remove_file("_rook_sub_hook_read.txt")
+    return
+}
+
+fun test_subagent_write_approval_shows_and_records_the_preview() {
+    reset_hooks()
+    approval_result = ""
+    let path = "_rook_sub_preview.txt"
+    if exists(path) {
+        remove_file(path)
+    }
+    let st = AgentState.new()
+    let allowed: List<String> = []
+    spawn(fun() -> Unit {
+        approval_result = _sub_one_with_hooks(
+            st,
+            full_agent("worker"),
+            call("write_file", "{\"path\":\"_rook_sub_preview.txt\",\"content\":\"changed\"}"),
+            allowed,
+            allowing_pre_hook,
+            record_post_hook,
+            ask_permission,
+        )
+    })
+
+    let pending = ""
+    let detail = ""
+    let tries = 0
+    while tries < 400 && pending == "" {
+        pending = st.pending_now()
+        if pending != "" {
+            detail = st.drain().pending_detail
+            st.decide(1)
+        } else {
+            sleep_millis(5)
+        }
+        tries = tries + 1
+    }
+    tries = 0
+    while tries < 400 && approval_result == "" {
+        sleep_millis(5)
+        tries = tries + 1
+    }
+
+    assert_true(pending.contains("worker:"))
+    assert_true(detail.contains("+ changed"))
+    assert_true(approval_result.contains("+ changed"))
+    assert_true(exists(path))
+    remove_file(path)
     return
 }
