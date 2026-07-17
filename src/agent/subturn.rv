@@ -216,7 +216,7 @@ fun _sub_request(
     plan: Bool,
     ts: List<ToolDef>,
 ) -> ChatRequest {
-    let req = ChatRequest.new(model).system(prompt)
+    let req = ChatRequest.new(model).cache(true).system(prompt)
     let i = 0
     while i < history.len() {
         req = req.message(history[i])
