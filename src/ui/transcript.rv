@@ -162,9 +162,16 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             _push_wrapped(out, t, body, "● ", theme.assistant, theme.text)
         },
         ToolMsg(name, result) -> {
-            out.push(
-                Line.from_spans([Span.styled("● ", theme.tool), Span.styled(name, theme.text.bold())]),
-            )
+            // A failed call gets the error color on its bullet and result, so
+            // failures stand out when scanning a transcript instead of looking
+            // exactly like successes.
+            let bullet = theme.tool
+            let res_style = theme.result
+            if result.starts_with("error") {
+                bullet = theme.error
+                res_style = theme.error
+            }
+            out.push(Line.from_spans([Span.styled("● ", bullet), Span.styled(name, theme.text.bold())]))
             // The first line sits behind the elbow; any further lines are a
             // diff, colored by their -/+ prefix.
             let rows = result.lines()
@@ -172,9 +179,7 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             if rows.len() > 0 {
                 first = rows[0]
             }
-            out.push(
-                Line.from_spans([Span.styled("  ⎿  ", theme.result), Span.styled(first, theme.result)]),
-            )
+            out.push(Line.from_spans([Span.styled("  ⎿  ", res_style), Span.styled(first, res_style)]))
             let r = 1
             while r < rows.len() {
                 out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
@@ -182,7 +187,7 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             }
         },
         Notice(t) -> {
-            out.push(Line.styled("  ${t}", theme.error))
+            out.push(Line.styled("  ${t}", _notice_style(t, theme)))
         },
         AgentHeader(name, status) -> {
             out.push(
@@ -196,14 +201,16 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             )
         },
         AgentTool(agent, name, result) -> {
+            let a_bullet = theme.tool
+            let a_res = theme.result
+            if result.starts_with("error") {
+                a_bullet = theme.error
+                a_res = theme.error
+            }
             out.push(
-                Line.from_spans([Span.styled("  ● ", theme.tool), Span.styled(name, theme.text.bold())]),
+                Line.from_spans([Span.styled("  ● ", a_bullet), Span.styled(name, theme.text.bold())]),
             )
-            out.push(
-                Line.from_spans(
-                    [Span.styled("    ⎿  ", theme.result), Span.styled(result, theme.result)],
-                ),
-            )
+            out.push(Line.from_spans([Span.styled("    ⎿  ", a_res), Span.styled(result, a_res)]))
         },
     }
     return out
@@ -249,6 +256,20 @@ fun transcript_texts(
 
 // The style of one diff line: removals in the error color, additions in
 // the tool green, context dim.
+// Notices carry both failures and routine confirmations ("theme set to x",
+// the per-turn usage line), so only error-shaped text gets the error color;
+// everything else renders dim. Confirmations after every successful turn
+// should not read as alarms.
+fun _notice_style(t: String, theme: Theme) -> Style {
+    let low = t.to_lower()
+    if low.starts_with("error") || low.contains("error:") || low.starts_with("could not") || low.starts_with(
+        "failed",
+    ) {
+        return theme.error
+    }
+    return theme.dim
+}
+
 fun _diff_style(line: String, theme: Theme) -> Style {
     if line.starts_with("- ") {
         return theme.error
