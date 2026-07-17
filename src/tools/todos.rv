@@ -79,15 +79,13 @@ fun parse_todos(text: String) -> List<Todo> {
     return out
 }
 
-// A snapshot for the view.
+// The current list for the view. Returning the stored reference is safe
+// because every writer (set_todos, clear_todos) swaps in a freshly built
+// list rather than mutating this one in place, and the view runs every
+// frame, so it should not pay a copy per redraw.
 fun current_todos() -> List<Todo> {
     STORE.lock.lock()
-    let out: List<Todo> = []
-    let i = 0
-    while i < STORE.items.len() {
-        out.push(STORE.items[i])
-        i = i + 1
-    }
+    let out = STORE.items
     STORE.lock.unlock()
     return out
 }

@@ -45,12 +45,16 @@ struct Snapshot {
     // Session token totals, for the status bar.
     sess_prompt: Int,
     sess_completion: Int,
+    sess_cache_read: Int,
+    sess_cache_write: Int,
 }
 
 // Token counts, for reporting a turn's usage.
 struct Tokens {
     prompt: Int,
     completion: Int,
+    cache_read: Int,
+    cache_write: Int,
 }
 
 struct AgentState {
@@ -84,6 +88,12 @@ struct AgentState {
     turn_completion: Int,
     sess_prompt: Int,
     sess_completion: Int,
+    // How much of the prompt totals was served from or written to the
+    // provider's prompt cache, for the discounted cost estimate.
+    turn_cache_read: Int,
+    turn_cache_write: Int,
+    sess_cache_read: Int,
+    sess_cache_write: Int,
 }
 
 impl AgentState {
@@ -109,32 +119,51 @@ impl AgentState {
             turn_completion: 0,
             sess_prompt: 0,
             sess_completion: 0,
+            turn_cache_read: 0,
+            turn_cache_write: 0,
+            sess_cache_read: 0,
+            sess_cache_write: 0,
         }
     }
 
     // Add one reply's token usage to the current turn and the session total.
-    fun add_usage(self, prompt: Int, completion: Int) {
+    // cache_read/cache_write are the reply's prompt-cache breakdown (already
+    // included in `prompt`), kept so the cost estimate can discount them.
+    fun add_usage(self, prompt: Int, completion: Int, cache_read: Int, cache_write: Int) {
         self.lock.lock()
         self.turn_prompt = self.turn_prompt + prompt
         self.turn_completion = self.turn_completion + completion
         self.sess_prompt = self.sess_prompt + prompt
         self.sess_completion = self.sess_completion + completion
+        self.turn_cache_read = self.turn_cache_read + cache_read
+        self.turn_cache_write = self.turn_cache_write + cache_write
+        self.sess_cache_read = self.sess_cache_read + cache_read
+        self.sess_cache_write = self.sess_cache_write + cache_write
         self.lock.unlock()
     }
 
     // Set the session's running token totals, for restoring them when a saved
-    // session is resumed. Does not touch the per-turn counters.
+    // session is resumed. Does not touch the per-turn counters. Saved sessions
+    // do not persist the cache breakdown, so it restarts at zero and the
+    // estimate is simply conservative for the restored history.
     fun set_usage(self, prompt: Int, completion: Int) {
         self.lock.lock()
         self.sess_prompt = prompt
         self.sess_completion = completion
+        self.sess_cache_read = 0
+        self.sess_cache_write = 0
         self.lock.unlock()
     }
 
     // This turn's accumulated usage, for the end-of-turn summary.
     fun turn_tokens(self) -> Tokens {
         self.lock.lock()
-        let t = Tokens { prompt: self.turn_prompt, completion: self.turn_completion }
+        let t = Tokens {
+            prompt: self.turn_prompt,
+            completion: self.turn_completion,
+            cache_read: self.turn_cache_read,
+            cache_write: self.turn_cache_write,
+        }
         self.lock.unlock()
         return t
     }
@@ -168,6 +197,8 @@ impl AgentState {
         self.cancel = CancelToken.new()
         self.turn_prompt = 0
         self.turn_completion = 0
+        self.turn_cache_read = 0
+        self.turn_cache_write = 0
         self.lock.unlock()
     }
 
@@ -185,8 +216,12 @@ impl AgentState {
         self.convo = c
         self.turn_prompt = 0
         self.turn_completion = 0
+        self.turn_cache_read = 0
+        self.turn_cache_write = 0
         self.sess_prompt = 0
         self.sess_completion = 0
+        self.sess_cache_read = 0
+        self.sess_cache_write = 0
         self.lock.unlock()
     }
 
@@ -263,6 +298,8 @@ impl AgentState {
             pending_detail: self.pending_detail,
             sess_prompt: self.sess_prompt,
             sess_completion: self.sess_completion,
+            sess_cache_read: self.sess_cache_read,
+            sess_cache_write: self.sess_cache_write,
         }
         self.lock.unlock()
         return s

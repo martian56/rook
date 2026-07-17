@@ -7,6 +7,7 @@
 // the picker, and the attachment on send).
 
 import std/string
+import std/sync { Mutex, mutex }
 import std/fs { read, exists, is_file, is_dir, is_symlink, list_dir }
 import "./paths" { resolve_path }
 
@@ -52,9 +53,12 @@ fun list_files() -> List<String> {
 
 // The walk is expensive, and the @-picker filters the same list on every
 // keystroke while the tree does not change mid-token, so cache it. The cache
-// is rebuilt lazily after each invalidation (when a mention ends, and on
-// submit) so files created between prompts still show up.
+// is invalidated on submit (files created during the turn show up next
+// prompt) and rebuilt off the UI thread by warm_files, so typing @ filters a
+// ready list instead of stalling on a project walk. Locked because the warm
+// goroutine fills it while the UI reads it.
 struct FileCache {
+    lock: Mutex,
     ready: Bool,
     files: List<String>,
 }
@@ -63,22 +67,57 @@ let FILE_CACHE: FileCache = _new_file_cache()
 
 fun _new_file_cache() -> FileCache {
     let files: List<String> = []
-    return FileCache { ready: false, files }
+    return FileCache { lock: mutex(), ready: false, files }
 }
 
-// The project files, walking the tree only on the first call after an
-// invalidation and returning the cached list afterwards.
+// The project files. Normally the warm goroutine has already filled the
+// cache; the inline walk is the fallback when the picker is used before a
+// warm finished (it may briefly duplicate a running warm's work, which is
+// harmless: both store the same fresh list).
 fun cached_files() -> List<String> {
-    if !FILE_CACHE.ready {
-        FILE_CACHE.files = list_files()
-        FILE_CACHE.ready = true
+    FILE_CACHE.lock.lock()
+    let ready = FILE_CACHE.ready
+    let files = FILE_CACHE.files
+    FILE_CACHE.lock.unlock()
+    if ready {
+        return files
     }
-    return FILE_CACHE.files
+    let fresh = list_files()
+    FILE_CACHE.lock.lock()
+    FILE_CACHE.files = fresh
+    FILE_CACHE.ready = true
+    FILE_CACHE.lock.unlock()
+    return fresh
 }
 
-// Drop the cache so the next cached_files walks fresh.
+// Drop the cache so the next rebuild walks fresh.
 fun invalidate_files() {
+    FILE_CACHE.lock.lock()
     FILE_CACHE.ready = false
+    FILE_CACHE.lock.unlock()
+    return
+}
+
+// Rebuild the cache on a goroutine if it is cold, so the walk happens before
+// the user next types @ instead of on that keystroke. Called at startup and
+// after each submit's invalidation.
+fun warm_files() {
+    FILE_CACHE.lock.lock()
+    let ready = FILE_CACHE.ready
+    FILE_CACHE.lock.unlock()
+    if ready {
+        return
+    }
+    spawn(fun() -> Unit {
+        let fresh = list_files()
+        FILE_CACHE.lock.lock()
+        if !FILE_CACHE.ready {
+            FILE_CACHE.files = fresh
+            FILE_CACHE.ready = true
+        }
+        FILE_CACHE.lock.unlock()
+        return
+    })
     return
 }
 

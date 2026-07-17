@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./pricing" { Price, price_for, cost_micros, format_usd, format_tokens, usage_label }
+import "./pricing" { Price, price_for, cost_micros, cost_micros_cached, format_usd, format_tokens, usage_label }
 
 fun test_price_matches_across_providers() {
     assert_true(price_for("openrouter/anthropic/claude-sonnet-5").known)
@@ -14,6 +14,19 @@ fun test_cost_micros() {
     assert_eq_int(cost_micros("anthropic/claude-sonnet-5", 1000, 1000), 18000)
     // Unknown model reports -1.
     assert_eq_int(cost_micros("mystery/model", 1000, 1000), 0 - 1)
+}
+
+fun test_cost_micros_cached_discounts_reads_and_writes() {
+    // All 1000 input tokens served from cache: 1000 * 3000/10 = 300 micro,
+    // plus the same 15000 output. The flat estimate would say 18000.
+    assert_eq_int(cost_micros_cached("anthropic/claude-sonnet-5", 1000, 1000, 1000, 0), 15300)
+    // A pure cache write bills at 1.25x input: 1000 * 3000 * 5/4 = 3750.
+    assert_eq_int(cost_micros_cached("anthropic/claude-sonnet-5", 1000, 0, 0, 1000), 3750)
+    // Zero cache matches the flat estimate exactly.
+    assert_eq_int(
+        cost_micros_cached("anthropic/claude-sonnet-5", 1000, 1000, 0, 0),
+        cost_micros("anthropic/claude-sonnet-5", 1000, 1000),
+    )
 }
 
 fun test_format_usd_four_decimals() {
@@ -30,12 +43,20 @@ fun test_format_tokens_compacts_thousands() {
 }
 
 fun test_usage_label() {
-    assert_eq_str(usage_label("anthropic/claude-sonnet-5", 0, 0), "")
-    let known = usage_label("anthropic/claude-sonnet-5", 1000, 1000)
+    assert_eq_str(usage_label("anthropic/claude-sonnet-5", 0, 0, 0, 0), "")
+    let known = usage_label("anthropic/claude-sonnet-5", 1000, 1000, 0, 0)
     assert_true(known.contains("2.0k tok"))
     assert_true(known.contains("$0.0180"))
+    assert_true(!known.contains("cached"))
     // Unknown model: tokens, no cost.
-    let unknown = usage_label("mystery/model", 1000, 500)
+    let unknown = usage_label("mystery/model", 1000, 500, 0, 0)
     assert_true(unknown.contains("1.5k tok"))
     assert_true(!unknown.contains("$"))
+}
+
+fun test_usage_label_shows_the_cache_share() {
+    let label = usage_label("anthropic/claude-sonnet-5", 1000, 1000, 800, 0)
+    // 800 of 1000 prompt tokens were cache reads: cheaper, and said so.
+    assert_true(label.contains("80% cached"))
+    assert_true(label.contains("$0.0158"))
 }

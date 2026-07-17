@@ -1014,7 +1014,13 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     // Right side: session token usage (when any), the model, and a
     // plan-mode badge ahead of it when on.
     let right = "rook · ${m.model}"
-    let usage = usage_label(m.model, m.sess_prompt, m.sess_completion)
+    let usage = usage_label(
+        m.model,
+        m.sess_prompt,
+        m.sess_completion,
+        m.sess_cache_read,
+        m.sess_cache_write,
+    )
     if usage != "" {
         right = "${usage} · ${right}"
     }

@@ -66,11 +66,31 @@ fun price_for(model: String) -> Price {
 // Cost in micro-dollars for `prompt` input and `completion` output tokens
 // under `model`, or -1 when the model has no known price.
 fun cost_micros(model: String, prompt: Int, completion: Int) -> Int {
+    return cost_micros_cached(model, prompt, completion, 0, 0)
+}
+
+// Cost with the prompt-cache breakdown: cache reads bill at a tenth of the
+// input rate and cache writes at 1.25x, so a cached turn is much cheaper than
+// the flat estimate. `prompt` already includes the cached tokens (that is how
+// providers report it); the uncached remainder is charged at the full rate.
+// Scaled to one division so the tenth and the 1.25 stay in integers.
+fun cost_micros_cached(
+    model: String,
+    prompt: Int,
+    completion: Int,
+    cache_read: Int,
+    cache_write: Int,
+) -> Int {
     let p = price_for(model)
     if !p.known {
         return 0 - 1
     }
-    return (prompt * p.in_1k + completion * p.out_1k) / 1000
+    let uncached = prompt - cache_read - cache_write
+    if uncached < 0 {
+        uncached = 0
+    }
+    let scaled = uncached * p.in_1k * 20 + cache_read * p.in_1k * 2 + cache_write * p.in_1k * 25 + completion * p.out_1k * 20
+    return scaled / 20000
 }
 
 // Micro-dollars as "$0.0042" (four decimal places, rounded).
@@ -93,18 +113,33 @@ fun format_tokens(n: Int) -> String {
 }
 
 // The status-bar usage label for a session: "" when nothing spent, else the
-// token total with the cost when the model has a price.
-fun usage_label(model: String, prompt: Int, completion: Int) -> String {
+// token total with the cost when the model has a price. The cost discounts
+// prompt-cache reads and writes, and when a meaningful share of the input was
+// cached the label says so, making the caching win visible.
+fun usage_label(
+    model: String,
+    prompt: Int,
+    completion: Int,
+    cache_read: Int,
+    cache_write: Int,
+) -> String {
     let total = prompt + completion
     if total == 0 {
         return ""
     }
     let toks = "${format_tokens(total)} tok"
-    let micros = cost_micros(model, prompt, completion)
+    let micros = cost_micros_cached(model, prompt, completion, cache_read, cache_write)
     if micros < 0 {
         return toks
     }
-    return "${toks} · ${format_usd(micros)}"
+    let label = "${toks} · ${format_usd(micros)}"
+    if prompt > 0 {
+        let pct = cache_read * 100 / prompt
+        if pct >= 1 {
+            label = "${label} · ${pct}% cached"
+        }
+    }
+    return label
 }
 
 fun _pad4(n: Int) -> String {
