@@ -119,6 +119,8 @@ fun test_catalog_carries_the_2026_flagships() {
     assert_true(all.contains("gpt-5.6-sol"))
     assert_true(all.contains("google/gemini-3.5-flash"))
     assert_true(all.contains("kimi-k2.7"))
+    assert_true(all.contains("moonshot/kimi-k3"))
+    assert_true(all.contains("moonshotai/kimi-k3"))
     assert_true(all.contains("glm-5.2"))
     assert_true(all.contains("xai/grok-4.5"))
     assert_true(all.contains("sakana/fugu"))
