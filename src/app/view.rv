@@ -763,7 +763,7 @@ fun _approval(m: Chat, f: Frame) {
     f.buf.set_string(
         inner.x + 1,
         inner.y + 2 + extra,
-        "[y] allow    [a] allow all    [n] deny",
+        "[y]/enter allow    [a] allow this tool for the turn    [n] deny    [esc] deny + stop turn",
         m.theme.dim,
     )
     return
@@ -893,7 +893,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     f.buf.set_string(text_x, below, "a coding agent for your terminal · v${version()}", m.theme.dim)
     f.buf.set_string(text_x, below + 1, "model: ${m.model}", m.theme.dim)
 
-    let tips = "Esc interrupts a turn · ctrl+c twice to quit."
+    let tips = "Type a task to start · / lists commands · @ attaches a file.\n\nEsc interrupts a turn · ctrl+c twice to quit · drag to copy."
     if m.api_key == "" && !key_optional(provider_of(m.model)) {
         let env = key_env(provider_of(m.model))
         let hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
@@ -991,7 +991,10 @@ fun _thinking_line(m: Chat, area: Rect, f: Frame) {
         return
     }
     let x = f.buf.set_string(area.x + 1, area.y, "${pulse(m.tick)} ${m.word}… ", m.theme.spinner)
-    f.buf.set_string(x, area.y, "(esc to interrupt)", m.theme.dim)
+    // Elapsed seconds, so a long tool-heavy turn visibly advances instead of
+    // sitting on a bare spinner word. Ticks arrive every 45ms.
+    let secs = m.elapsed * 45 / 1000
+    f.buf.set_string(x, area.y, "${secs}s (esc to interrupt)", m.theme.dim)
     return
 }
 
@@ -1000,6 +1003,10 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     let sty = m.theme.status
     if m.active {
         left = "streaming · esc to interrupt"
+    }
+    if m.resuming {
+        left = "resuming session…"
+        sty = m.theme.accent
     }
     if m.armed {
         left = "Press ctrl+c again to exit"

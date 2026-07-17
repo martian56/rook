@@ -1124,6 +1124,12 @@ fun _submit(m: Chat) -> Step<Chat> {
     if text == "" {
         return next(m)
     }
+    // A resume is still loading off-thread: starting a turn now would be
+    // clobbered when the restored transcript and history land, so hold the
+    // input (it stays typed) until the pickup in _tick finishes.
+    if m.resuming {
+        return next(m)
+    }
     m.entry = TextInput.new()
     return _run(m, text)
 }
@@ -1152,6 +1158,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             // Start a fresh session so the cleared one stays resumable.
             m.session_id = new_session_id()
             m.agent.clear_convo()
+            m.entries.push(Entry.Notice("conversation cleared; the previous one is still in /sessions"))
             return next(m)
         },
         Help -> {
@@ -1276,7 +1283,7 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
                 return _send_prompt(m, t, exp)
             }
             m.entries.push(Entry.UserMsg(t))
-            m.entries.push(Entry.Notice("Unknown command: ${t}"))
+            m.entries.push(Entry.Notice("unknown command: ${t} (/help lists commands)"))
             return next(m)
         },
         Send(t) -> {
