@@ -62,7 +62,10 @@ fun build_request(
     if plan {
         plan_note = PLAN_PROMPT
     }
-    let req = ChatRequest.new(model).system(
+    // Cache the system-and-tools prefix so the rounds of a turn, and later
+    // turns that share it, reuse it instead of re-billing it every call. Only
+    // the Anthropic adapter acts on this; other providers ignore it.
+    let req = ChatRequest.new(model).cache(true).system(
         "${base_system_prompt()}${platform_note()}${plan_note}${agents_prompt}${shells_note()}",
     )
     let i = 0
