@@ -7,7 +7,7 @@ import std/string
 import std/sync { Mutex, mutex, sleep_millis }
 import "github.com/martian56/aviary" { complete_stream }
 import "github.com/martian56/aviary/request" { ChatRequest, CancelToken }
-import "github.com/martian56/aviary/message" { ToolCall }
+import "github.com/martian56/aviary/message" { ToolCall, ToolDef }
 import "./state" { AgentState, DisplayEvent }
 import "./session" { build_request, turn_agents_prompt }
 import "./compact" { maybe_compact }
@@ -31,6 +31,10 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
     // The memory, skills, and subagent parts of the system prompt are read from
     // disk once here, not on every round.
     let agents_prompt = turn_agents_prompt()
+    // The tool schemas (base tools plus any connected MCP tools) are constant
+    // within a turn, so build them once instead of reconstructing all of them,
+    // and re-parsing every MCP tool's schema JSON, on every round.
+    let tool_defs = tools()
     while round < MAX_ROUNDS {
         if st.interrupted() {
             st.emit(DisplayEvent.Info("Interrupted"))
@@ -53,6 +57,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         let req = _with_tools(
             build_request(model, st.messages(), api_key, base_url, 0, plan, agents_prompt),
             plan,
+            tool_defs,
         ).cancelable(st.token())
         let on_chunk = fun(d: String) -> Unit = st.chunk(d)
 
@@ -370,8 +375,7 @@ fun _do(token: CancelToken, call: ToolCall, preview: String) -> String {
 // Attach the tools the model may use. In plan mode the mutating tools are
 // withheld, so the model researches and proposes instead of changing
 // anything.
-fun _with_tools(req: ChatRequest, plan: Bool) -> ChatRequest {
-    let ts = tools()
+fun _with_tools(req: ChatRequest, plan: Bool, ts: List<ToolDef>) -> ChatRequest {
     let r = req
     let i = 0
     while i < ts.len() {
