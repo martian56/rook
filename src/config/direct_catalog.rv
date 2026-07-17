@@ -140,6 +140,7 @@ fun direct_catalog() -> List<String> {
         "nebius/deepseek-ai/DeepSeek-V3",
         "nebius/openai/gpt-oss-120b",
         // Moonshot's direct platform.
+        "moonshot/kimi-k3",
         "moonshot/kimi-k2.5",
         // Common Ollama library names. These work when the model is installed
         // locally and can always be replaced by typing another Ollama name.
