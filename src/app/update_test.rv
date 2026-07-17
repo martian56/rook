@@ -4,9 +4,10 @@ import "github.com/martian56/perch/keys" { Key, MouseEvent, MouseKind }
 import "github.com/martian56/plumage" { Event }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, chat_init }
-import "./update" { apply_events, chat_update, _resume, _run, _after_model_set, ensure_catalog, refresh_pick }
+import "./update" { apply_events, chat_update, _apply_loaded, _run, _after_model_set, ensure_catalog, refresh_pick }
 import "../agent/state" { DisplayEvent }
 import "../ui/transcript" { Entry }
+import "../config/sessions" { load_session }
 
 fun tag(e: Entry) -> String {
     return match e {
@@ -172,9 +173,13 @@ fun test_the_dispatch_row_lands_after_the_collapsed_block() {
 }
 
 fun test_resume_error_is_a_notice() {
+    // Resume now reads off the UI thread and _tick applies the result, so the
+    // notice-on-error path lives in _apply_loaded. Feed it a failed load
+    // directly (a missing id resolves to an error without a heavy read).
     let m = chat_init()
     m.entries.push(Entry.UserMsg("keep this"))
-    _resume(m, "no-such-session-id")
+    let failed = load_session("no-such-session-id")
+    _apply_loaded(m, "no-such-session-id", failed)
     assert_eq_str(tags(m), "|u|n")
 }
 
