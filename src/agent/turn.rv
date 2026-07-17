@@ -70,7 +70,12 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 reply_text = reply.content
                 calls = reply.tool_calls
                 finish = reply.finish_reason
-                st.add_usage(reply.usage.prompt_tokens, reply.usage.completion_tokens)
+                st.add_usage(
+                    reply.usage.prompt_tokens,
+                    reply.usage.completion_tokens,
+                    reply.usage.cache_read_tokens,
+                    reply.usage.cache_write_tokens,
+                )
             },
             Err(e) -> {
                 err = e.message
@@ -183,7 +188,11 @@ fun _report_usage(st: AgentState, model: String) {
     if t.prompt + t.completion == 0 {
         return
     }
-    st.emit(DisplayEvent.Info("turn: ${usage_label(model, t.prompt, t.completion)}"))
+    st.emit(
+        DisplayEvent.Info(
+            "turn: ${usage_label(model, t.prompt, t.completion, t.cache_read, t.cache_write)}",
+        ),
+    )
     return
 }
 

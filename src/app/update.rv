@@ -16,7 +16,7 @@ import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
 import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
-import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, expand_mentions }
+import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, Loaded }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed_with, save_key, save_theme }
@@ -249,6 +249,8 @@ fun _tick(m: Chat) -> Step<Chat> {
         m.choices = snap.choices
         m.sess_prompt = snap.sess_prompt
         m.sess_completion = snap.sess_completion
+        m.sess_cache_read = snap.sess_cache_read
+        m.sess_cache_write = snap.sess_cache_write
         if snap.done {
             m.active = false
             m.turns = m.turns + 1
@@ -624,8 +626,11 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     return next(m)
 }
 
-// Recompute the @-file matches for the current input. Walks the project, so
-// only called when the input actually changed.
+// Recompute the @-file matches for the current input. The file list is
+// cached (warmed off-thread at startup and after each submit), so this is a
+// filter, not a walk. Ending a mention no longer drops the cache: within one
+// prompt the tree is stable, and dropping it here forced a full project walk
+// on the next @ keystroke.
 fun _refresh_mentions(m: Chat) {
     m.mention_dismissed = false
     m.mention_sel = 0
@@ -633,7 +638,6 @@ fun _refresh_mentions(m: Chat) {
     if mn.active {
         m.mention_matches = fuzzy_match(mn.query, cached_files())
     } else {
-        invalidate_files()
         let none: List<String> = []
         m.mention_matches = none
     }
@@ -888,6 +892,10 @@ fun _apply_loaded(m: Chat, id: String, loaded: Loaded) {
     m.agent.set_usage(loaded.usage_prompt, loaded.usage_completion)
     m.sess_prompt = loaded.usage_prompt
     m.sess_completion = loaded.usage_completion
+    // Saved sessions do not persist the cache breakdown; the estimate is
+    // simply conservative for the restored history.
+    m.sess_cache_read = 0
+    m.sess_cache_write = 0
     m.session_id = id
     m.scroll_up = 0
     return
@@ -1139,6 +1147,8 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             clear_todos()
             m.sess_prompt = 0
             m.sess_completion = 0
+            m.sess_cache_read = 0
+            m.sess_cache_write = 0
             // Start a fresh session so the cleared one stays resumable.
             m.session_id = new_session_id()
             m.agent.clear_convo()
@@ -1370,9 +1380,11 @@ fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
 
 fun _send(m: Chat, text: String) -> Step<Chat> {
     // The transcript shows what was typed; the model gets any @-referenced
-    // files attached. Drop the mention file cache so the next prompt's picker
-    // reflects any files created during this turn.
+    // files attached. Drop the mention file cache and rebuild it off-thread,
+    // so the next prompt's picker reflects files created during this turn
+    // without walking the project on the next @ keystroke.
     invalidate_files()
+    warm_files()
     return _send_prompt(m, text, expand_mentions(text))
 }
 

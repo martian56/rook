@@ -17,6 +17,7 @@ import "../agents/settings" { settings_errors_from }
 import "../hooks/hooks" { drain_hook_notices }
 import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors }
 import "../tools/permission_menu" { PermissionGrantState }
+import "../tools/mentions" { warm_files }
 
 // The /model picker's data, built once and reused. `ids`/`labels`/`lower` are
 // the whole catalog (labels index-aligned to ids, lower a lowercased id copy
@@ -151,9 +152,18 @@ struct Chat {
     // True while a chosen session is being read off the UI thread, until _tick
     // applies the restored transcript and history.
     resuming: Bool,
+    // The session's prompt-cache totals, for the discounted cost estimate.
+    // At the end of the struct: these are plain Ints, and the runtime's GC
+    // descriptor only tracks heap fields in the first 64 positions, so
+    // non-heap fields go last.
+    sess_cache_read: Int,
+    sess_cache_write: Int,
 }
 
 fun chat_init() -> Chat {
+    // Walk the project for the @-mention picker on a goroutine now, so the
+    // first @ keystroke filters a ready list instead of stalling on the walk.
+    warm_files()
     let model = resolve_model()
     let rs = roots()
     let startup_notices = settings_errors_from(rs)
@@ -242,6 +252,8 @@ fun chat_init() -> Chat {
         sessions_list: no_sessions,
         sessions_loading: false,
         resuming: false,
+        sess_cache_read: 0,
+        sess_cache_write: 0,
     }
 }
 

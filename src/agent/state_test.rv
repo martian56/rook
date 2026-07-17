@@ -75,8 +75,8 @@ fun test_interrupt_flag() {
 
 fun test_usage_accumulates_per_turn_and_session() {
     let st = AgentState.new()
-    st.add_usage(100, 40)
-    st.add_usage(50, 20)
+    st.add_usage(100, 40, 80, 5)
+    st.add_usage(50, 20, 30, 0)
     let t = st.turn_tokens()
     assert_eq_int(t.prompt, 150)
     assert_eq_int(t.completion, 60)
@@ -87,9 +87,13 @@ fun test_usage_accumulates_per_turn_and_session() {
     let snap = st.drain()
     assert_eq_int(snap.sess_prompt, 150)
     assert_eq_int(snap.sess_completion, 60)
+    // The cache breakdown accumulates for the session too.
+    assert_eq_int(snap.sess_cache_read, 110)
+    assert_eq_int(snap.sess_cache_write, 5)
     // Clearing the conversation resets the session total.
     st.clear_convo()
     assert_eq_int(st.drain().sess_prompt, 0)
+    assert_eq_int(st.drain().sess_cache_read, 0)
 }
 
 fun test_plan_flag_round_trips_and_survives_begin() {
