@@ -9,7 +9,7 @@
 import std/string
 import "github.com/martian56/aviary" { complete }
 import "github.com/martian56/aviary/request" { ChatRequest }
-import "github.com/martian56/aviary/message" { Message, ToolCall }
+import "github.com/martian56/aviary/message" { Message, ToolCall, ToolDef }
 import "./state" { AgentState, DisplayEvent }
 import "./session" { request_timeout_ms }
 import "../tools/registry" { tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label }
@@ -52,6 +52,8 @@ fun run_subagent(
     let history: List<Message> = [Message.user(task)]
     let allowed: List<String> = []
     let round = 0
+    // Built once for the subagent's whole run, not rebuilt every round.
+    let sub_tool_defs = tools()
     while round < SUB_ROUNDS {
         if st.interrupted() {
             st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
@@ -59,9 +61,16 @@ fun run_subagent(
         }
         // Attach the turn's cancel token so Esc aborts the subagent's in-flight
         // request instead of the parent waiting out the full timeout.
-        let req = _sub_request(use_model, prompt, history, use_key, base_url, agent.tools, st.plan()).cancelable(
-            st.token(),
-        )
+        let req = _sub_request(
+            use_model,
+            prompt,
+            history,
+            use_key,
+            base_url,
+            agent.tools,
+            st.plan(),
+            sub_tool_defs,
+        ).cancelable(st.token())
 
         let reply_text = ""
         let calls: List<ToolCall> = []
@@ -205,6 +214,7 @@ fun _sub_request(
     base_url: String,
     allow: List<String>,
     plan: Bool,
+    ts: List<ToolDef>,
 ) -> ChatRequest {
     let req = ChatRequest.new(model).system(prompt)
     let i = 0
@@ -224,7 +234,6 @@ fun _sub_request(
     if request_timeout > 0 {
         req = req.timeout(request_timeout)
     }
-    let ts = tools()
     let t = 0
     while t < ts.len() {
         // Nesting stops at one level, and questions belong to the main
