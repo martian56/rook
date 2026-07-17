@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.50
+
+- A message typed during a streaming turn queues and sends the moment the turn finishes, instead of Enter doing nothing. Queued /mcp prompts are no longer dropped while a turn runs. (#289)
+- Up on an empty input recalls previous sends shell-style; Down walks forward; editing a recalled line detaches it. (#289)
+- PageUp/PageDown scroll a visible page instead of 5 lines, End jumps back to the newest output, and the status bar shows when you are scrolled into history. The model picker, sessions, and help panels take PageUp/PageDown, and the mouse wheel over an open panel moves its selection instead of the transcript behind it. (#289)
+- k in the shells panel kills the highlighted background shell, and session rows show how long ago each was saved. (#289)
+- Only error-shaped notices render in the error color; confirmations and the per-turn usage line no longer read as alarms. Failed tool calls carry the error color so they stand out. (#282)
+- Provider failures map to short actionable messages (bad key, no credit, rate limit, server error) instead of dumping the raw HTTP body. The approval hint documents enter, esc, and the real scope of allow-all. The thinking line shows elapsed seconds. (#282)
+- Typing @ no longer walks the project on the keystroke: the file list is warmed off the UI thread at startup and after each submit. (#279)
+- The cost estimate prices the prompt cache (reads at a tenth of the input rate, writes at 1.25x) and shows how much of the input was cached, so the caching win from 0.3.49 is visible in the status bar. (#275)
+
 ## 0.3.49
 
 - On Anthropic models, the system prompt and tool schemas (the static prefix sent ahead of every message) are marked for prompt caching, so the provider reuses them across the rounds of a turn and across turns instead of re-reading and re-billing the whole prefix each call. This cuts input cost on multi-round turns and lowers the time to first token on a cache hit. Requires aviary 0.4.0. (#269)
