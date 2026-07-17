@@ -1,0 +1,98 @@
+// Input history: every sent line is remembered, and Up/Down on an empty (or
+// unedited recalled) input walks back through them, the standard shell-style
+// recall. A module-level store rather than Chat fields, so the model struct
+// stays inside the GC descriptor's 64-slot limit.
+
+import std/string
+import std/sync { Mutex, mutex }
+
+struct InputHistory {
+    lock: Mutex,
+    items: List<String>,
+    // The recall cursor: items.len() means "not recalling" (fresh input);
+    // lower values index into items from the start.
+    pos: Int,
+}
+
+let HISTORY: InputHistory = _new_history()
+
+fun _new_history() -> InputHistory {
+    let items: List<String> = []
+    return InputHistory { lock: mutex(), items, pos: 0 }
+}
+
+// Record a sent line and reset the cursor. Consecutive duplicates collapse.
+fun push_history(text: String) {
+    if text.trim() == "" {
+        return
+    }
+    HISTORY.lock.lock()
+    let n = HISTORY.items.len()
+    if n == 0 || HISTORY.items[n - 1] != text {
+        HISTORY.items.push(text)
+    }
+    HISTORY.pos = HISTORY.items.len()
+    HISTORY.lock.unlock()
+    return
+}
+
+// Step back and return the previous line, "" when there is none.
+fun recall_prev() -> String {
+    HISTORY.lock.lock()
+    if HISTORY.items.len() == 0 || HISTORY.pos == 0 {
+        let cur = ""
+        if HISTORY.items.len() > 0 {
+            cur = HISTORY.items[0]
+        }
+        HISTORY.lock.unlock()
+        return cur
+    }
+    HISTORY.pos = HISTORY.pos - 1
+    let out = HISTORY.items[HISTORY.pos]
+    HISTORY.lock.unlock()
+    return out
+}
+
+// Step forward and return the next line, "" once past the newest (back to a
+// fresh input).
+fun recall_next() -> String {
+    HISTORY.lock.lock()
+    if HISTORY.pos >= HISTORY.items.len() {
+        HISTORY.lock.unlock()
+        return ""
+    }
+    HISTORY.pos = HISTORY.pos + 1
+    let out = ""
+    if HISTORY.pos < HISTORY.items.len() {
+        out = HISTORY.items[HISTORY.pos]
+    }
+    HISTORY.lock.unlock()
+    return out
+}
+
+// Whether the cursor is mid-recall (so Up keeps walking even though the
+// input holds a recalled line).
+fun recalling() -> Bool {
+    HISTORY.lock.lock()
+    let r = HISTORY.pos < HISTORY.items.len()
+    HISTORY.lock.unlock()
+    return r
+}
+
+// Leave recall mode without sending (the user edited the recalled text).
+fun reset_recall() {
+    HISTORY.lock.lock()
+    HISTORY.pos = HISTORY.items.len()
+    HISTORY.lock.unlock()
+    return
+}
+
+// Drop everything. For tests, which share the process-wide store.
+fun clear_history() {
+    HISTORY.lock.lock()
+    let none: List<String> = []
+    HISTORY.items = none
+    HISTORY.pos = 0
+    HISTORY.lock.unlock()
+    return
+}

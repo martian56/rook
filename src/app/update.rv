@@ -24,14 +24,15 @@ import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, find_expansion }
-import "../tools/shells" { list_shells, kill_all_shells, refresh }
+import "../tools/shells" { list_shells, kill_all_shells, kill_shell, refresh }
 import "../tools/todos" { clear_todos }
 import "../tools/permission_menu" { permission_grant_states, toggle_permission_grant }
 import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt }
+import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -44,9 +45,17 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
         Mouse(ev) -> {
             match ev.kind {
                 ScrollUp -> {
+                    // With a panel open the wheel moves its selection, not
+                    // the transcript hidden behind it.
+                    if _wheel_panel(m, 0 - 1) {
+                        return next(m)
+                    }
                     m.scroll_up = m.scroll_up + 3
                 },
                 ScrollDown -> {
+                    if _wheel_panel(m, 1) {
+                        return next(m)
+                    }
                     m.scroll_up = m.scroll_up - 3
                     if m.scroll_up < 0 {
                         m.scroll_up = 0
@@ -201,17 +210,14 @@ fun _tick(m: Chat) -> Step<Chat> {
         }
         cn = cn + 1
     }
-    let cmd_prompts = drain_cmd_prompts()
-    let cp = 0
-    while cp < cmd_prompts.len() {
-        if m.active {
-            m.entries.push(
-                Entry.Notice("a turn is already running; send the /mcp prompt again once it finishes"),
-            )
-        } else {
-            let _ = _begin_turn(m, cmd_prompts[cp])
+    // Queued prompts (a fetched /mcp prompt, or a message typed during a
+    // turn) start when the agent is idle, one per tick; the rest stay queued
+    // instead of being dropped while a turn runs.
+    if !m.active && !m.resuming {
+        let queued_prompt = take_cmd_prompt()
+        if queued_prompt != "" {
+            let _ = _begin_turn(m, queued_prompt)
         }
-        cp = cp + 1
     }
     if m.sessions_open && m.sessions_loading {
         let scan = take_session_list()
@@ -505,12 +511,27 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                 m.agent.request_interrupt()
                 return next(m)
             },
+            Enter -> {
+                // Typing ahead during a turn: queue the message instead of
+                // silently ignoring the Enter. It echoes now and sends the
+                // moment the turn finishes (the _tick pickup).
+                let typed = m.entry.value.trim()
+                if typed != "" {
+                    m.entries.push(Entry.UserMsg(typed))
+                    m.entries.push(Entry.Notice("queued; sends when this turn finishes"))
+                    push_history(typed)
+                    push_cmd_prompt(expand_mentions(typed))
+                    m.entry = TextInput.new()
+                    m.scroll_up = 0
+                }
+                return next(m)
+            },
             PageUp -> {
-                m.scroll_up = m.scroll_up + 5
+                m.scroll_up = m.scroll_up + _page(m)
                 return next(m)
             },
             PageDown -> {
-                m.scroll_up = m.scroll_up - 5
+                m.scroll_up = m.scroll_up - _page(m)
                 if m.scroll_up < 0 {
                     m.scroll_up = 0
                 }
@@ -604,15 +625,40 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
             return _submit(m)
         },
         PageUp -> {
-            m.scroll_up = m.scroll_up + 5
+            m.scroll_up = m.scroll_up + _page(m)
             return next(m)
         },
         PageDown -> {
-            m.scroll_up = m.scroll_up - 5
+            m.scroll_up = m.scroll_up - _page(m)
             if m.scroll_up < 0 {
                 m.scroll_up = 0
             }
             return next(m)
+        },
+        End -> {
+            // With nothing typed, End jumps back to the newest output; with
+            // text in the input it keeps its cursor-to-end meaning.
+            if m.entry.value == "" && m.scroll_up > 0 {
+                m.scroll_up = 0
+                return next(m)
+            }
+        },
+        Up -> {
+            // Shell-style history recall on an empty (or unedited recalled)
+            // input. With text being typed, Up stays with the input.
+            if m.entry.value == "" || recalling() {
+                let prev = recall_prev()
+                if prev != "" {
+                    m.entry = TextInput.with_value(prev)
+                }
+                return next(m)
+            }
+        },
+        Down -> {
+            if recalling() {
+                m.entry = TextInput.with_value(recall_next())
+                return next(m)
+            }
         },
         _ -> {},
     }
@@ -622,8 +668,59 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
         m.slash_dismissed = false
         m.slash_sel = 0
         _refresh_mentions(m)
+        // Editing a recalled line detaches it from the history walk.
+        reset_recall()
     }
     return next(m)
+}
+
+// A page of transcript scrolling: the visible height, not a fixed handful of
+// lines.
+fun _page(m: Chat) -> Int {
+    if m.tr_h > 7 {
+        return m.tr_h - 2
+    }
+    return 5
+}
+
+// Route a mouse-wheel step to whichever panel is open, as a synthetic
+// Up/Down through the panel's own key handler so the clamping (and the theme
+// picker's live preview) stay in one place. False when no panel is open and
+// the wheel should scroll the transcript.
+fun _wheel_panel(m: Chat, delta: Int) -> Bool {
+    let key = Key.Up
+    if delta > 0 {
+        key = Key.Down
+    }
+    if m.picking {
+        let _ = _pick_key(m, key)
+        return true
+    }
+    if m.theme_picking {
+        let _ = _theme_pick_key(m, key)
+        return true
+    }
+    if m.sessions_open {
+        let _ = _sessions_key(m, key)
+        return true
+    }
+    if m.shells_open {
+        let _ = _shells_key(m, key)
+        return true
+    }
+    if m.permissions_open {
+        let _ = _permissions_key(m, key)
+        return true
+    }
+    if m.help_open {
+        let _ = _help_key(m, key)
+        return true
+    }
+    if m.question != "" {
+        let _ = _question_key(m, key)
+        return true
+    }
+    return false
 }
 
 // Recompute the @-file matches for the current input. The file list is
@@ -784,6 +881,21 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
                 m.pick_sel = m.pick_sel + 1
             }
         },
+        PageUp -> {
+            m.pick_sel = m.pick_sel - 10
+            if m.pick_sel < 0 {
+                m.pick_sel = 0
+            }
+        },
+        PageDown -> {
+            m.pick_sel = m.pick_sel + 10
+            if m.pick_sel >= m.catalog.pick_ids.len() {
+                m.pick_sel = m.catalog.pick_ids.len() - 1
+            }
+            if m.pick_sel < 0 {
+                m.pick_sel = 0
+            }
+        },
         Enter -> {
             if m.catalog.pick_ids.len() > 0 {
                 let err = set_model(m, m.catalog.pick_ids[m.pick_sel])
@@ -822,6 +934,21 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
         Down -> {
             if m.sessions_sel < m.sessions_list.len() - 1 {
                 m.sessions_sel = m.sessions_sel + 1
+            }
+        },
+        PageUp -> {
+            m.sessions_sel = m.sessions_sel - 10
+            if m.sessions_sel < 0 {
+                m.sessions_sel = 0
+            }
+        },
+        PageDown -> {
+            m.sessions_sel = m.sessions_sel + 10
+            if m.sessions_sel >= m.sessions_list.len() {
+                m.sessions_sel = m.sessions_list.len() - 1
+            }
+            if m.sessions_sel < 0 {
+                m.sessions_sel = 0
             }
         },
         Enter -> {
@@ -943,6 +1070,20 @@ fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
                 m.shells_focus = infos[sel].id
             }
         },
+        Char(c) -> {
+            // k kills the highlighted shell, so a runaway process can be
+            // stopped without quitting rook.
+            if c == "k" {
+                let infos = list_shells()
+                if infos.len() > 0 {
+                    let sel = m.shells_sel
+                    if sel >= infos.len() {
+                        sel = infos.len() - 1
+                    }
+                    m.entries.push(Entry.Notice(kill_shell("${infos[sel].id}")))
+                }
+            }
+        },
         _ -> {},
     }
     return next(m)
@@ -1013,6 +1154,21 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
         Down -> {
             if m.help_sel < m.cmd_infos.len() - 1 {
                 m.help_sel = m.help_sel + 1
+            }
+        },
+        PageUp -> {
+            m.help_sel = m.help_sel - 10
+            if m.help_sel < 0 {
+                m.help_sel = 0
+            }
+        },
+        PageDown -> {
+            m.help_sel = m.help_sel + 10
+            if m.help_sel >= m.cmd_infos.len() {
+                m.help_sel = m.cmd_infos.len() - 1
+            }
+            if m.help_sel < 0 {
+                m.help_sel = 0
             }
         },
         Enter -> {
@@ -1130,6 +1286,7 @@ fun _submit(m: Chat) -> Step<Chat> {
     if m.resuming {
         return next(m)
     }
+    push_history(text)
     m.entry = TextInput.new()
     return _run(m, text)
 }

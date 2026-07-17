@@ -24,6 +24,7 @@ import "../tools/todos" { Todo, current_todos }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
 import "../config/sessions" { SessionMeta }
+import std/time { now_millis }
 
 fun chat_view(m: Chat, f: Frame) {
     // The model's checklist takes a strip above the thinking line while it
@@ -321,7 +322,7 @@ fun _shells_panel(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let box = Block.new().rounded().title("Background shells  (enter to tail, esc)").style(
+    let box = Block.new().rounded().title("Background shells  (enter tails, k kills, esc)").style(
         m.theme.modal,
     ).title_style(m.theme.modal.bold())
     box.render(area, f.buf)
@@ -422,7 +423,7 @@ fun _sessions_panel(m: Chat, f: Frame) {
         if title == "" {
             title = "(untitled)"
         }
-        let row = "${title}  ·  ${s.model}"
+        let row = "${title}  ·  ${s.model}${_session_age(s.created)}"
         if row.length() > inner.w - 2 {
             row = row.substring(0, inner.w - 2)
         }
@@ -822,6 +823,25 @@ fun _picker(m: Chat, f: Frame) {
     return
 }
 
+// How long ago a session was created, so ten "(untitled)" rows are still
+// tellable apart. "" for sessions saved before the timestamp existed.
+fun _session_age(created: Int) -> String {
+    if created <= 0 {
+        return ""
+    }
+    let secs = (now_millis() - created) / 1000
+    if secs < 60 {
+        return "  ·  just now"
+    }
+    if secs < 3600 {
+        return "  ·  ${secs / 60}m ago"
+    }
+    if secs < 86400 {
+        return "  ·  ${secs / 3600}h ago"
+    }
+    return "  ·  ${secs / 86400}d ago"
+}
+
 // A centered modal listing the themes; the highlighted palette is applied
 // live, so the screen behind it is the preview.
 fun _theme_picker(m: Chat, f: Frame) {
@@ -1003,6 +1023,12 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     let sty = m.theme.status
     if m.active {
         left = "streaming · esc to interrupt"
+    }
+    // Scrolled into history: say so, and how to get back, since new output
+    // keeps landing out of sight below.
+    if m.scroll_up > 0 {
+        left = "▲ scrolled up · ${m.scroll_up} lines below · end returns"
+        sty = m.theme.accent
     }
     if m.resuming {
         left = "resuming session…"

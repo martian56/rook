@@ -57,3 +57,25 @@ fun drain_cmd_prompts() -> List<String> {
     CMD_QUEUE.lock.unlock()
     return out
 }
+
+// Take the oldest queued prompt, "" when none. The main loop uses this to
+// start at most one turn per tick, leaving the rest queued while a turn is
+// running, so a prompt queued mid-turn sends when the turn finishes instead
+// of being dropped.
+fun take_cmd_prompt() -> String {
+    CMD_QUEUE.lock.lock()
+    if CMD_QUEUE.prompts.len() == 0 {
+        CMD_QUEUE.lock.unlock()
+        return ""
+    }
+    let first = CMD_QUEUE.prompts[0]
+    let rest: List<String> = []
+    let i = 1
+    while i < CMD_QUEUE.prompts.len() {
+        rest.push(CMD_QUEUE.prompts[i])
+        i = i + 1
+    }
+    CMD_QUEUE.prompts = rest
+    CMD_QUEUE.lock.unlock()
+    return first
+}
