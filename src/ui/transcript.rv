@@ -120,13 +120,21 @@ fun window_lines(
     let i = 0
     while i < entries.len() && out.len() < count {
         let el = cache[i].lines
-        let j = 0
-        while j < el.len() {
-            if line_no >= top && out.len() < count {
-                out.push(el[j])
+        // Skip entries that sit entirely above the window without walking their
+        // lines, so the cost stays O(entries + count) instead of O(total lines
+        // above the window). Without this, a long scrolled-down transcript is
+        // re-counted line by line on every frame.
+        if line_no + el.len() <= top {
+            line_no = line_no + el.len()
+        } else {
+            let j = 0
+            while j < el.len() {
+                if line_no >= top && out.len() < count {
+                    out.push(el[j])
+                }
+                line_no = line_no + 1
+                j = j + 1
             }
-            line_no = line_no + 1
-            j = j + 1
         }
         if !_binds_to_next(entries, i) {
             if line_no >= top && out.len() < count {
