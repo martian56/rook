@@ -47,8 +47,12 @@ fun _rates() -> List<Rate> {
     ]
 }
 
+// Built once at startup, not rebuilt on every status-bar draw. The table is
+// constant, and price_for runs on the per-frame render path.
+let RATES: List<Rate> = _rates()
+
 fun price_for(model: String) -> Price {
-    let rates = _rates()
+    let rates = RATES
     let i = 0
     while i < rates.len() {
         if model.contains(rates[i].needle) {
