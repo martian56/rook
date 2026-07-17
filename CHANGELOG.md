@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.49
+
+- On Anthropic models, the system prompt and tool schemas (the static prefix sent ahead of every message) are marked for prompt caching, so the provider reuses them across the rounds of a turn and across turns instead of re-reading and re-billing the whole prefix each call. This cuts input cost on multi-round turns and lowers the time to first token on a cache hit. Requires aviary 0.4.0. (#269)
+
 ## 0.3.48
 
 - Opening /sessions and resuming a session run off the UI thread, so the panel appears immediately with a loading line and switching sessions no longer stalls while reading and parsing session files. (#265)
