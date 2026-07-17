@@ -1,5 +1,5 @@
 import std/test { assert_true, assert_eq_str }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts, take_cmd_prompt }
 
 fun test_cmd_notices_round_trip_and_clear() {
     // Clear any residue so the test does not depend on ordering.
@@ -12,6 +12,16 @@ fun test_cmd_notices_round_trip_and_clear() {
     assert_eq_str(out[1], "two\nthree")
     // A second drain finds nothing.
     assert_true(drain_cmd_notices().len() == 0)
+}
+
+fun test_take_cmd_prompt_pops_one_at_a_time_in_order() {
+    let _ = drain_cmd_prompts()
+    assert_eq_str(take_cmd_prompt(), "")
+    push_cmd_prompt("one")
+    push_cmd_prompt("two")
+    assert_eq_str(take_cmd_prompt(), "one")
+    assert_eq_str(take_cmd_prompt(), "two")
+    assert_eq_str(take_cmd_prompt(), "")
 }
 
 fun test_cmd_prompts_round_trip_and_clear() {

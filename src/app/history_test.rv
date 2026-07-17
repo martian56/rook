@@ -1,0 +1,31 @@
+import std/test { assert_true, assert_eq_str, assert_false }
+import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall, clear_history }
+
+fun test_history_recalls_backward_and_forward() {
+    clear_history()
+    push_history("first")
+    push_history("second")
+    assert_eq_str(recall_prev(), "second")
+    assert_true(recalling())
+    assert_eq_str(recall_prev(), "first")
+    // At the oldest entry, another step stays there.
+    assert_eq_str(recall_prev(), "first")
+    assert_eq_str(recall_next(), "second")
+    // Walking past the newest returns to a fresh input.
+    assert_eq_str(recall_next(), "")
+    assert_false(recalling())
+}
+
+fun test_history_collapses_consecutive_duplicates_and_resets() {
+    clear_history()
+    push_history("same")
+    push_history("same")
+    assert_eq_str(recall_prev(), "same")
+    assert_eq_str(recall_prev(), "same")
+    // Sending resets the cursor to fresh.
+    push_history("newer")
+    assert_false(recalling())
+    assert_eq_str(recall_prev(), "newer")
+    reset_recall()
+    assert_false(recalling())
+}
