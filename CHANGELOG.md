@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.48
+
+- Opening /sessions and resuming a session run off the UI thread, so the panel appears immediately with a loading line and switching sessions no longer stalls while reading and parsing session files. (#265)
+- The transcript window is built by skipping the entries above the visible area instead of counting every line from the top of the history, so scrolling and streaming stay smooth in long conversations. The status-bar price table is built once at startup rather than on every frame. (#266)
+- A turn builds its tool schemas once instead of rebuilding all of them, and re-parsing every MCP tool's schema, on every round, in both the main turn and subagent turns. (#267)
+- The system prompt no longer repeats tool descriptions that the tool schemas already carry, trimming duplicated instruction from every request while keeping the workflow guidance. (#268)
+
 ## 0.3.47
 
 - /plugins add, update, and browse, and /mcp prompt, run on a background goroutine instead of freezing the UI while they reach the network or clone a repository. Their results arrive as notices when ready, and a fetched prompt starts its turn once it lands. (#254)
