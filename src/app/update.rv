@@ -17,7 +17,7 @@ import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, list_sessions_result, load_session }
+import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, Loaded }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed_with, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -212,6 +212,23 @@ fun _tick(m: Chat) -> Step<Chat> {
             let _ = _begin_turn(m, cmd_prompts[cp])
         }
         cp = cp + 1
+    }
+    if m.sessions_open && m.sessions_loading {
+        let scan = take_session_list()
+        if scan.ready {
+            m.sessions_list = scan.result.sessions
+            if scan.result.error != "" {
+                m.entries.push(Entry.Notice(scan.result.error))
+            }
+            m.sessions_loading = false
+        }
+    }
+    if m.resuming {
+        let restored = take_loaded_session()
+        if restored.ready {
+            _apply_loaded(m, restored.id, restored.loaded)
+            m.resuming = false
+        }
     }
     // Drain background shells at a lower cadence while the panel is open,
     // instead of on every frame from the view, so the live tail costs one
@@ -821,7 +838,15 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
 // conversation from it so the model has context, and continue writing to
 // that session's file.
 fun _resume(m: Chat, id: String) {
-    let loaded = load_session(id)
+    // Read the session off the UI thread; a session file can be hundreds of KB
+    // and parsing it inline froze the picker. _tick applies the result when the
+    // read finishes (see _apply_loaded).
+    m.resuming = true
+    begin_load_session(id)
+    return
+}
+
+fun _apply_loaded(m: Chat, id: String, loaded: Loaded) {
     if loaded.error != "" {
         m.entries.push(Entry.Notice(loaded.error))
         return
@@ -1176,13 +1201,16 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             return next(m)
         },
         Sessions -> {
-            let listed = list_sessions_result()
-            m.sessions_list = listed.sessions
-            if listed.error != "" {
-                m.entries.push(Entry.Notice(listed.error))
-            }
+            // Scan the sessions directory off the UI thread: it reads one
+            // metadata file per saved session, so opening the panel used to
+            // stall while that ran. Open immediately with a loading line and
+            // let _tick fill the list in when the scan finishes.
+            let none: List<SessionMeta> = []
+            m.sessions_list = none
             m.sessions_sel = 0
+            m.sessions_loading = true
             m.sessions_open = true
+            begin_list_sessions()
             return next(m)
         },
         Plugins(args) -> {

@@ -400,7 +400,11 @@ fun _sessions_panel(m: Chat, f: Frame) {
     box.render(area, f.buf)
     let inner = box.inner(area)
     if list.len() == 0 {
-        f.buf.set_string(inner.x + 1, inner.y, "(no saved sessions)", m.theme.dim)
+        let empty_msg = "(no saved sessions)"
+        if m.sessions_loading {
+            empty_msg = "loading sessions…"
+        }
+        f.buf.set_string(inner.x + 1, inner.y, empty_msg, m.theme.dim)
         return
     }
     let sel = m.sessions_sel

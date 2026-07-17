@@ -257,6 +257,121 @@ fun list_sessions_from(dir: String) -> SessionList {
     return SessionList { sessions: _sort_newest(out), error: "" }
 }
 
+// Listing runs off the UI thread too. /sessions reads one metadata file per
+// saved session, so with many sessions the scan is long enough to stall the
+// panel from appearing. begin_list_sessions runs the scan on a goroutine and
+// stashes the result; the UI opens the panel immediately and picks the result
+// up on a later tick via take_session_list.
+struct SessionListSlot {
+    lock: Mutex,
+    ready: Bool,
+    result: SessionList,
+}
+
+// Whether the background scan has finished, and its result when it has.
+struct SessionListReady {
+    ready: Bool,
+    result: SessionList,
+}
+
+let SESSION_LIST_SLOT: SessionListSlot = _new_session_list_slot()
+
+fun _new_session_list_slot() -> SessionListSlot {
+    let empty: List<SessionMeta> = []
+    return SessionListSlot {
+        lock: mutex(),
+        ready: false,
+        result: SessionList { sessions: empty, error: "" },
+    }
+}
+
+// Start scanning saved sessions on a goroutine. The result is picked up by
+// take_session_list on a later tick.
+fun begin_list_sessions() {
+    SESSION_LIST_SLOT.lock.lock()
+    SESSION_LIST_SLOT.ready = false
+    SESSION_LIST_SLOT.lock.unlock()
+    spawn(fun() -> Unit {
+        let r = list_sessions_result()
+        SESSION_LIST_SLOT.lock.lock()
+        SESSION_LIST_SLOT.result = r
+        SESSION_LIST_SLOT.ready = true
+        SESSION_LIST_SLOT.lock.unlock()
+        return
+    })
+    return
+}
+
+// Take the finished listing if the background scan has completed. ready is
+// false while it is still running, so the caller keeps its loading state.
+fun take_session_list() -> SessionListReady {
+    SESSION_LIST_SLOT.lock.lock()
+    let ready = SESSION_LIST_SLOT.ready
+    let result = SESSION_LIST_SLOT.result
+    if ready {
+        SESSION_LIST_SLOT.ready = false
+    }
+    SESSION_LIST_SLOT.lock.unlock()
+    return SessionListReady { ready, result }
+}
+
+// Resuming a session also runs off the UI thread. A session file can be
+// hundreds of KB, and load_session reads and parses the whole thing (every
+// transcript entry and the full model-visible history), so doing it inline on
+// the Enter key froze the picker. begin_load_session runs the read on a
+// goroutine; the UI applies the restored state on a later tick.
+struct LoadedSlot {
+    lock: Mutex,
+    ready: Bool,
+    id: String,
+    loaded: Loaded,
+}
+
+// Whether the background load has finished, and its result when it has.
+struct LoadedReady {
+    ready: Bool,
+    id: String,
+    loaded: Loaded,
+}
+
+let LOADED_SLOT: LoadedSlot = _new_loaded_slot()
+
+fun _new_loaded_slot() -> LoadedSlot {
+    return LoadedSlot { lock: mutex(), ready: false, id: "", loaded: _empty_loaded("") }
+}
+
+// Start reading a session on a goroutine. The result is picked up by
+// take_loaded_session on a later tick.
+fun begin_load_session(id: String) {
+    LOADED_SLOT.lock.lock()
+    LOADED_SLOT.ready = false
+    LOADED_SLOT.lock.unlock()
+    spawn(fun() -> Unit {
+        let l = load_session(id)
+        LOADED_SLOT.lock.lock()
+        LOADED_SLOT.id = id
+        LOADED_SLOT.loaded = l
+        LOADED_SLOT.ready = true
+        LOADED_SLOT.lock.unlock()
+        return
+    })
+    return
+}
+
+// Take the finished load if the background read has completed. ready is false
+// while it is still running.
+fun take_loaded_session() -> LoadedReady {
+    LOADED_SLOT.lock.lock()
+    let ready = LOADED_SLOT.ready
+    let id = LOADED_SLOT.id
+    let loaded = LOADED_SLOT.loaded
+    if ready {
+        LOADED_SLOT.ready = false
+    }
+    LOADED_SLOT.lock.unlock()
+    return LoadedReady { ready, id, loaded }
+}
+
 // Read a session's metadata, preferring the small sidecar so the full
 // transcript is not parsed just to list titles. Falls back to the session file
 // itself for sessions saved before the sidecar existed.

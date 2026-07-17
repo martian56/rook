@@ -145,6 +145,12 @@ struct Chat {
     sessions_open: Bool,
     sessions_sel: Int,
     sessions_list: List<SessionMeta>,
+    // True while the background session scan runs, so the panel shows a loading
+    // line instead of "no saved sessions" before the list arrives.
+    sessions_loading: Bool,
+    // True while a chosen session is being read off the UI thread, until _tick
+    // applies the restored transcript and history.
+    resuming: Bool,
 }
 
 fun chat_init() -> Chat {
@@ -234,6 +240,8 @@ fun chat_init() -> Chat {
         sessions_open: false,
         sessions_sel: 0,
         sessions_list: no_sessions,
+        sessions_loading: false,
+        resuming: false,
     }
 }
 
