@@ -248,3 +248,16 @@ fun test_malformed_mcp_prompt_arguments_are_visible() {
         _ -> assert_true(false),
     }
 }
+
+fun test_paste_inserts_literally_and_does_not_submit() {
+    let m = chat_init()
+    let before_entries = m.entries.len()
+    let after = chat_update(m, Event.Paste("line one\nline two")).model
+    // The whole block lands in the input, newline included, and nothing
+    // was sent.
+    assert_eq_str(after.entry.value, "line one\nline two")
+    assert_true(after.entries.len() == before_entries)
+    // A second paste appends at the cursor.
+    let again = chat_update(after, Event.Paste("!")).model
+    assert_eq_str(again.entry.value, "line one\nline two!")
+}
