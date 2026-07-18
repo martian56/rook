@@ -80,10 +80,39 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
             }
             return next(m)
         },
+        Paste(s) -> {
+            return _paste(m, s)
+        },
         Resize(w, h) -> {
             return next(m)
         },
     }
+    return next(m)
+}
+
+// Insert a bracketed paste into whichever input has focus. The text arrives
+// as one event with newlines normalized, so a pasted block lands literally
+// instead of replaying as keystrokes (where a newline would submit).
+fun _paste(m: Chat, s: String) -> Step<Chat> {
+    if s == "" {
+        return next(m)
+    }
+    if m.entering_key {
+        // Keys are single-line: strip the newlines a copied key drags along.
+        m.key_input.insert(s.replace("\n", ""))
+        return next(m)
+    }
+    if m.picking {
+        m.pick_input.insert(s.replace("\n", " "))
+        m.pick_sel = 0
+        refresh_pick(m)
+        return next(m)
+    }
+    m.entry.insert(s)
+    m.slash_dismissed = false
+    m.slash_sel = 0
+    _refresh_mentions(m)
+    reset_recall()
     return next(m)
 }
 

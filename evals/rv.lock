@@ -7,13 +7,13 @@ hash = "sha256:48bc56232fe31da2e6450baf7681cd4930d8749c1cde0ee1ffbb33a81a051052"
 
 [[package]]
 source = "github.com/martian56/perch"
-version = "v0.1.0"
-hash = "sha256:06619a0a27ee02eae2975e8cbcddf672de646f89f7e39fbd83d02f75734c878a"
+version = "v0.2.0"
+hash = "sha256:1cd7fb9a1bc06bac437bb02e60ef02f9b44c9acdb963f4c51528d53544760da0"
 
 [[package]]
 source = "github.com/martian56/plumage"
-version = "v0.1.0"
-hash = "sha256:c066327b9b0fc145495c633618d33c85518c9f6e22734968e2fdf686849416cc"
+version = "v0.2.0"
+hash = "sha256:10c768deb5fbf69ad9957ba31f8435494c0ad4242ae7810888a1e28b3dbdee82"
 
 [[package]]
 source = "github.com/martian56/wingspan"
