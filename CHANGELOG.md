@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.54
+
+- Blockquotes in replies nest full block markdown: a quoted heading or list renders behind the bar instead of showing its raw marks. A backslash-escaped pipe inside a table cell stays cell content instead of shifting the grid. Diff fences color added and removed lines with the same tones as tool-result diffs. Uses magpie 0.3.0. (#302)
+
 ## 0.3.53
 
 - Markdown tables in replies render as aligned grids with a rule under the bold header (alignment taken from the separator row, over-wide tables clipped instead of breaking the grid), rather than mashing into one paragraph line. Task items (- [x], - [ ]) show checkbox glyphs, and ~~strikethrough~~ actually strikes through. Uses magpie 0.2.0 on plumage 0.3.0, which adds a strike style attribute. (#299)
