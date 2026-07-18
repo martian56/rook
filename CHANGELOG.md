@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.52
+
+- Agent replies render as markdown: headings, bold, italic, inline code, and links styled from the active theme; fenced code blocks verbatim under an indent and hard-split so nothing overflows; bullet and numbered lists with hanging indents; blockquotes and rules. Plain prose looks exactly as before, selection copy extracts the rendered text, and a partially streamed reply stays sensible mid-chunk. Rendering comes from the new magpie library (0.1.0), reusable by any plumage app. (#296)
+
 ## 0.3.51
 
 - Pasting works properly: pasted text lands in the input as one literal block, newlines preserved and shown as a return glyph, and only a real Enter sends. Previously each pasted newline acted as Enter, sending fragments mid-paste. Multi-line messages render as separate lines in the transcript. Requires perch 0.2.0 and plumage 0.2.0, which add bracketed paste and the Paste event. (#284)
