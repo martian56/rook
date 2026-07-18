@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.55
+
+- Esc interrupts everywhere: during a subagent's in-flight request (which previously could not notice a cancel until the whole reply arrived), during context summarization, and on the question prompt, where Esc now declines and stops the turn like the approval prompt. (#305)
+- A leading ! runs the rest of the line as a shell command directly, no model round-trip: the command and its output show as a transcript row, it works even while a reply is streaming, and the output rides into the next prompt as context. (#305)
+- --continue (or -c) reopens the most recent session from the command line; --help prints usage. (#305)
+- The terminal bell rings when an approval or question needs attention and when a long turn finishes, so rook can wait in a background window. (#305)
+- /copy puts the last reply on the clipboard, /export writes the transcript to a file, and /init has the agent explore the repository and write its AGENTS.md. (#305)
+
 ## 0.3.54
 
 - Blockquotes in replies nest full block markdown: a quoted heading or list renders behind the bar instead of showing its raw marks. A backslash-escaped pipe inside a table cell stays cell content instead of shifting the grid. Diff fences color added and removed lines with the same tones as tool-result diffs. Uses magpie 0.3.0. (#302)
