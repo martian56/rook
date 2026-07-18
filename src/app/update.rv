@@ -31,7 +31,7 @@ import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts }
 import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
@@ -239,10 +239,12 @@ fun _tick(m: Chat) -> Step<Chat> {
         }
         cn = cn + 1
     }
-    // Queued prompts (a fetched /mcp prompt, or a message typed during a
-    // turn) start when the agent is idle, one per tick; the rest stay queued
-    // instead of being dropped while a turn runs.
-    if !m.active && !m.resuming {
+    // Queued prompts (a fetched /mcp prompt, a message typed during a turn,
+    // or one held while the API key was missing) start when the agent is
+    // idle, one per tick; the rest stay queued instead of being dropped
+    // while a turn runs. Held while the key entry is open, so a keyless
+    // prompt waits for the save instead of bouncing back every tick.
+    if !m.active && !m.resuming && !m.entering_key {
         let queued_prompt = take_cmd_prompt()
         if queued_prompt != "" {
             let _ = _begin_turn(m, queued_prompt)
@@ -1275,6 +1277,12 @@ fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
         },
         Esc -> {
             m.entering_key = false
+            // A prompt held for the missing key: cancel means do not send,
+            // so it comes back into the input box instead of being lost.
+            let held = drain_cmd_prompts()
+            if held.len() > 0 {
+                m.entry = TextInput.with_value(held[0])
+            }
             return next(m)
         },
         _ -> {},
@@ -1596,9 +1604,11 @@ fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
 // prompt for one instead of making a doomed request.
 fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
     if key_needed_with(m.model, m.api_key) {
-        m.entries.push(
-            Entry.Notice("no API key for ${provider_of(m.model)}; enter one, then ask again"),
-        )
+        // Hold the prompt instead of eating it: it waits in the queue while
+        // the key entry is open and sends on the tick after the key is saved.
+        // Esc from the key entry cancels and puts the text back in the input.
+        push_cmd_prompt(prompt)
+        m.entries.push(Entry.Notice("no API key for ${provider_of(m.model)}; enter one and this sends"))
         _open_key_entry(m)
         m.scroll_up = 0
         return next(m)

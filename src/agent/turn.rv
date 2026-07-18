@@ -59,7 +59,16 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
             plan,
             tool_defs,
         ).cancelable(st.token())
-        let on_chunk = fun(d: String) -> Unit = st.chunk(d)
+        // Chunks also accumulate here so a stream that dies mid-reply can
+        // keep what already streamed: on an error the partial text is pushed
+        // into the conversation (like the cancel path), so what the user saw
+        // and what the model remembers stay the same.
+        let streamed: List<String> = []
+        let on_chunk = fun(d: String) -> Unit {
+            st.chunk(d)
+            streamed.push(d)
+            return
+        }
 
         let reply_text = ""
         let calls: List<ToolCall> = []
@@ -82,6 +91,10 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
             },
         }
         if err != "" {
+            let partial = _joined(streamed)
+            if partial != "" {
+                st.push_assistant("${partial}\n[reply cut off by a connection error]")
+            }
             st.emit(DisplayEvent.Info("error: ${friendly_error(err)}"))
             _end_turn(st)
             return
@@ -182,6 +195,17 @@ fun _end_turn(st: AgentState) {
     fire_hooks("turn-end", "", "")
     st.finish()
     return
+}
+
+// The streamed deltas as one string.
+fun _joined(parts: List<String>) -> String {
+    let out = ""
+    let i = 0
+    while i < parts.len() {
+        out = out.concat(parts[i])
+        i = i + 1
+    }
+    return out
 }
 
 // Turn a provider failure into something actionable instead of dumping the
