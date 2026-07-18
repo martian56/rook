@@ -252,7 +252,7 @@ fun _shell_pane(m: Chat, f: Frame) {
 
     // The shell's current status for the title.
     let infos = shells_snapshot()
-    let title = "shell ${m.shells_focus}  (esc)"
+    let title = "shell ${m.shells_focus}  (pageup scrolls, esc)"
     let i = 0
     while i < infos.len() {
         if infos[i].id == m.shells_focus {
@@ -260,7 +260,7 @@ fun _shell_pane(m: Chat, f: Frame) {
             if infos[i].running {
                 state = "running ${infos[i].runtime_ms / 1000}s"
             }
-            title = "shell ${m.shells_focus} · ${state} · ${infos[i].command}  (esc)"
+            title = "shell ${m.shells_focus} · ${state} · ${infos[i].command}  (pageup scrolls, esc)"
         }
         i = i + 1
     }
@@ -273,15 +273,16 @@ fun _shell_pane(m: Chat, f: Frame) {
     box.render(area, f.buf)
     let inner = box.inner(area)
 
-    // The newest output that fits: take a generous tail, split to lines,
-    // and show the last rows.
-    let text = shell_tail_at(m.shells_focus, inner.h * inner.w + 4000)
+    // The newest output that fits, plus scrollback: the tail request grows
+    // with the offset so PageUp reaches earlier output, bounded by what the
+    // shell store still holds.
+    let text = shell_tail_at(m.shells_focus, (inner.h + m.shells_scroll) * inner.w + 4000)
     if text == "" {
         f.buf.set_string(inner.x + 1, inner.y, "(no output yet)", m.theme.dim)
         return
     }
     let lines = text.lines()
-    let top = lines.len() - inner.h
+    let top = lines.len() - inner.h - m.shells_scroll
     if top < 0 {
         top = 0
     }
@@ -395,7 +396,11 @@ fun _sessions_panel(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let box = Block.new().rounded().title("Resume a session  (enter, esc)").style(m.theme.modal).title_style(
+    let panel_title = "Resume a session  (enter, d deletes, esc)"
+    if m.sessions_confirm >= 0 {
+        panel_title = "Resume a session  (d again deletes the highlighted one)"
+    }
+    let box = Block.new().rounded().title(panel_title).style(m.theme.modal).title_style(
         m.theme.modal.bold(),
     )
     box.render(area, f.buf)

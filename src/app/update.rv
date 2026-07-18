@@ -10,6 +10,7 @@ import "./model" { Chat, set_model, apply_model, set_entry, replace_entries, ens
 import "../agent/state" { DisplayEvent, Snapshot }
 import "../ui/transcript" { AgentBlock }
 import "../agent/turn" { run_turn }
+import "../agent/compact" { force_compact }
 import "../ui/spinner" { thinking_word }
 import "../ui/transcript" { Entry }
 import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
@@ -17,7 +18,7 @@ import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, Loaded }
+import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, Loaded }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed_with, save_key, save_theme }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -547,6 +548,13 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                 // silently ignoring the Enter. It echoes now and sends the
                 // moment the turn finishes (the _tick pickup).
                 let typed = m.entry.value.trim()
+                if typed.starts_with("/") {
+                    // Commands act on the app, not the model; they cannot
+                    // run mid-turn and should not be sent as chat.
+                    m.entries.push(Entry.Notice("commands wait for the turn to finish (esc interrupts)"))
+                    m.scroll_up = 0
+                    return next(m)
+                }
                 if typed != "" {
                     m.entries.push(Entry.UserMsg(typed))
                     m.entries.push(Entry.Notice("queued; sends when this turn finishes"))
@@ -956,7 +964,30 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
 // Navigate the /sessions picker: arrows move, enter resumes the highlighted
 // session, esc closes.
 fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
+    // The armed delete survives only into an immediate second d; any other
+    // key disarms it.
+    let armed = m.sessions_confirm
+    m.sessions_confirm = 0 - 1
     match k {
+        Char(c) -> {
+            if c == "d" && m.sessions_list.len() > 0 {
+                let sel = m.sessions_sel
+                if sel >= m.sessions_list.len() {
+                    sel = m.sessions_list.len() - 1
+                }
+                if armed == sel {
+                    let err = delete_session(m.sessions_list[sel].id)
+                    if err != "" {
+                        m.entries.push(Entry.Notice(err))
+                    }
+                    // Rescan so the list reflects the deletion.
+                    m.sessions_loading = true
+                    begin_list_sessions()
+                } else {
+                    m.sessions_confirm = sel
+                }
+            }
+        },
         Up -> {
             if m.sessions_sel > 0 {
                 m.sessions_sel = m.sessions_sel - 1
@@ -1068,9 +1099,22 @@ fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
         match k {
             Esc -> {
                 m.shells_focus = 0
+                m.shells_scroll = 0
             },
             Enter -> {
                 m.shells_focus = 0
+                m.shells_scroll = 0
+            },
+            PageUp -> {
+                // Scroll back into the shell's earlier output; the pane
+                // clamps to what the tail buffer actually holds.
+                m.shells_scroll = m.shells_scroll + 10
+            },
+            PageDown -> {
+                m.shells_scroll = m.shells_scroll - 10
+                if m.shells_scroll < 0 {
+                    m.shells_scroll = 0
+                }
             },
             _ -> {},
         }
@@ -1422,6 +1466,31 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.sessions_loading = true
             m.sessions_open = true
             begin_list_sessions()
+            return next(m)
+        },
+        Compact -> {
+            m.entries.push(Entry.UserMsg(text))
+            if key_needed_with(m.model, m.api_key) {
+                m.entries.push(Entry.Notice("no API key for ${provider_of(m.model)}; /key first"))
+                m.scroll_up = 0
+                return next(m)
+            }
+            // The summary is a blocking model call, so it runs on a
+            // goroutine; the result arrives as a notice on a later tick.
+            m.entries.push(Entry.Notice("compacting the conversation…"))
+            let st = m.agent
+            let compact_model = m.model
+            let compact_key = m.api_key
+            let compact_base = m.base_url
+            spawn(fun() -> Unit {
+                let folded = force_compact(st, compact_model, compact_key, compact_base)
+                if folded > 0 {
+                    push_cmd_notice("compacted ${folded} earlier messages into a summary")
+                } else {
+                    push_cmd_notice("nothing to compact yet; the conversation is still short")
+                }
+            })
+            m.scroll_up = 0
             return next(m)
         },
         Plugins(args) -> {

@@ -161,6 +161,11 @@ struct Chat {
     // The transcript's total line count last frame, so the view can keep the
     // window anchored while scrolled up as new output grows the total.
     last_total: Int,
+    // Scrollback in the focused shell pane, in lines up from the live tail.
+    shells_scroll: Int,
+    // The session row armed for deletion (-1 when none): d arms, d again
+    // deletes, any other key disarms.
+    sessions_confirm: Int,
 }
 
 fun chat_init() -> Chat {
@@ -258,6 +263,8 @@ fun chat_init() -> Chat {
         sess_cache_read: 0,
         sess_cache_write: 0,
         last_total: 0,
+        shells_scroll: 0,
+        sessions_confirm: 0 - 1,
     }
 }
 
