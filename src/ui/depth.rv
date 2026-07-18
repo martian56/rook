@@ -81,6 +81,7 @@ fun adapt_style(s: Style, d: Depth) -> Style {
         italic: s.italic,
         underline: s.underline,
         reverse: s.reverse,
+        strike: s.strike,
     }
 }
 
