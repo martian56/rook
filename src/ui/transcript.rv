@@ -194,6 +194,9 @@ fun _md_theme(theme: Theme) -> MdTheme {
         rule: theme.dim,
         link: theme.accent.underline(),
         url: theme.dim,
+        // Diff fences use the same tones as tool-result diffs.
+        ins: theme.tool,
+        del: theme.error,
     }
 }
 

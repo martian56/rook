@@ -167,3 +167,21 @@ fun test_bot_tables_checkboxes_and_strikethrough_render() {
     assert_true(!all.contains("~~"))
     assert_true(!all.contains("[x]"))
 }
+
+fun test_bot_quotes_nest_and_diff_fences_color() {
+    let md = "> ### Inside\n> - quoted item\n\n```diff\n- old\n+ new\n```"
+    let lines = build_lines([Entry.BotMsg(md)], 60, default_theme())
+    let all = ""
+    let i = 0
+    while i < lines.len() {
+        all = "${all}|${line_text(lines, i)}"
+        i = i + 1
+    }
+    // The quoted heading and bullet render behind the bar, marks consumed.
+    assert_true(all.contains("▎ Inside"))
+    assert_true(all.contains("▎ • quoted item"))
+    assert_true(!all.contains("###"))
+    // The diff lines keep their +/- text.
+    assert_true(all.contains("- old"))
+    assert_true(all.contains("+ new"))
+}
