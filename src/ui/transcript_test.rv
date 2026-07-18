@@ -148,3 +148,22 @@ fun test_bot_code_block_stays_verbatim() {
     assert_eq_str(line_text(lines, 0), "● before")
     assert_eq_str(line_text(lines, 2), "    let snake_case = 1")
 }
+
+fun test_bot_tables_checkboxes_and_strikethrough_render() {
+    let md = "| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] shipped\n\n~~old~~ new"
+    let lines = build_lines([Entry.BotMsg(md)], 60, default_theme())
+    let all = ""
+    let i = 0
+    while i < lines.len() {
+        all = "${all}|${line_text(lines, i)}"
+        i = i + 1
+    }
+    // The table renders as a grid, not one mashed paragraph.
+    assert_true(all.contains("a │ b"))
+    assert_true(all.contains("1 │ 2"))
+    // The task box is a checkbox glyph, the strike markers are consumed.
+    assert_true(all.contains("☑ shipped"))
+    assert_true(all.contains("old new"))
+    assert_true(!all.contains("~~"))
+    assert_true(!all.contains("[x]"))
+}
