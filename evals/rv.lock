@@ -7,8 +7,8 @@ hash = "sha256:48bc56232fe31da2e6450baf7681cd4930d8749c1cde0ee1ffbb33a81a051052"
 
 [[package]]
 source = "github.com/martian56/magpie"
-version = "v0.2.0"
-hash = "sha256:276f50f143dec10c811ec209a08b64dffcb033b715261625e8bdf1068b0b91fd"
+version = "v0.3.0"
+hash = "sha256:41cb8f3bd37c296d0304ba9b233fc5b09d60d2e90ab29e3090b741ae8083eaff"
 
 [[package]]
 source = "github.com/martian56/perch"
