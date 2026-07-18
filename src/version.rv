@@ -4,5 +4,5 @@
 // version_test.rv: bump both together for a release or CI fails.
 
 fun version() -> String {
-    return "0.3.52"
+    return "0.3.53"
 }

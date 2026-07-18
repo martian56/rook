@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.53
+
+- Markdown tables in replies render as aligned grids with a rule under the bold header (alignment taken from the separator row, over-wide tables clipped instead of breaking the grid), rather than mashing into one paragraph line. Task items (- [x], - [ ]) show checkbox glyphs, and ~~strikethrough~~ actually strikes through. Uses magpie 0.2.0 on plumage 0.3.0, which adds a strike style attribute. (#299)
+
 ## 0.3.52
 
 - Agent replies render as markdown: headings, bold, italic, inline code, and links styled from the active theme; fenced code blocks verbatim under an indent and hard-split so nothing overflows; bullet and numbered lists with hanging indents; blockquotes and rules. Plain prose looks exactly as before, selection copy extracts the rendered text, and a partially streamed reply stays sensible mid-chunk. Rendering comes from the new magpie library (0.1.0), reusable by any plumage app. (#296)
