@@ -5,6 +5,7 @@
 // result: a notice is shown as transcript text; a prompt starts a turn once it
 // arrives. Same shape as the hook-notice and save-error queues.
 
+import std/string
 import std/sync { Mutex, mutex }
 
 struct CmdQueue {
@@ -78,4 +79,93 @@ fun take_cmd_prompt() -> String {
     CMD_QUEUE.prompts = rest
     CMD_QUEUE.lock.unlock()
     return first
+}
+
+// A ! shell command's completion: single slot, since one runs at a time.
+struct ShellDone {
+    lock: Mutex,
+    ready: Bool,
+    cmd: String,
+    output: String,
+}
+
+struct ShellDoneReady {
+    ready: Bool,
+    cmd: String,
+    output: String,
+}
+
+let SHELL_DONE: ShellDone = _new_shell_done()
+
+fun _new_shell_done() -> ShellDone {
+    return ShellDone { lock: mutex(), ready: false, cmd: "", output: "" }
+}
+
+// Record a finished ! command. Safe to call from a goroutine.
+fun push_shell_done(cmd: String, output: String) {
+    SHELL_DONE.lock.lock()
+    SHELL_DONE.cmd = cmd
+    SHELL_DONE.output = output
+    SHELL_DONE.ready = true
+    SHELL_DONE.lock.unlock()
+    return
+}
+
+// Take the finished command if one landed. Called on the main loop each tick.
+fun take_shell_done() -> ShellDoneReady {
+    SHELL_DONE.lock.lock()
+    let ready = SHELL_DONE.ready
+    let cmd = SHELL_DONE.cmd
+    let output = SHELL_DONE.output
+    if ready {
+        SHELL_DONE.ready = false
+    }
+    SHELL_DONE.lock.unlock()
+    return ShellDoneReady { ready, cmd, output }
+}
+
+// Outputs of ! commands run since the last send, capped, so the next prompt
+// carries what the user just did in the shell as context for the model.
+struct BangContext {
+    lock: Mutex,
+    blocks: List<String>,
+    total: Int,
+}
+
+let BANG_CONTEXT: BangContext = _new_bang_context()
+
+const BANG_CONTEXT_CAP: Int = 24000
+
+fun _new_bang_context() -> BangContext {
+    let blocks: List<String> = []
+    return BangContext { lock: mutex(), blocks, total: 0 }
+}
+
+fun push_bang_context(block: String) {
+    BANG_CONTEXT.lock.lock()
+    if BANG_CONTEXT.total + block.length() <= BANG_CONTEXT_CAP {
+        BANG_CONTEXT.blocks.push(block)
+        BANG_CONTEXT.total = BANG_CONTEXT.total + block.length()
+    }
+    BANG_CONTEXT.lock.unlock()
+    return
+}
+
+// The accumulated shell context, cleared as it is returned. "" when none.
+fun take_bang_context() -> String {
+    BANG_CONTEXT.lock.lock()
+    let out = ""
+    let i = 0
+    while i < BANG_CONTEXT.blocks.len() {
+        if i > 0 {
+            out = "${out}\n\n"
+        }
+        out = out.concat(BANG_CONTEXT.blocks[i])
+        i = i + 1
+    }
+    let empty: List<String> = []
+    BANG_CONTEXT.blocks = empty
+    BANG_CONTEXT.total = 0
+    BANG_CONTEXT.lock.unlock()
+    return out
 }

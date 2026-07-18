@@ -340,6 +340,31 @@ fun _new_loaded_slot() -> LoadedSlot {
     return LoadedSlot { lock: mutex(), ready: false, id: "", loaded: _empty_loaded("") }
 }
 
+// Start loading the most recent session on a goroutine, for a --continue
+// launch: the listing and the read both happen off-thread, and the result
+// arrives through take_loaded_session like any other resume.
+fun begin_load_latest() {
+    LOADED_SLOT.lock.lock()
+    LOADED_SLOT.ready = false
+    LOADED_SLOT.lock.unlock()
+    spawn(fun() -> Unit {
+        let listed = list_sessions_result()
+        let id = ""
+        let l = _empty_loaded("session error: no saved sessions to continue")
+        if listed.sessions.len() > 0 {
+            id = listed.sessions[0].id
+            l = load_session(id)
+        }
+        LOADED_SLOT.lock.lock()
+        LOADED_SLOT.id = id
+        LOADED_SLOT.loaded = l
+        LOADED_SLOT.ready = true
+        LOADED_SLOT.lock.unlock()
+        return
+    })
+    return
+}
+
 // Start reading a session on a goroutine. The result is picked up by
 // take_loaded_session on a later tick.
 fun begin_load_session(id: String) {

@@ -24,6 +24,9 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "mcp", desc: "MCP servers: status, connect, and run a prompt" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "compact", desc: "summarize older turns to free context" },
+        CmdInfo { name: "copy", desc: "copy the last reply to the clipboard" },
+        CmdInfo { name: "export", desc: "write the transcript to a file; /export <path> names it" },
+        CmdInfo { name: "init", desc: "explore the project and write AGENTS.md" },
         CmdInfo { name: "clear", desc: "wipe the conversation" },
         CmdInfo { name: "quit", desc: "exit rook" },
     ]
@@ -92,6 +95,9 @@ enum Command {
     Plan,
     Sessions,
     Compact,
+    Copy,
+    Export(String),
+    Init,
     Plugins(String),
     Mcp(String),
     Login,
@@ -138,6 +144,18 @@ fun parse_command(text: String) -> Command {
     }
     if text == "/compact" {
         return Command.Compact
+    }
+    if text == "/copy" {
+        return Command.Copy
+    }
+    if text == "/export" {
+        return Command.Export("")
+    }
+    if text.starts_with("/export ") {
+        return Command.Export(text.substring(8, text.length()).trim())
+    }
+    if text == "/init" {
+        return Command.Init
     }
     if text == "/plugins" {
         return Command.Plugins("")

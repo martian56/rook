@@ -699,9 +699,9 @@ fun _question(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let box = Block.new().rounded().title("rook asks  (enter, esc)").style(m.theme.modal).title_style(
-        m.theme.modal.bold(),
-    )
+    let box = Block.new().rounded().title(
+        "rook asks  (enter picks, esc declines and stops the turn)",
+    ).style(m.theme.modal).title_style(m.theme.modal.bold())
     box.render(area, f.buf)
     let inner = box.inner(area)
     let q = m.question
@@ -1037,6 +1037,10 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     let sty = m.theme.status
     if m.active {
         left = "streaming · esc to interrupt"
+    }
+    if m.entry.value.starts_with("!") {
+        left = "! shell command · runs directly, output joins the next prompt"
+        sty = m.theme.accent
     }
     // Scrolled into history: say so, and how to get back, since new output
     // keeps landing out of sight below.

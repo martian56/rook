@@ -1,6 +1,7 @@
 // End-to-end subagent runs against an in-process server posing as a
-// non-streaming OpenAI endpoint: a full tool round-trip, the allowlist
-// refusing an off-limits tool, and the parent conversation staying clean.
+// streaming OpenAI endpoint (subagents stream with a discarding callback so
+// Esc can cancel them): a full tool round-trip, the allowlist refusing an
+// off-limits tool, and the parent conversation staying clean.
 
 import std/string
 import std/http { Server, Request, Response }
@@ -19,11 +20,11 @@ fun sub_read_handler(req: Request) -> Response {
     read_hits = read_hits + 1
     if read_hits == 1 {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"s1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_sub.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":3}}",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"s1\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_sub.txt\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":3}}\n\ndata: [DONE]\n\n",
         )
     }
     return Response.text(
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"The notes say ship it.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5}}",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"The notes say ship it.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":13,\"completion_tokens\":5}}\n\ndata: [DONE]\n\n",
     )
 }
 
@@ -33,11 +34,11 @@ fun sub_scoped_handler(req: Request) -> Response {
     scoped_hits = scoped_hits + 1
     if scoped_hits == 1 {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"s2\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_sub.txt\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"s2\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_sub.txt\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
         )
     }
     return Response.text(
-        "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"I could not read the file.\"},\"finish_reason\":\"stop\"}]}",
+        "data: {\"choices\":[{\"delta\":{\"content\":\"I could not read the file.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
     )
 }
 

@@ -17,6 +17,9 @@ fun tag(c: Command) -> String {
         Plan -> "plan",
         Sessions -> "sessions",
         Compact -> "compact",
+        Copy -> "copy",
+        Export(p) -> "export:${p}",
+        Init -> "init",
         Plugins(a) -> "plugins:${a}",
         Mcp(a) -> "mcp:${a}",
         Login -> "login",
@@ -155,4 +158,11 @@ fun test_merge_infos_never_shadows_a_builtin() {
     let merged = merge_infos(builtin_commands(), extra)
     assert_true(merged.len() == builtin_commands().len() + 1)
     assert_eq_str(merged[merged.len() - 1].name, "release")
+}
+
+fun test_copy_export_and_init_parse() {
+    assert_eq_str(tag(parse_command("/copy")), "copy")
+    assert_eq_str(tag(parse_command("/export")), "export:")
+    assert_eq_str(tag(parse_command("/export notes.md")), "export:notes.md")
+    assert_eq_str(tag(parse_command("/init")), "init")
 }

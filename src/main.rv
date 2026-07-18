@@ -19,6 +19,19 @@ fun main() {
         println("rook ${version()}")
         return
     }
+    if _wants_help() {
+        println("rook ${version()}: a coding agent for your terminal")
+        println("")
+        println("usage: rook [options]")
+        println("  --model <provider/model>   use this model for the session")
+        println("  --continue, -c             reopen the most recent session")
+        println("  --version, -V              print the version and exit")
+        println("  --help, -h                 this text")
+        println("")
+        println("Inside: type a task and press enter. / lists commands, @ attaches")
+        println("a file, ! runs a shell command. Esc interrupts a turn.")
+        return
+    }
     // Let session-start hooks run before the UI takes over the terminal.
     fire_hooks("session-start", "", "")
     let app = App { init: chat_init, update: chat_update, view: chat_view, tick_ms: 45 }
@@ -34,6 +47,18 @@ fun _wants_version() -> Bool {
     let i = 0
     while i < a.len() {
         if a[i] == "--version" || a[i] == "-V" {
+            return true
+        }
+        i = i + 1
+    }
+    return false
+}
+
+fun _wants_help() -> Bool {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "--help" || a[i] == "-h" {
             return true
         }
         i = i + 1
