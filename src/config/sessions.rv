@@ -10,7 +10,7 @@
 import std/string
 import std/sync { Mutex, mutex }
 import std/env { get_env, has_env }
-import std/fs { read, write, exists, create_dir_all, list_dir }
+import std/fs { read, write, exists, create_dir_all, list_dir, remove_file }
 import std/json { JsonValue, parse, stringify }
 import std/time { now, now_millis }
 import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
@@ -410,6 +410,38 @@ fun _meta_from_full_file(dir: String, filename: String, fallback_id: String) -> 
             title: "error: could not read session file: ${filename}",
         },
     }
+}
+
+// Delete a saved session (and its metadata sidecar). "" on success, an
+// error message otherwise.
+fun delete_session(id: String) -> String {
+    let dir = _sessions_dir()
+    if dir == "" {
+        return "session error: no home directory for sessions"
+    }
+    return delete_session_from(dir, id)
+}
+
+fun delete_session_from(dir: String, id: String) -> String {
+    let path = "${dir}/${id}.json"
+    if !exists(path) {
+        return "session error: no saved session '${id}'"
+    }
+    match remove_file(path) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            return "session error: could not delete '${id}': ${e.message}"
+        },
+    }
+    // The sidecar is best effort, like its write.
+    let meta = "${dir}/${id}.meta.json"
+    if exists(meta) {
+        match remove_file(meta) {
+            Ok(ok) -> {},
+            Err(e) -> {},
+        }
+    }
+    return ""
 }
 
 // Restore a session by id.

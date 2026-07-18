@@ -16,6 +16,7 @@ fun tag(c: Command) -> String {
         Permissions -> "permissions",
         Plan -> "plan",
         Sessions -> "sessions",
+        Compact -> "compact",
         Plugins(a) -> "plugins:${a}",
         Mcp(a) -> "mcp:${a}",
         Login -> "login",
@@ -31,6 +32,18 @@ fun test_mcp_command_carries_its_args() {
 
 fun test_plain_text_is_send() {
     assert_eq_str(tag(parse_command("hello world")), "send:hello world")
+}
+
+fun test_compact_parses_and_is_listed() {
+    assert_eq_str(tag(parse_command("/compact")), "compact")
+    let names = ""
+    let infos = builtin_commands()
+    let i = 0
+    while i < infos.len() {
+        names = "${names} ${infos[i].name}"
+        i = i + 1
+    }
+    assert_true(names.contains("compact"))
 }
 
 fun test_slash_commands() {

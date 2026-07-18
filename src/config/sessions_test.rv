@@ -2,7 +2,7 @@ import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
 import std/env { get_env, has_env }
-import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from }
+import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from }
 import "github.com/martian56/aviary/message" { Message, ToolCall, role_str }
 import "../ui/transcript" { Entry }
 
@@ -243,6 +243,20 @@ fun test_listing_uses_the_metadata_sidecar() {
     assert_eq_str(found.model, "openai/gpt-5.6")
     remove_file("${root}/9001.json")
     remove_file("${root}/9001.meta.json")
+    remove_dir(root)
+    return
+}
+
+fun test_delete_removes_the_session_and_its_sidecar() {
+    let root = "_rook_session_del_${new_session_id()}"
+    create_dir_all(root)
+    let err = save_session_to(root, "7001", "m", [Entry.UserMsg("bye")], _no_msgs(), 0, 0)
+    assert_eq_str(err, "")
+    assert_eq_int(list_sessions_from(root).sessions.len(), 1)
+    assert_eq_str(delete_session_from(root, "7001"), "")
+    assert_eq_int(list_sessions_from(root).sessions.len(), 0)
+    // Deleting a session that does not exist reports it.
+    assert_true(delete_session_from(root, "7001").contains("no saved session"))
     remove_dir(root)
     return
 }

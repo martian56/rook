@@ -31,6 +31,23 @@ fun maybe_compact(st: AgentState, model: String, api_key: String, base_url: Stri
     if !should_compact(msgs, model) {
         return 0
     }
+    return _compact_now(st, msgs, model, api_key, base_url)
+}
+
+// /compact: summarize regardless of how close to the window the conversation
+// is, so the user can shed context on demand. Returns how many messages were
+// folded into the summary, 0 when there is not enough history to fold.
+fun force_compact(st: AgentState, model: String, api_key: String, base_url: String) -> Int {
+    return _compact_now(st, st.messages(), model, api_key, base_url)
+}
+
+fun _compact_now(
+    st: AgentState,
+    msgs: List<Message>,
+    model: String,
+    api_key: String,
+    base_url: String,
+) -> Int {
     let split = split_index(msgs, KEEP_TURNS)
     if split < 0 {
         return 0
