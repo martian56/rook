@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.51
+
+- Pasting works properly: pasted text lands in the input as one literal block, newlines preserved and shown as a return glyph, and only a real Enter sends. Previously each pasted newline acted as Enter, sending fragments mid-paste. Multi-line messages render as separate lines in the transcript. Requires perch 0.2.0 and plumage 0.2.0, which add bracketed paste and the Paste event. (#284)
+- Reading history while a reply streams no longer drags the text: the window stays anchored on what you are reading, new output lands below, and End or sending re-anchors to the bottom. (#285)
+- Sending with no API key no longer eats the typed prompt: it waits while the key entry is open and sends right after the key is saved; Esc puts the text back in the input. (#286)
+- A stream that dies mid-reply keeps what already streamed, pushed into the conversation marked as cut off, so the display and the model's memory stay consistent. (#287)
+- /compact summarizes older turns on demand. d in the sessions picker deletes the highlighted session (press d again to confirm). PageUp scrolls back through a focused shell pane's earlier output. A slash command typed during a turn says it has to wait instead of being sent to the model as chat. (#288)
+
 ## 0.3.50
 
 - A message typed during a streaming turn queues and sends the moment the turn finishes, instead of Enter doing nothing. Queued /mcp prompts are no longer dropped while a turn runs. (#289)
