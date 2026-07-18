@@ -84,7 +84,7 @@ fun serve_plan() {
 fun dispatch_handler(req: Request) -> Response {
     if req.body.contains("echo agent") {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"echo done\"},\"finish_reason\":\"stop\"}]}",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"echo done\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
         )
     }
     dispatch_hits = dispatch_hits + 1
@@ -122,12 +122,12 @@ fun serve_dispatch() {
 fun fanout_handler(req: Request) -> Response {
     if req.body.contains("echo agent") {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"echo done\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":4}}",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"echo done\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":40,\"completion_tokens\":4}}\n\ndata: [DONE]\n\n",
         )
     }
     if req.body.contains("shout agent") {
         return Response.text(
-            "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"SHOUT DONE\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":60,\"completion_tokens\":6}}",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"SHOUT DONE\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":60,\"completion_tokens\":6}}\n\ndata: [DONE]\n\n",
         )
     }
     fanout_hits = fanout_hits + 1

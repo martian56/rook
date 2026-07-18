@@ -3,6 +3,8 @@
 // into the transcript on every tick.
 
 import std/string
+import std/io { print }
+import std/fs { write }
 import "github.com/martian56/perch/keys" { Key }
 import "github.com/martian56/plumage" { Event, Step, next, quit }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
@@ -32,8 +34,13 @@ import "../plugins/manage" { run_plugins_command }
 import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
 import "../mcp/command" { McpInvoke, parse_invoke }
 import "../hooks/hooks" { drain_hook_notices }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts }
+import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts, push_shell_done, take_shell_done, push_bang_context, take_bang_context }
+import "../tools/shell" { run_command }
 import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
+
+// The /init task: explore the repo and write (or improve) its AGENTS.md, the
+// memory file rook loads into every session here.
+const INIT_PROMPT: String = "Explore this repository (use file_tree first, then read the key files: the manifest, the entry points, any CI or scripts) and write an AGENTS.md file at the repository root. It should briefly cover: what the project is, how to build, test, and run it (exact commands), the layout (what lives where), and any conventions or gotchas a coding agent must follow when working here. Keep it under about 60 lines of plain markdown. If AGENTS.md already exists, read it and improve it rather than starting over."
 
 fun chat_update(m: Chat, e: Event) -> Step<Chat> {
     match e {
@@ -268,6 +275,17 @@ fun _tick(m: Chat) -> Step<Chat> {
             m.resuming = false
         }
     }
+    if m.bang_at >= 0 {
+        let done = take_shell_done()
+        if done.ready {
+            if m.bang_at < m.entries.len() {
+                set_entry(m, m.bang_at, Entry.ToolMsg("$ ${done.cmd}", done.output))
+            }
+            m.bang_at = 0 - 1
+            // The next prompt carries what the user just ran and saw.
+            push_bang_context("$ ${done.cmd}\n${done.output}")
+        }
+    }
     // Drain background shells at a lower cadence while the panel is open,
     // instead of on every frame from the view, so the live tail costs one
     // refresh every few ticks rather than several per frame.
@@ -278,6 +296,15 @@ fun _tick(m: Chat) -> Step<Chat> {
         m.elapsed = m.elapsed + 1
         let snap = m.agent.drain()
         apply_events(m, snap.events)
+        // Ring the terminal bell when attention is newly needed: an approval
+        // prompt appearing, or a question. Terminals surface this as a sound
+        // or a tab flash, so a long turn can run in a background window.
+        if m.pending == "" && snap.pending != "" {
+            print("\u{7}")
+        }
+        if m.question == "" && snap.question != "" {
+            print("\u{7}")
+        }
         m.pending = snap.pending
         m.pending_detail = snap.pending_detail
         if m.question != snap.question {
@@ -290,6 +317,11 @@ fun _tick(m: Chat) -> Step<Chat> {
         m.sess_cache_read = snap.sess_cache_read
         m.sess_cache_write = snap.sess_cache_write
         if snap.done {
+            // A turn that ran long enough to look away from gets a bell on
+            // completion; instant turns stay quiet.
+            if m.elapsed >= 60 {
+                print("\u{7}")
+            }
             m.active = false
             m.turns = m.turns + 1
             m.cur_bubble = 0 - 1
@@ -548,6 +580,10 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                 // silently ignoring the Enter. It echoes now and sends the
                 // moment the turn finishes (the _tick pickup).
                 let typed = m.entry.value.trim()
+                if typed.starts_with("!") && typed != "!" {
+                    // A shell command runs fine alongside a streaming turn.
+                    return _bang(m, typed)
+                }
                 if typed.starts_with("/") {
                     // Commands act on the app, not the model; they cannot
                     // run mid-turn and should not be sent as chat.
@@ -810,8 +846,11 @@ fun _question_key(m: Chat, k: Key) -> Step<Chat> {
             m.question = ""
         },
         Esc -> {
+            // Match the approval prompt: Esc backs out of the whole turn, not
+            // just the question, so an interrupt never feels swallowed.
             m.agent.decide(0 - 1)
             m.question = ""
+            m.agent.request_interrupt()
         },
         _ -> {},
     }
@@ -1367,9 +1406,35 @@ fun _submit(m: Chat) -> Step<Chat> {
     if m.resuming {
         return next(m)
     }
+    // A leading ! runs the rest as a shell command directly, no model
+    // round-trip; the output joins the next prompt's context.
+    if text.starts_with("!") && text != "!" {
+        return _bang(m, text)
+    }
     push_history(text)
     m.entry = TextInput.new()
     return _run(m, text)
+}
+
+// Run a "!command" line: echo a running row, execute on a goroutine, and let
+// _tick swap the output in when it lands. One at a time keeps the pickup
+// unambiguous.
+fun _bang(m: Chat, text: String) -> Step<Chat> {
+    if m.bang_at >= 0 {
+        m.entries.push(Entry.Notice("a shell command is already running; wait for it"))
+        m.scroll_up = 0
+        return next(m)
+    }
+    let cmd = text.substring(1, text.length()).trim()
+    push_history(text)
+    m.entry = TextInput.new()
+    m.entries.push(Entry.ToolMsg("$ ${cmd}", "running…"))
+    m.bang_at = m.entries.len() - 1
+    m.scroll_up = 0
+    spawn(fun() -> Unit {
+        push_shell_done(cmd, run_command(cmd))
+    })
+    return next(m)
 }
 
 // Execute one line of input, a command or a message. Split from _submit so
@@ -1467,6 +1532,71 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.sessions_open = true
             begin_list_sessions()
             return next(m)
+        },
+        Copy -> {
+            // The last reply, straight to the clipboard, no mouse dragging.
+            let last = ""
+            let ci = m.entries.len() - 1
+            while ci >= 0 && last == "" {
+                match m.entries[ci] {
+                    BotMsg(t) -> {
+                        last = t
+                    },
+                    _ -> {},
+                }
+                ci = ci - 1
+            }
+            if last == "" {
+                m.entries.push(Entry.Notice("no reply to copy yet"))
+                m.scroll_up = 0
+                return next(m)
+            }
+            match copy_to_clipboard(last) {
+                Copied -> {
+                    m.flash = "copied the last reply to the clipboard"
+                    m.flash_until = m.tick + 60
+                },
+                Sent -> {
+                    m.flash = "sent the last reply to the terminal clipboard"
+                    m.flash_until = m.tick + 60
+                },
+                Failed -> {
+                    m.entries.push(Entry.Notice("copy failed: no clipboard tool found"))
+                    m.scroll_up = 0
+                },
+            }
+            return next(m)
+        },
+        Export(path) -> {
+            m.entries.push(Entry.UserMsg(text))
+            let target = path
+            if target == "" {
+                target = "rook-session-${m.session_id}.md"
+            }
+            let ew = m.tr_w
+            if ew < 40 {
+                ew = 100
+            }
+            let texts = transcript_texts(m.entries, m.line_cache, ew, m.theme)
+            let joined = ""
+            let ti = 0
+            while ti < texts.len() {
+                joined = "${joined}${texts[ti]}\n"
+                ti = ti + 1
+            }
+            match write(target, joined) {
+                Ok(ok) -> {
+                    m.entries.push(Entry.Notice("exported ${texts.len()} lines to ${target}"))
+                },
+                Err(e) -> {
+                    m.entries.push(Entry.Notice("error: could not write ${target}: ${e.message}"))
+                },
+            }
+            m.scroll_up = 0
+            return next(m)
+        },
+        Init -> {
+            return _send_prompt(m, text, INIT_PROMPT)
         },
         Compact -> {
             m.entries.push(Entry.UserMsg(text))
@@ -1682,7 +1812,14 @@ fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
         m.scroll_up = 0
         return next(m)
     }
-    m.agent.push_user(prompt)
+    // Shell commands the user ran with ! since the last send ride along as
+    // context, the way file mentions attach.
+    let bang_ctx = take_bang_context()
+    let full_prompt = prompt
+    if bang_ctx != "" {
+        full_prompt = "[shell commands the user ran]\n${bang_ctx}\n\n${prompt}"
+    }
+    m.agent.push_user(full_prompt)
     m.agent.set_plan(m.plan_mode)
     m.agent.begin()
     m.word = thinking_word(m.turns)

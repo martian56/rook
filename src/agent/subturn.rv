@@ -7,7 +7,7 @@
 // mutating call blocks on the same approval prompt as the parent's own.
 
 import std/string
-import "github.com/martian56/aviary" { complete }
+import "github.com/martian56/aviary" { complete_stream }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message, ToolCall, ToolDef }
 import "./state" { AgentState, DisplayEvent }
@@ -74,11 +74,16 @@ fun run_subagent(
 
         let reply_text = ""
         let calls: List<ToolCall> = []
+        let finish = ""
         let err = ""
-        match complete(req) {
+        // Streamed with a discarding callback rather than buffered: the
+        // buffered path cannot notice a cancel mid-request, so Esc would sit
+        // dead for the whole reply. Streaming checks the token every chunk.
+        match complete_stream(req, _discard_chunk) {
             Ok(reply) -> {
                 reply_text = reply.content
                 calls = reply.tool_calls
+                finish = reply.finish_reason
                 st.add_usage(
                     reply.usage.prompt_tokens,
                     reply.usage.completion_tokens,
@@ -93,6 +98,10 @@ fun run_subagent(
         if err != "" {
             st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
             return "error: ${err}"
+        }
+        if finish == "canceled" {
+            st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
+            return "error: interrupted"
         }
         if calls.len() == 0 {
             st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
@@ -289,4 +298,11 @@ fun _short(result: String) -> String {
         first = "${first.substring(0, 60)}…"
     }
     return first
+}
+
+// The stream callback for subagent requests: deltas are not displayed (a
+// subagent reports only its final answer), streaming exists so the cancel
+// token is checked at every chunk and Esc lands mid-reply.
+fun _discard_chunk(d: String) {
+    return
 }

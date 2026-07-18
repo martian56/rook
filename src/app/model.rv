@@ -9,7 +9,8 @@ import "../ui/selection" { Selection, no_selection }
 import "../ui/theme" { Theme }
 import "../ui/themes" { startup_theme }
 import "../ui/depth" { themed }
-import "../config/sessions" { SessionMeta, new_session_id }
+import std/env { args }
+import "../config/sessions" { SessionMeta, new_session_id, begin_load_latest }
 import "../commands" { CmdInfo, builtin_commands, merge_infos }
 import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, command_infos }
@@ -166,12 +167,22 @@ struct Chat {
     // The session row armed for deletion (-1 when none): d arms, d again
     // deletes, any other key disarms.
     sessions_confirm: Int,
+    // The transcript index of a running ! command's placeholder entry, -1
+    // when no shell command is in flight.
+    bang_at: Int,
 }
 
 fun chat_init() -> Chat {
     // Walk the project for the @-mention picker on a goroutine now, so the
     // first @ keystroke filters a ready list instead of stalling on the walk.
     warm_files()
+    // --continue reopens the most recent saved session: the listing and read
+    // run off-thread and the tick pickup applies them, exactly like choosing
+    // it in /sessions.
+    let continue_last = _wants_continue()
+    if continue_last {
+        begin_load_latest()
+    }
     let model = resolve_model()
     let rs = roots()
     let startup_notices = settings_errors_from(rs)
@@ -259,12 +270,13 @@ fun chat_init() -> Chat {
         sessions_sel: 0,
         sessions_list: no_sessions,
         sessions_loading: false,
-        resuming: false,
+        resuming: continue_last,
         sess_cache_read: 0,
         sess_cache_write: 0,
         last_total: 0,
         shells_scroll: 0,
         sessions_confirm: 0 - 1,
+        bang_at: 0 - 1,
     }
 }
 
@@ -336,4 +348,17 @@ fun replace_entries(m: Chat, es: List<Entry>) {
     }
     m.line_cache = cache
     return
+}
+
+// Whether the command line asked to reopen the most recent session.
+fun _wants_continue() -> Bool {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "--continue" || a[i] == "-c" {
+            return true
+        }
+        i = i + 1
+    }
+    return false
 }

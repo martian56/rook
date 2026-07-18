@@ -8,7 +8,8 @@
 // directly; only the summarize call and the state swap touch the outside.
 
 import std/string
-import "github.com/martian56/aviary" { complete }
+import "github.com/martian56/aviary" { complete_stream }
+import "github.com/martian56/aviary/request" { CancelToken }
 import "github.com/martian56/aviary/request" { ChatRequest }
 import "github.com/martian56/aviary/message" { Message, Role }
 import "./state" { AgentState, DisplayEvent }
@@ -31,14 +32,18 @@ fun maybe_compact(st: AgentState, model: String, api_key: String, base_url: Stri
     if !should_compact(msgs, model) {
         return 0
     }
-    return _compact_now(st, msgs, model, api_key, base_url)
+    // The turn's cancel token, so Esc lands during the summarization request
+    // instead of waiting it out.
+    return _compact_now(st, msgs, model, api_key, base_url, st.token())
 }
 
 // /compact: summarize regardless of how close to the window the conversation
 // is, so the user can shed context on demand. Returns how many messages were
-// folded into the summary, 0 when there is not enough history to fold.
+// folded into the summary, 0 when there is not enough history to fold. A
+// fresh token, not the turn's: /compact runs between turns, and the last
+// turn's token may already be canceled from an old Esc.
 fun force_compact(st: AgentState, model: String, api_key: String, base_url: String) -> Int {
-    return _compact_now(st, st.messages(), model, api_key, base_url)
+    return _compact_now(st, st.messages(), model, api_key, base_url, CancelToken.new())
 }
 
 fun _compact_now(
@@ -47,6 +52,7 @@ fun _compact_now(
     model: String,
     api_key: String,
     base_url: String,
+    token: CancelToken,
 ) -> Int {
     let split = split_index(msgs, KEEP_TURNS)
     if split < 0 {
@@ -58,7 +64,7 @@ fun _compact_now(
         old.push(msgs[i])
         i = i + 1
     }
-    let summary = summarize(old, model, api_key, base_url)
+    let summary = summarize(old, model, api_key, base_url, token)
     if summary.trim() == "" {
         // A failed summary must not drop the conversation.
         return 0
@@ -172,7 +178,13 @@ fun flatten(msgs: List<Message>) -> String {
     return out
 }
 
-fun summarize(old: List<Message>, model: String, api_key: String, base_url: String) -> String {
+fun summarize(
+    old: List<Message>,
+    model: String,
+    api_key: String,
+    base_url: String,
+    token: CancelToken,
+) -> String {
     let transcript = flatten(old)
     if transcript.trim() == "" {
         return ""
@@ -186,11 +198,23 @@ fun summarize(old: List<Message>, model: String, api_key: String, base_url: Stri
     if base_url != "" {
         req = req.base(base_url)
     }
-    req = req.timeout(60000)
-    return match complete(req) {
-        Ok(reply) -> reply.content,
+    req = req.timeout(60000).cancelable(token)
+    // Streamed with a discarding callback so the cancel token is checked at
+    // every chunk; a canceled summary comes back partial and is discarded.
+    return match complete_stream(req, _discard_delta) {
+        Ok(reply) -> {
+            if reply.finish_reason == "canceled" {
+                ""
+            } else {
+                reply.content
+            }
+        },
         Err(e) -> "",
     }
+}
+
+fun _discard_delta(d: String) {
+    return
 }
 
 fun _is_user(m: Message) -> Bool {
