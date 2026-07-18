@@ -8,6 +8,7 @@ edition = "v2"
 "github.com/martian56/perch" = "v0.2.0"
 "github.com/martian56/wingspan" = "v0.1.0"
 "github.com/martian56/aviary" = "v0.4.0"
+"github.com/martian56/magpie" = "v0.1.0"
 
 [workspace]
 members = ["evals"]

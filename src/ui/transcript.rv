@@ -5,6 +5,8 @@
 import std/string
 import "github.com/martian56/plumage/style" { Style, Color }
 import "github.com/martian56/plumage/text" { Span, Line, wrap }
+import "github.com/martian56/magpie" { render }
+import "github.com/martian56/magpie/theme" { MdTheme }
 import "./theme" { Theme }
 
 enum Entry {
@@ -147,6 +149,54 @@ fun window_lines(
     return out
 }
 
+// An assistant reply rendered as markdown: headings, emphasis, code, lists,
+// and quotes styled from the theme, wrapped at the body width, under the
+// usual reply bullet. Plain prose comes out exactly as the old word wrap
+// did; markdown structure now renders instead of showing its markers.
+fun _push_markdown(out: List<Line>, t: String, body: Int, theme: Theme) {
+    let md = render(t, body, _md_theme(theme))
+    if md.len() == 0 {
+        out.push(Line.from_spans([Span.styled("● ", theme.assistant)]))
+        return
+    }
+    let r = 0
+    while r < md.len() {
+        let spans: List<Span> = []
+        if r == 0 {
+            spans.push(Span.styled("● ", theme.assistant))
+        } else {
+            spans.push(Span.raw("  "))
+        }
+        let s = 0
+        while s < md[r].spans.len() {
+            spans.push(md[r].spans[s])
+            s = s + 1
+        }
+        out.push(Line.from_spans(spans))
+        r = r + 1
+    }
+    return
+}
+
+// The markdown styles, drawn from the palette: headings and links in the
+// accent, code in the accent over the tool-result tone for blocks, markers
+// matching the reply bullet, quotes dim.
+fun _md_theme(theme: Theme) -> MdTheme {
+    return MdTheme {
+        text: theme.text,
+        heading: theme.accent.bold(),
+        bold: theme.text.bold(),
+        italic: theme.text.italic(),
+        code: theme.accent,
+        code_block: theme.result,
+        bullet: theme.assistant,
+        quote: theme.dim,
+        rule: theme.dim,
+        link: theme.accent.underline(),
+        url: theme.dim,
+    }
+}
+
 // The styled lines for one entry, without the trailing separator.
 fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
     let out: List<Line> = []
@@ -159,7 +209,7 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             _push_wrapped(out, t, body, "> ", theme.user, theme.user)
         },
         BotMsg(t) -> {
-            _push_wrapped(out, t, body, "● ", theme.assistant, theme.text)
+            _push_markdown(out, t, body, theme)
         },
         ToolMsg(name, result) -> {
             // A failed call gets the error color on its bullet and result, so

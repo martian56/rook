@@ -6,6 +6,11 @@ version = "v0.4.0"
 hash = "sha256:48bc56232fe31da2e6450baf7681cd4930d8749c1cde0ee1ffbb33a81a051052"
 
 [[package]]
+source = "github.com/martian56/magpie"
+version = "v0.1.0"
+hash = "sha256:a8a71f990c466651faf704315c23e38576d3d5eea63c343b16c69bb64fcc86fb"
+
+[[package]]
 source = "github.com/martian56/perch"
 version = "v0.2.0"
 hash = "sha256:1cd7fb9a1bc06bac437bb02e60ef02f9b44c9acdb963f4c51528d53544760da0"

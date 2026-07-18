@@ -119,3 +119,32 @@ fun test_transcript_texts_are_the_plain_rendered_lines() {
     assert_eq_str(texts[0], "> hello")
     assert_eq_str(texts[2], "● world")
 }
+
+fun test_bot_markdown_renders_structure_not_markers() {
+    let entries = [
+        Entry.BotMsg("## Done\n\nThe fix is in `main.rv`:\n\n- **fast** path\n- slow path"),
+    ]
+    let lines = build_lines(entries, 40, default_theme())
+    // The heading keeps its text, not its # marks; the bullet renders as a
+    // dot; inline code loses its backticks.
+    assert_eq_str(line_text(lines, 0), "● Done")
+    let all = ""
+    let i = 0
+    while i < lines.len() {
+        all = "${all}|${line_text(lines, i)}"
+        i = i + 1
+    }
+    assert_true(all.contains("The fix is in main.rv:"))
+    assert_true(all.contains("• fast path"))
+    assert_true(!all.contains("##"))
+    assert_true(!all.contains("**"))
+}
+
+fun test_bot_code_block_stays_verbatim() {
+    let entries = [Entry.BotMsg("before\n\n```\nlet snake_case = 1\n```")]
+    let lines = build_lines(entries, 40, default_theme())
+    // The fence lines vanish; the code line keeps its exact text under the
+    // continuation indent, with no italics from the underscores.
+    assert_eq_str(line_text(lines, 0), "● before")
+    assert_eq_str(line_text(lines, 2), "    let snake_case = 1")
+}
