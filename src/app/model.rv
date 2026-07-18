@@ -158,6 +158,9 @@ struct Chat {
     // non-heap fields go last.
     sess_cache_read: Int,
     sess_cache_write: Int,
+    // The transcript's total line count last frame, so the view can keep the
+    // window anchored while scrolled up as new output grows the total.
+    last_total: Int,
 }
 
 fun chat_init() -> Chat {
@@ -254,6 +257,7 @@ fun chat_init() -> Chat {
         resuming: false,
         sess_cache_read: 0,
         sess_cache_write: 0,
+        last_total: 0,
     }
 }
 

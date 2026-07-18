@@ -954,6 +954,15 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
     // scroll, then materialize just the visible window instead of the whole
     // transcript.
     let total = validate_and_count(m.entries, m.line_cache, area.w, m.theme)
+    // Anchor while scrolled up: new output grows the total from the bottom,
+    // and without compensation the window (measured from the bottom) slides
+    // up under the reader. Growing scroll_up by the same amount keeps the
+    // text being read still; new lines land below, counted by the status
+    // bar's scrolled-up indicator.
+    if m.scroll_up > 0 && m.last_total > 0 && total > m.last_total {
+        m.scroll_up = m.scroll_up + (total - m.last_total)
+    }
+    m.last_total = total
     let max_up = total - area.h
     if max_up < 0 {
         max_up = 0
