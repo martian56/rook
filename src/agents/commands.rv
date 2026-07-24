@@ -6,10 +6,48 @@
 // the arguments appended instead.
 
 import std/string
+import std/sync { Mutex, mutex }
 import std/fs { read, is_file }
 import "./dir" { merged_names, path_of }
 import "./front" { Front, parse_front, front_get }
 import "../commands" { CmdInfo }
+
+// The loaded commands, cached so running a custom command does not re-walk
+// and re-read every command file. Invalidated when a plugin changes and at
+// the end of every turn (a turn can create command files); a file added
+// externally mid-session appears after the next turn ends.
+struct CommandCache {
+    lock: Mutex,
+    ready: Bool,
+    cmds: List<CustomCommand>,
+}
+
+let COMMAND_CACHE: CommandCache = _new_command_cache()
+
+fun _new_command_cache() -> CommandCache {
+    let cmds: List<CustomCommand> = []
+    return CommandCache { lock: mutex(), ready: false, cmds }
+}
+
+// The commands under `rs`, from the cache when it is warm.
+fun cached_commands(rs: List<String>) -> List<CustomCommand> {
+    COMMAND_CACHE.lock.lock()
+    if !COMMAND_CACHE.ready {
+        COMMAND_CACHE.cmds = load_commands(rs)
+        COMMAND_CACHE.ready = true
+    }
+    let out = COMMAND_CACHE.cmds
+    COMMAND_CACHE.lock.unlock()
+    return out
+}
+
+// Drop the cache so the next lookup re-reads the command files.
+fun invalidate_commands() {
+    COMMAND_CACHE.lock.lock()
+    COMMAND_CACHE.ready = false
+    COMMAND_CACHE.lock.unlock()
+    return
+}
 
 struct CustomCommand {
     name: String,

@@ -11,6 +11,7 @@ import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
 import "./install" { install_plugin, plugin_source }
 import "./market" { browse_text, resolve_name_result }
 import "../agents/dir" { invalidate_roots }
+import "../agents/commands" { invalidate_commands }
 
 // Dispatch a /plugins invocation. The argument is what followed the command
 // ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
@@ -29,16 +30,19 @@ fun run_plugins_command(args: String) -> String {
     if verb == "add" {
         let r = add(rest)
         invalidate_roots()
+        invalidate_commands()
         return r
     }
     if verb == "remove" || verb == "rm" {
         let r = remove(rest)
         invalidate_roots()
+        invalidate_commands()
         return r
     }
     if verb == "update" {
         let r = update(rest)
         invalidate_roots()
+        invalidate_commands()
         return r
     }
     if verb == "browse" || verb == "search" {

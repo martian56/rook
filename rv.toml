@@ -4,11 +4,11 @@ version = "0.3.55"
 edition = "v2"
 
 [dependencies]
-"github.com/martian56/plumage" = "v0.3.0"
+"github.com/martian56/plumage" = "v0.3.1"
 "github.com/martian56/perch" = "v0.2.0"
 "github.com/martian56/wingspan" = "v0.1.0"
 "github.com/martian56/aviary" = "v0.4.0"
-"github.com/martian56/magpie" = "v0.3.0"
+"github.com/martian56/magpie" = "v0.3.1"
 
 [workspace]
 members = ["evals"]
