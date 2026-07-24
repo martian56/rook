@@ -1,6 +1,6 @@
 import std/string
 import std/test { assert_eq_str, assert_true }
-import "./commands" { Command, parse_command, CmdInfo, builtin_commands, merge_infos, menu_matches }
+import "./commands" { Command, parse_command, CmdInfo, builtin_commands, merge_infos, menu_matches, help_filtered }
 
 fun tag(c: Command) -> String {
     return match c {
@@ -17,6 +17,7 @@ fun tag(c: Command) -> String {
         Plan -> "plan",
         Sessions -> "sessions",
         Compact -> "compact",
+        Status -> "status",
         Copy -> "copy",
         Export(p) -> "export:${p}",
         Init -> "init",
@@ -165,4 +166,15 @@ fun test_copy_export_and_init_parse() {
     assert_eq_str(tag(parse_command("/export")), "export:")
     assert_eq_str(tag(parse_command("/export notes.md")), "export:notes.md")
     assert_eq_str(tag(parse_command("/init")), "init")
+}
+
+fun test_status_parses_and_help_filter_narrows() {
+    assert_eq_str(tag(parse_command("/status")), "status")
+    let all = builtin_commands()
+    assert_eq_str(tag(parse_command("/status")), "status")
+    let hits = help_filtered(all, "clip")
+    assert_true(hits.len() >= 1)
+    assert_eq_str(hits[0].name, "copy")
+    assert_true(help_filtered(all, "").len() == all.len())
+    assert_true(help_filtered(all, "zzz-no-match").len() == 0)
 }

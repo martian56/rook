@@ -16,9 +16,10 @@ import "../agents/dir" { roots }
 import "../agents/commands" { load_commands, command_infos }
 import "../agents/settings" { settings_errors_from }
 import "../hooks/hooks" { drain_hook_notices }
-import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors }
+import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors, resolve_budget_usd }
 import "../tools/permission_menu" { PermissionGrantState }
 import "../tools/mentions" { warm_files }
+import "./update_check" { begin_update_check }
 
 // The /model picker's data, built once and reused. `ids`/`labels`/`lower` are
 // the whole catalog (labels index-aligned to ids, lower a lowercased id copy
@@ -170,12 +171,17 @@ struct Chat {
     // The transcript index of a running ! command's placeholder entry, -1
     // when no shell command is in flight.
     bang_at: Int,
+    // The session spend ceiling in micro-dollars (0 when none is configured)
+    // and whether its one-time warning already fired.
+    budget_micros: Int,
+    budget_warned: Bool,
 }
 
 fun chat_init() -> Chat {
     // Walk the project for the @-mention picker on a goroutine now, so the
     // first @ keystroke filters a ready list instead of stalling on the walk.
     warm_files()
+    begin_update_check()
     // --continue reopens the most recent saved session: the listing and read
     // run off-thread and the tick pickup applies them, exactly like choosing
     // it in /sessions.
@@ -277,6 +283,8 @@ fun chat_init() -> Chat {
         shells_scroll: 0,
         sessions_confirm: 0 - 1,
         bang_at: 0 - 1,
+        budget_micros: resolve_budget_usd() * 1000000,
+        budget_warned: false,
     }
 }
 

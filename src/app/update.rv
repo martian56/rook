@@ -4,7 +4,7 @@
 
 import std/string
 import std/io { print }
-import std/fs { write }
+import std/fs { read, write }
 import "github.com/martian56/perch/keys" { Key }
 import "github.com/martian56/plumage" { Event, Step, next, quit }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
@@ -18,11 +18,11 @@ import "../ui/transcript" { Entry }
 import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
 import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
-import "../commands" { Command, parse_command, CmdInfo, menu_matches }
+import "../commands" { Command, parse_command, CmdInfo, menu_matches, help_filtered }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions }
 import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, Loaded }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
-import "../config/config" { provider_of, key_needed_with, save_key, save_theme }
+import "../config/config" { provider_of, key_needed_with, save_key, save_theme, model_source, base_source, theme_source, key_source, debug_log }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
 import "../ui/depth" { themed }
 import "../agents/dir" { roots }
@@ -37,6 +37,8 @@ import "../hooks/hooks" { drain_hook_notices }
 import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts, push_shell_done, take_shell_done, push_bang_context, take_bang_context }
 import "../tools/shell" { run_command }
 import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
+import "../tools/pricing" { cost_micros_cached }
+import "./panel_filter" { sessions_set_full, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear }
 
 // The /init task: explore the repo and write (or improve) its AGENTS.md, the
 // memory file rook loads into every session here.
@@ -261,7 +263,7 @@ fun _tick(m: Chat) -> Step<Chat> {
     if m.sessions_open && m.sessions_loading {
         let scan = take_session_list()
         if scan.ready {
-            m.sessions_list = scan.result.sessions
+            m.sessions_list = sessions_set_full(scan.result.sessions)
             if scan.result.error != "" {
                 m.entries.push(Entry.Notice(scan.result.error))
             }
@@ -325,6 +327,26 @@ fun _tick(m: Chat) -> Step<Chat> {
             // The turn may have created or edited command files; the next
             // custom-command lookup re-reads them.
             invalidate_commands()
+            // One-time budget warning: rook is bring-your-own-key, so passing
+            // the configured ceiling should be loud.
+            if m.budget_micros > 0 && !m.budget_warned {
+                let spent = cost_micros_cached(
+                    m.model,
+                    m.sess_prompt,
+                    m.sess_completion,
+                    m.sess_cache_read,
+                    m.sess_cache_write,
+                )
+                if spent >= m.budget_micros {
+                    m.entries.push(
+                        Entry.Notice(
+                            "session cost passed the $${m.budget_micros / 1000000} budget (budget_usd in rook.json)",
+                        ),
+                    )
+                    m.budget_warned = true
+                    print("\u{7}")
+                }
+            }
             m.active = false
             m.turns = m.turns + 1
             m.cur_bubble = 0 - 1
@@ -1015,13 +1037,22 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
 // Navigate the /sessions picker: arrows move, enter resumes the highlighted
 // session, esc closes.
 fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
-    // The armed delete survives only into an immediate second d; any other
-    // key disarms it.
+    // The armed delete survives only into an immediate second Delete; any
+    // other key disarms it.
     let armed = m.sessions_confirm
     m.sessions_confirm = 0 - 1
     match k {
         Char(c) -> {
-            if c == "d" && m.sessions_list.len() > 0 {
+            // Typing filters by title and model; Delete removes.
+            m.sessions_list = sessions_type(c)
+            m.sessions_sel = 0
+        },
+        Backspace -> {
+            m.sessions_list = sessions_backspace()
+            m.sessions_sel = 0
+        },
+        Delete -> {
+            if m.sessions_list.len() > 0 {
                 let sel = m.sessions_sel
                 if sel >= m.sessions_list.len() {
                     sel = m.sessions_list.len() - 1
@@ -1068,10 +1099,17 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
             if m.sessions_list.len() > 0 {
                 _resume(m, m.sessions_list[m.sessions_sel].id)
             }
+            let _ = sessions_clear()
             m.sessions_open = false
         },
         Esc -> {
-            m.sessions_open = false
+            // A first Esc clears an active filter; a second closes.
+            if sessions_query() != "" {
+                m.sessions_list = sessions_clear()
+                m.sessions_sel = 0
+            } else {
+                m.sessions_open = false
+            }
         },
         _ -> {},
     }
@@ -1271,14 +1309,25 @@ fun _toggle_permission(m: Chat) {
 // Navigate the /help menu: arrows move over every command, enter runs the
 // highlighted one, esc closes.
 fun _help_key(m: Chat, k: Key) -> Step<Chat> {
+    // The panel navigates the filtered view, so typing narrows and the
+    // selection stays in range.
+    let visible = help_filtered(m.cmd_infos, help_query())
     match k {
+        Char(c) -> {
+            help_type(c)
+            m.help_sel = 0
+        },
+        Backspace -> {
+            help_backspace()
+            m.help_sel = 0
+        },
         Up -> {
             if m.help_sel > 0 {
                 m.help_sel = m.help_sel - 1
             }
         },
         Down -> {
-            if m.help_sel < m.cmd_infos.len() - 1 {
+            if m.help_sel < visible.len() - 1 {
                 m.help_sel = m.help_sel + 1
             }
         },
@@ -1290,8 +1339,8 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
         },
         PageDown -> {
             m.help_sel = m.help_sel + 10
-            if m.help_sel >= m.cmd_infos.len() {
-                m.help_sel = m.cmd_infos.len() - 1
+            if m.help_sel >= visible.len() {
+                m.help_sel = visible.len() - 1
             }
             if m.help_sel < 0 {
                 m.help_sel = 0
@@ -1300,12 +1349,19 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
         Enter -> {
             let sel = m.help_sel
             m.help_open = false
-            if sel >= 0 && sel < m.cmd_infos.len() {
-                return _run(m, "/${m.cmd_infos[sel].name}")
+            help_clear()
+            if sel >= 0 && sel < visible.len() {
+                return _run(m, "/${visible[sel].name}")
             }
         },
         Esc -> {
-            m.help_open = false
+            // A first Esc clears an active filter; a second closes.
+            if help_query() != "" {
+                help_clear()
+                m.help_sel = 0
+            } else {
+                m.help_open = false
+            }
         },
         _ -> {},
     }
@@ -1423,9 +1479,42 @@ fun _submit(m: Chat) -> Step<Chat> {
     if text.starts_with("!") && text != "!" {
         return _bang(m, text)
     }
+    // A leading # appends the rest to the project AGENTS.md, teaching rook
+    // something permanent without opening an editor. Loaded into the system
+    // context from the next turn on.
+    if text.starts_with("#") && text != "#" {
+        return _note(m, text)
+    }
     push_history(text)
     m.entry = TextInput.new()
     return _run(m, text)
+}
+
+fun _note(m: Chat, text: String) -> Step<Chat> {
+    let note = text.substring(1, text.length()).trim()
+    push_history(text)
+    m.entry = TextInput.new()
+    let existing = ""
+    match read("AGENTS.md") {
+        Ok(t) -> {
+            existing = t
+        },
+        Err(e) -> {},
+    }
+    let body = existing
+    if body != "" && !body.ends_with("\n") {
+        body = "${body}\n"
+    }
+    match write("AGENTS.md", "${body}- ${note}\n") {
+        Ok(ok) -> {
+            m.entries.push(Entry.Notice("noted in AGENTS.md: ${note}"))
+        },
+        Err(e) -> {
+            m.entries.push(Entry.Notice("error: could not write AGENTS.md: ${e.message}"))
+        },
+    }
+    m.scroll_up = 0
+    return next(m)
 }
 
 // Run a "!command" line: echo a running row, execute on a goroutine, and let
@@ -1542,7 +1631,33 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.sessions_sel = 0
             m.sessions_loading = true
             m.sessions_open = true
+            let _ = sessions_clear()
             begin_list_sessions()
+            return next(m)
+        },
+        Status -> {
+            m.entries.push(Entry.UserMsg(text))
+            m.entries.push(Entry.Notice("model: ${m.model} (from ${model_source()})"))
+            let base_label = "endpoint: the provider default"
+            if m.base_url != "" {
+                base_label = "endpoint: ${m.base_url} (from ${base_source()})"
+            }
+            m.entries.push(Entry.Notice(base_label))
+            m.entries.push(Entry.Notice("theme: ${m.theme.name} (from ${theme_source()})"))
+            m.entries.push(Entry.Notice("key: from ${key_source(m.model)}"))
+            let plan_label = "off"
+            if m.plan_mode {
+                plan_label = "on"
+            }
+            m.entries.push(Entry.Notice("plan mode: ${plan_label}"))
+            m.entries.push(Entry.Notice("session: ${m.session_id} · ${m.entries.len()} entries"))
+            m.entries.push(Entry.Notice("mcp servers configured: ${configured_count()}"))
+            if m.budget_micros > 0 {
+                m.entries.push(Entry.Notice("budget: $${m.budget_micros / 1000000} (budget_usd in rook.json)"))
+            } else {
+                m.entries.push(Entry.Notice("budget: none (set budget_usd in rook.json)"))
+            }
+            m.scroll_up = 0
             return next(m)
         },
         Copy -> {

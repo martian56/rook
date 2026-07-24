@@ -1,0 +1,119 @@
+// Type-to-filter state for the sessions and help panels. A module-level
+// store rather than Chat fields: the model struct sits at the runtime's
+// 64-tracked-field limit, so panel queries live here, the same pattern as
+// the input history.
+
+import std/string
+import std/sync { Mutex, mutex }
+import "../config/sessions" { SessionMeta }
+
+struct PanelFilter {
+    lock: Mutex,
+    sessions_query: String,
+    sessions_full: List<SessionMeta>,
+    help_query: String,
+}
+
+let FILTER: PanelFilter = _new_filter()
+
+fun _new_filter() -> PanelFilter {
+    let full: List<SessionMeta> = []
+    return PanelFilter { lock: mutex(), sessions_query: "", sessions_full: full, help_query: "" }
+}
+
+// Store the freshly scanned session list and return it filtered by the
+// current query. Called when the panel opens and when a rescan lands.
+fun sessions_set_full(full: List<SessionMeta>) -> List<SessionMeta> {
+    FILTER.lock.lock()
+    FILTER.sessions_full = full
+    let q = FILTER.sessions_query
+    FILTER.lock.unlock()
+    return _filter_sessions(full, q)
+}
+
+fun sessions_query() -> String {
+    FILTER.lock.lock()
+    let q = FILTER.sessions_query
+    FILTER.lock.unlock()
+    return q
+}
+
+// Append one typed character to the query and return the filtered list.
+fun sessions_type(c: String) -> List<SessionMeta> {
+    FILTER.lock.lock()
+    FILTER.sessions_query = FILTER.sessions_query.concat(c)
+    let q = FILTER.sessions_query
+    let full = FILTER.sessions_full
+    FILTER.lock.unlock()
+    return _filter_sessions(full, q)
+}
+
+// Drop the query's last character and return the filtered list.
+fun sessions_backspace() -> List<SessionMeta> {
+    FILTER.lock.lock()
+    let q = FILTER.sessions_query
+    if q.length() > 0 {
+        q = q.substring(0, q.length() - 1)
+    }
+    FILTER.sessions_query = q
+    let full = FILTER.sessions_full
+    FILTER.lock.unlock()
+    return _filter_sessions(full, q)
+}
+
+// Clear the query and return the unfiltered list.
+fun sessions_clear() -> List<SessionMeta> {
+    FILTER.lock.lock()
+    FILTER.sessions_query = ""
+    let full = FILTER.sessions_full
+    FILTER.lock.unlock()
+    return full
+}
+
+fun _filter_sessions(full: List<SessionMeta>, q: String) -> List<SessionMeta> {
+    if q == "" {
+        return full
+    }
+    let needle = q.to_lower()
+    let out: List<SessionMeta> = []
+    let i = 0
+    while i < full.len() {
+        let hay = "${full[i].title} ${full[i].model}".to_lower()
+        if hay.contains(needle) {
+            out.push(full[i])
+        }
+        i = i + 1
+    }
+    return out
+}
+
+fun help_query() -> String {
+    FILTER.lock.lock()
+    let q = FILTER.help_query
+    FILTER.lock.unlock()
+    return q
+}
+
+fun help_type(c: String) {
+    FILTER.lock.lock()
+    FILTER.help_query = FILTER.help_query.concat(c)
+    FILTER.lock.unlock()
+    return
+}
+
+fun help_backspace() {
+    FILTER.lock.lock()
+    let q = FILTER.help_query
+    if q.length() > 0 {
+        FILTER.help_query = q.substring(0, q.length() - 1)
+    }
+    FILTER.lock.unlock()
+    return
+}
+
+fun help_clear() {
+    FILTER.lock.lock()
+    FILTER.help_query = ""
+    FILTER.lock.unlock()
+    return
+}

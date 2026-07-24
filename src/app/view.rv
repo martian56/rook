@@ -18,12 +18,13 @@ import "../ui/themes" { all_themes }
 import "../ui/spinner" { pulse }
 import "../config/config" { provider_of, key_env, key_optional }
 import "../version" { version }
-import "../commands" { CmdInfo, menu_matches }
+import "../commands" { CmdInfo, menu_matches, help_filtered }
 import "../tools/shells" { ShellInfo, shells_snapshot, shell_tail_at }
 import "../tools/todos" { Todo, current_todos }
 import "../tools/mentions" { current_mention }
 import "../tools/pricing" { usage_label }
 import "../config/sessions" { SessionMeta }
+import "./panel_filter" { sessions_query, help_query }
 import std/time { now_millis }
 
 fun chat_view(m: Chat, f: Frame) {
@@ -396,9 +397,12 @@ fun _sessions_panel(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let panel_title = "Resume a session  (enter, d deletes, esc)"
+    let panel_title = "Resume a session  (type to filter, enter, del deletes, esc)"
+    if sessions_query() != "" {
+        panel_title = "Resume a session  ·  filter: ${sessions_query()}"
+    }
     if m.sessions_confirm >= 0 {
-        panel_title = "Resume a session  (d again deletes the highlighted one)"
+        panel_title = "Resume a session  (del again deletes the highlighted one)"
     }
     let box = Block.new().rounded().title(panel_title).style(m.theme.modal).title_style(
         m.theme.modal.bold(),
@@ -450,13 +454,15 @@ fun _sessions_panel(m: Chat, f: Frame) {
 // hints that used to live in the /help text.
 fun _help_menu(m: Chat, f: Frame) {
     let full = f.area()
-    let cmds = m.cmd_infos
+    // The filtered view: typing in the panel narrows it, and the key handler
+    // navigates the same list.
+    let cmds = help_filtered(m.cmd_infos, help_query())
     let count = cmds.len()
     if count > full.h - 6 {
         count = full.h - 6
     }
     if count < 1 {
-        return
+        count = 1
     }
     let h = count + 4
     let w = 64
@@ -470,11 +476,19 @@ fun _help_menu(m: Chat, f: Frame) {
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let box = Block.new().rounded().title("Commands  (enter to run, esc)").style(m.theme.modal).title_style(
+    let help_title = "Commands  (type to filter, enter to run, esc)"
+    if help_query() != "" {
+        help_title = "Commands  ·  filter: ${help_query()}"
+    }
+    let box = Block.new().rounded().title(help_title).style(m.theme.modal).title_style(
         m.theme.modal.bold(),
     )
     box.render(area, f.buf)
     let inner = box.inner(area)
+    if cmds.len() == 0 {
+        f.buf.set_string(inner.x + 1, inner.y + 1, "(nothing matches)", m.theme.dim)
+        return
+    }
 
     let sel = m.help_sel
     if sel >= cmds.len() {
