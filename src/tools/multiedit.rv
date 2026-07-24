@@ -13,6 +13,7 @@ import std/json { JsonValue, parse }
 import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
 import "./args" { arg }
 import "./paths" { resolve_path }
+import "./checkpoints" { checkpoint_file }
 import "./files" { count_occurrences }
 
 struct Edit {
@@ -56,6 +57,7 @@ fun multi_edit(args_json: String) -> String {
     if outcome.applied == 1 {
         word = "edit"
     }
+    checkpoint_file(r.path)
     return match write(r.path, outcome.text) {
         Ok(b) -> "applied ${outcome.applied} ${word} to ${r.path}",
         Err(e) -> "error: ${e.message}",

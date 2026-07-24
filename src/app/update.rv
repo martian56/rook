@@ -6,6 +6,7 @@ import std/string
 import std/io { print }
 import std/fs { read, write }
 import "github.com/martian56/perch/keys" { Key }
+import "github.com/martian56/aviary/message" { Message, Role }
 import "github.com/martian56/plumage" { Event, Step, next, quit }
 import "github.com/martian56/plumage/widgets/input" { TextInput }
 import "./model" { Chat, set_model, apply_model, set_entry, replace_entries, ensure_cache_len }
@@ -38,6 +39,7 @@ import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_
 import "../tools/shell" { run_command }
 import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
 import "../tools/pricing" { cost_micros_cached }
+import "../tools/checkpoints" { rewind_last_batch, checkpoint_batches }
 import "./panel_filter" { sessions_set_full, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear }
 
 // The /init task: explore the repo and write (or improve) its AGENTS.md, the
@@ -596,6 +598,9 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     if m.shells_open {
         return _shells_key(m, k)
     }
+    if m.rewind_open {
+        return _rewind_key(m, k)
+    }
     if m.question != "" {
         return _question_key(m, k)
     }
@@ -732,6 +737,22 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     match k {
         Enter -> {
             return _submit(m)
+        },
+        Esc -> {
+            // Double Esc opens the edit-a-previous-message picker; a single
+            // bare Esc hints at it.
+            if m.tick - m.last_esc <= 12 && _user_entry_indices(m).len() > 0 {
+                m.rewind_open = true
+                m.rewind_sel = 0
+                m.last_esc = 0 - 100
+            } else {
+                m.last_esc = m.tick
+                if _user_entry_indices(m).len() > 0 {
+                    m.flash = "esc again to edit a previous message"
+                    m.flash_until = m.tick + 30
+                }
+            }
+            return next(m)
         },
         PageUp -> {
             m.scroll_up = m.scroll_up + _page(m)
@@ -1725,6 +1746,21 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
         Init -> {
             return _send_prompt(m, text, INIT_PROMPT)
         },
+        Rewind -> {
+            m.entries.push(Entry.UserMsg(text))
+            let summary = rewind_last_batch()
+            if summary == "" {
+                m.entries.push(Entry.Notice("nothing to rewind: no file changes are checkpointed"))
+            } else {
+                m.entries.push(Entry.Notice(summary))
+                let left = checkpoint_batches()
+                if left > 0 {
+                    m.entries.push(Entry.Notice("${left} earlier turn(s) can still be rewound with /rewind"))
+                }
+            }
+            m.scroll_up = 0
+            return next(m)
+        },
         Compact -> {
             m.entries.push(Entry.UserMsg(text))
             if key_needed_with(m.model, m.api_key) {
@@ -1961,4 +1997,126 @@ fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
         run_turn(st, model, api_key, base_url)
     })
     return next(m)
+}
+
+// The transcript indices of user messages, oldest first, capped to the ten
+// most recent. The rewind picker shows them newest first.
+fun _user_entry_indices(m: Chat) -> List<Int> {
+    let all: List<Int> = []
+    let i = 0
+    while i < m.entries.len() {
+        match m.entries[i] {
+            UserMsg(t) -> {
+                all.push(i)
+            },
+            _ -> {},
+        }
+        i = i + 1
+    }
+    if all.len() <= 10 {
+        return all
+    }
+    let out: List<Int> = []
+    i = all.len() - 10
+    while i < all.len() {
+        out.push(all[i])
+        i = i + 1
+    }
+    return out
+}
+
+// Navigate the edit-a-previous-message picker: enter rewinds the
+// conversation to just before the chosen message and puts its text back in
+// the input for editing; esc closes.
+fun _rewind_key(m: Chat, k: Key) -> Step<Chat> {
+    let idxs = _user_entry_indices(m)
+    match k {
+        Up -> {
+            if m.rewind_sel > 0 {
+                m.rewind_sel = m.rewind_sel - 1
+            }
+        },
+        Down -> {
+            if m.rewind_sel < idxs.len() - 1 {
+                m.rewind_sel = m.rewind_sel + 1
+            }
+        },
+        Enter -> {
+            m.rewind_open = false
+            if idxs.len() > 0 {
+                let sel = m.rewind_sel
+                if sel >= idxs.len() {
+                    sel = idxs.len() - 1
+                }
+                // Row 0 is the newest message: ordinal from the end.
+                _apply_rewind(m, idxs[idxs.len() - 1 - sel], sel)
+            }
+        },
+        Esc -> {
+            m.rewind_open = false
+        },
+        _ -> {},
+    }
+    return next(m)
+}
+
+// Truncate the transcript and the model conversation back to just before
+// the chosen user message, and put that message's text in the input. The
+// conversation is matched from the end (ordinal `from_end`), which stays
+// aligned with the transcript even after compaction folded older turns; a
+// message older than the compaction summary cannot be rewound to.
+fun _apply_rewind(m: Chat, entry_idx: Int, from_end: Int) {
+    let text = ""
+    match m.entries[entry_idx] {
+        UserMsg(t) -> {
+            text = t
+        },
+        _ -> {},
+    }
+    let msgs = m.agent.messages()
+    let user_at: List<Int> = []
+    let i = 0
+    while i < msgs.len() {
+        if _is_user_msg(msgs[i]) {
+            user_at.push(i)
+        }
+        i = i + 1
+    }
+    if from_end >= user_at.len() {
+        m.entries.push(
+            Entry.Notice("that message was folded into a compaction summary; rewind to a newer one"),
+        )
+        m.scroll_up = 0
+        return
+    }
+    let cut = user_at[user_at.len() - 1 - from_end]
+    let keep: List<Message> = []
+    i = 0
+    while i < cut {
+        keep.push(msgs[i])
+        i = i + 1
+    }
+    m.agent.replace_convo(keep)
+    _remove_entries(m, entry_idx, m.entries.len() - entry_idx)
+    let blocks: List<AgentBlock> = []
+    m.open_agents = blocks
+    m.cur_bubble = 0 - 1
+    m.entry = TextInput.with_value(text)
+    m.scroll_up = 0
+    save_session_async(
+        m.session_id,
+        m.model,
+        m.entries,
+        m.agent.messages(),
+        m.sess_prompt,
+        m.sess_completion,
+    )
+    return
+}
+
+fun _is_user_msg(msg: Message) -> Bool {
+    return match msg.role {
+        User -> true,
+        _ -> false,
+    }
 }

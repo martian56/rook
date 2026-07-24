@@ -1,0 +1,175 @@
+// File checkpoints: before write_file, edit_file, or multi_edit touches a
+// file, its pre-image is recorded here, grouped into batches (one batch per
+// turn). /rewind restores the most recent batch, newest first, so a bad
+// turn's file changes undo in one step even after the diff was approved.
+// In memory only: checkpoints last for the process, capped so a huge
+// session cannot balloon.
+
+import std/string
+import std/sync { Mutex, mutex }
+import std/fs { read, write, exists, remove_file }
+
+// One file's state before a change. `existed` false means the change
+// created it, so restoring deletes it.
+struct Snapshot {
+    batch: Int,
+    path: String,
+    existed: Bool,
+    content: String,
+}
+
+struct CheckpointStore {
+    lock: Mutex,
+    snaps: List<Snapshot>,
+    batch: Int,
+}
+
+let STORE: CheckpointStore = _new_store()
+
+const MAX_SNAPSHOT_BYTES: Int = 524288
+const MAX_SNAPSHOTS: Int = 200
+
+fun _new_store() -> CheckpointStore {
+    let snaps: List<Snapshot> = []
+    return CheckpointStore { lock: mutex(), snaps, batch: 0 }
+}
+
+// Start a new batch; the turn loop calls this once per turn.
+fun begin_checkpoint_batch() {
+    STORE.lock.lock()
+    STORE.batch = STORE.batch + 1
+    STORE.lock.unlock()
+    return
+}
+
+// Record `path`'s current state, once per batch per path (the first
+// pre-image in a turn is the one worth restoring). Oversized files are
+// skipped rather than half-recorded.
+fun checkpoint_file(path: String) {
+    STORE.lock.lock()
+    let batch = STORE.batch
+    let already = false
+    let i = 0
+    while i < STORE.snaps.len() {
+        if STORE.snaps[i].batch == batch && STORE.snaps[i].path == path {
+            already = true
+        }
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    if already {
+        return
+    }
+    let existed = exists(path)
+    let content = ""
+    if existed {
+        match read(path) {
+            Ok(t) -> {
+                content = t
+            },
+            Err(e) -> {
+                return
+            },
+        }
+        if content.length() > MAX_SNAPSHOT_BYTES {
+            return
+        }
+    }
+    STORE.lock.lock()
+    if STORE.snaps.len() < MAX_SNAPSHOTS {
+        STORE.snaps.push(Snapshot { batch: STORE.batch, path, existed, content })
+    }
+    STORE.lock.unlock()
+    return
+}
+
+// Undo the most recent batch that has snapshots: every recorded file goes
+// back to its pre-image (created files are deleted). Returns a summary
+// line, or "" when there is nothing to rewind.
+fun rewind_last_batch() -> String {
+    STORE.lock.lock()
+    let last = 0
+    let i = 0
+    while i < STORE.snaps.len() {
+        if STORE.snaps[i].batch > last {
+            last = STORE.snaps[i].batch
+        }
+        i = i + 1
+    }
+    if last == 0 {
+        STORE.lock.unlock()
+        return ""
+    }
+    let todo: List<Snapshot> = []
+    let keep: List<Snapshot> = []
+    i = 0
+    while i < STORE.snaps.len() {
+        if STORE.snaps[i].batch == last {
+            todo.push(STORE.snaps[i])
+        } else {
+            keep.push(STORE.snaps[i])
+        }
+        i = i + 1
+    }
+    STORE.snaps = keep
+    STORE.lock.unlock()
+    let restored = ""
+    i = 0
+    while i < todo.len() {
+        let s = todo[i]
+        if s.existed {
+            match write(s.path, s.content) {
+                Ok(ok) -> {},
+                Err(e) -> {},
+            }
+        } else {
+            if exists(s.path) {
+                match remove_file(s.path) {
+                    Ok(ok) -> {},
+                    Err(e) -> {},
+                }
+            }
+        }
+        if restored != "" {
+            restored = "${restored}, "
+        }
+        restored = restored.concat(s.path)
+        i = i + 1
+    }
+    return "restored ${todo.len()} file(s): ${restored}"
+}
+
+// How many batches still have snapshots, for the /rewind notice.
+fun checkpoint_batches() -> Int {
+    STORE.lock.lock()
+    let seen: List<Int> = []
+    let i = 0
+    while i < STORE.snaps.len() {
+        let b = STORE.snaps[i].batch
+        let have = false
+        let j = 0
+        while j < seen.len() {
+            if seen[j] == b {
+                have = true
+            }
+            j = j + 1
+        }
+        if !have {
+            seen.push(b)
+        }
+        i = i + 1
+    }
+    let n = seen.len()
+    STORE.lock.unlock()
+    return n
+}
+
+// For tests: drop everything.
+fun clear_checkpoints() {
+    STORE.lock.lock()
+    let none: List<Snapshot> = []
+    STORE.snaps = none
+    STORE.batch = 0
+    STORE.lock.unlock()
+    return
+}

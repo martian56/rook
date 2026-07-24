@@ -13,10 +13,17 @@ import "./app/update" { chat_update }
 import "./app/view" { chat_view }
 import "./hooks/hooks" { fire_hooks }
 import "./version" { version }
+import "./headless" { run_print }
 
 fun main() {
     if _wants_version() {
         println("rook ${version()}")
+        return
+    }
+    let print_prompt = _print_prompt()
+    if print_prompt != "" {
+        fire_hooks("session-start", "", "")
+        run_print(print_prompt)
         return
     }
     if _wants_help() {
@@ -25,6 +32,7 @@ fun main() {
         println("usage: rook [options]")
         println("  --model <provider/model>   use this model for the session")
         println("  --continue, -c             reopen the most recent session")
+        println("  -p, --print <prompt>       run one prompt headless, stream to stdout, exit")
         println("  --version, -V              print the version and exit")
         println("  --help, -h                 this text")
         println("")
@@ -64,4 +72,27 @@ fun _wants_help() -> Bool {
         i = i + 1
     }
     return false
+}
+
+// The -p / --print prompt: everything after the flag, joined, "" when the
+// flag is absent.
+fun _print_prompt() -> String {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "-p" || a[i] == "--print" {
+            let out = ""
+            let j = i + 1
+            while j < a.len() {
+                if out != "" {
+                    out = "${out} "
+                }
+                out = out.concat(a[j])
+                j = j + 1
+            }
+            return out
+        }
+        i = i + 1
+    }
+    return ""
 }

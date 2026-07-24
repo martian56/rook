@@ -5,6 +5,7 @@
 import std/string
 import std/fs { read, write, exists, list_dir as fs_list }
 import "./paths" { resolve_path }
+import "./checkpoints" { checkpoint_file }
 
 fun read_file(path: String) -> String {
     let r = resolve_path(path, "")
@@ -33,6 +34,7 @@ fun write_file(path: String, content: String) -> String {
     if !r.ok {
         return r.error
     }
+    checkpoint_file(r.path)
     return _write_result(r.path, content, "wrote ${content.length()} bytes to ${r.path}")
 }
 
@@ -58,6 +60,7 @@ fun edit_file(path: String, old_text: String, new_text: String) -> String {
     if !r.ok {
         return r.error
     }
+    checkpoint_file(r.path)
     if old_text == "" {
         return "error: old_text is empty"
     }

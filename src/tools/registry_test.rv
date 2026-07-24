@@ -58,8 +58,11 @@ fun test_approval_policy() {
     assert_false(needs_approval("use_skill"))
 }
 
-fun test_call_approval_policy_gates_sensitive_web_fetches() {
-    assert_false(call_needs_approval(call("web_fetch", "{\"url\":\"https://8.8.8.8/dns-query\"}")))
+fun test_call_approval_policy_gates_every_web_fetch() {
+    // Redirects are followed and cannot be inspected, so no fetch runs
+    // unapproved: a public host could bounce to a private target. A
+    // permission rule skips the prompt for trusted hosts.
+    assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"https://8.8.8.8/dns-query\"}")))
     assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"https://example.com/docs\"}")))
     assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://127.0.0.1:11434\"}")))
     assert_true(call_needs_approval(call("web_fetch", "{\"url\":\"http://169.254.169.254/\"}")))

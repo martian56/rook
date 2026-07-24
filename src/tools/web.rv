@@ -41,10 +41,15 @@ fun web_fetch_approval_detail(url: String) -> String {
         return ""
     }
     let kind = _sensitive_host_kind(host)
-    if kind == "" {
-        return ""
+    if kind != "" {
+        return "target: ${kind}\nurl: ${u}\nhost: ${host}"
     }
-    return "target: ${kind}\nurl: ${u}\nhost: ${host}"
+    // Every fetch asks: the HTTP client follows redirects the host gate
+    // cannot inspect, so an approved public host could otherwise bounce a
+    // request to a private or link-local target. A permission rule
+    // ("web_fetch" or "web_fetch(<glob>)") skips the prompt for trusted
+    // hosts.
+    return "url: ${u}\nhost: ${host}\nnote: redirects are followed and cannot be inspected"
 }
 
 // Fetch `url` and return its readable text, truncated. HTML is stripped to

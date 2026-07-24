@@ -175,6 +175,11 @@ struct Chat {
     // and whether its one-time warning already fired.
     budget_micros: Int,
     budget_warned: Bool,
+    // The edit-a-previous-message picker (opened by double Esc): open, the
+    // highlighted row, and the tick of the last bare Esc press.
+    rewind_open: Bool,
+    rewind_sel: Int,
+    last_esc: Int,
 }
 
 fun chat_init() -> Chat {
@@ -285,6 +290,9 @@ fun chat_init() -> Chat {
         bang_at: 0 - 1,
         budget_micros: resolve_budget_usd() * 1000000,
         budget_warned: false,
+        rewind_open: false,
+        rewind_sel: 0,
+        last_esc: 0 - 100,
     }
 }
 

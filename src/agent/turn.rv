@@ -19,6 +19,7 @@ import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
 import "../config/config" { debug_log }
 import "../tools/args" { arg }
+import "../tools/checkpoints" { begin_checkpoint_batch }
 import "../agents/dir" { roots }
 import "../agents/subagents" { Subagent, all_subagents, subagent_index }
 import "../hooks/hooks" { run_pre_tool_hooks, fire_hooks }
@@ -36,6 +37,8 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
     // within a turn, so build them once instead of reconstructing all of them,
     // and re-parsing every MCP tool's schema JSON, on every round.
     let tool_defs = tools()
+    // File changes this turn group into one checkpoint batch for /rewind.
+    begin_checkpoint_batch()
     while round < MAX_ROUNDS {
         if st.interrupted() {
             st.emit(DisplayEvent.Info("Interrupted"))
