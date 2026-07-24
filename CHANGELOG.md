@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.57
+
+- rook signs its work: commits made through git_commit carry a Co-Authored-By trailer tied to the rook-agent-code account (added in the tool, once, never duplicated), and pull requests the agent opens end with a generated-by line. Set "attribution": false in rook.json to turn both off for repositories whose conventions forbid attribution.
+
 ## 0.3.56
 
 - Selecting text no longer slows the app: mouse drag bursts coalesce in the run loop (plumage 0.3.1), so a drag costs one render instead of one per motion report. Subagent tool rows append with a plain push in the common case, and custom slash commands are cached instead of re-reading every file per invocation. (#312, #253, #270)
