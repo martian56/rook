@@ -35,7 +35,10 @@ fun chat_view(m: Chat, f: Frame) {
     if strip > 6 {
         strip = 6
     }
-    let cs: List<Constraint> = [Constraint.Fill(1)]
+    // A permanent blank spacer sits between the transcript and the strip or
+    // thinking line, so the transcript's last row (often a green tool
+    // bullet) is never directly adjacent to the pulsing indicator.
+    let cs: List<Constraint> = [Constraint.Fill(1), Constraint.Len(1)]
     if strip > 0 {
         cs.push(Constraint.Len(strip))
     }
@@ -47,7 +50,7 @@ fun chat_view(m: Chat, f: Frame) {
     if strip > 0 {
         off = 1
     }
-    let input_area = rows[2 + off]
+    let input_area = rows[3 + off]
 
     let body = Rect.new(rows[0].x + 1, rows[0].y, rows[0].w - 2, rows[0].h)
     if m.entries.len() == 0 {
@@ -56,15 +59,15 @@ fun chat_view(m: Chat, f: Frame) {
         _transcript(m, body, f)
     }
     if strip > 0 {
-        _todo_strip(m, todos, rows[1], f)
+        _todo_strip(m, todos, rows[2], f)
     }
-    _thinking_line(m, rows[1 + off], f)
+    _thinking_line(m, rows[2 + off], f)
     let box = Block.new().rounded().style(m.theme.border)
     box.render(input_area, f.buf)
     let ia = box.inner(input_area)
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
-    _status(m, rows[3 + off], f)
+    _status(m, rows[4 + off], f)
     let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.permissions_open && !m.shells_open && !m.sessions_open
     if idle && !m.mention_dismissed && m.mention_matches.len() > 0 && current_mention(m.entry.value).active {
         _mention_menu(m, input_area, f)
@@ -1038,10 +1041,12 @@ fun _thinking_line(m: Chat, area: Rect, f: Frame) {
         return
     }
     if m.pending != "" {
-        f.buf.set_string(area.x + 1, area.y, "awaiting approval…", m.theme.warn)
+        f.buf.set_string(area.x + 3, area.y, "awaiting approval…", m.theme.warn)
         return
     }
-    let x = f.buf.set_string(area.x + 1, area.y, "${pulse(m.tick)} ${m.word}… ", m.theme.spinner)
+    // Indented past the transcript's bullet column, so the pulsing glyph
+    // never shares a column with the green tool bullets above it.
+    let x = f.buf.set_string(area.x + 3, area.y, "${pulse(m.tick)} ${m.word}… ", m.theme.spinner)
     // Elapsed seconds, so a long tool-heavy turn visibly advances instead of
     // sitting on a bare spinner word. Ticks arrive every 45ms.
     let secs = m.elapsed * 45 / 1000
