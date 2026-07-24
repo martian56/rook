@@ -620,3 +620,44 @@ fun debug_log(line: String) {
     }
     return
 }
+
+// Whether rook signs its work: a Co-Authored-By trailer on commits it makes
+// and a generated-by line on pull requests it opens. On by default;
+// "attribution": false in ./rook.json (or the global rook.json) turns it
+// off for repositories whose conventions forbid it.
+fun attribution_enabled() -> Bool {
+    let proj = _attribution_of(_read_opt("rook.json"))
+    if proj != 0 {
+        return proj == 1
+    }
+    let h = _home()
+    if h != "" {
+        let glob = _attribution_of(_read_opt("${h}/.config/rook/rook.json"))
+        if glob != 0 {
+            return glob == 1
+        }
+    }
+    return true
+}
+
+// 0 unset, 1 enabled, 2 disabled. Split out and importable so the parsing
+// is testable without touching real config files.
+fun _attribution_of(text: String) -> Int {
+    if text == "" {
+        return 0
+    }
+    return match parse(text) {
+        Ok(j) -> match field(j, "attribution").as_bool() {
+            Some(b) -> _flag_of(b),
+            None -> 0,
+        },
+        Err(e) -> 0,
+    }
+}
+
+fun _flag_of(b: Bool) -> Int {
+    if b {
+        return 1
+    }
+    return 2
+}

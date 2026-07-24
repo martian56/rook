@@ -1,7 +1,7 @@
 import std/string
 import std/test { assert_eq_str, assert_true, assert_false }
 import std/fs { read, write, remove_file, exists }
-import "./config" { provider_of, key_env, key_present, key_needed, key_needed_with, auth_with_key, save_key_to_path, _check_rook_json }
+import "./config" { provider_of, key_env, key_present, key_needed, key_needed_with, auth_with_key, save_key_to_path, _check_rook_json, _attribution_of }
 import "./catalog" { catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning }
 import "./direct_catalog" { direct_catalog }
 import "./openrouter_catalog" { openrouter_catalog, openrouter_models_without_tools }
@@ -291,4 +291,13 @@ fun test_malformed_rook_json_is_flagged() {
     let none: List<String> = []
     _check_rook_json("_rook_cfg_absent.json", none)
     assert_true(none.len() == 0)
+}
+
+fun test_attribution_flag_parses_from_json() {
+    // 0 unset, 1 enabled, 2 disabled.
+    assert_true(_attribution_of("") == 0)
+    assert_true(_attribution_of("{}") == 0)
+    assert_true(_attribution_of("{\"attribution\": true}") == 1)
+    assert_true(_attribution_of("{\"attribution\": false}") == 2)
+    assert_true(_attribution_of("not json") == 0)
 }

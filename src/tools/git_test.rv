@@ -1,8 +1,8 @@
 import std/string
 import std/fs { write, remove_file }
 import std/process { run }
-import std/test { assert_true }
-import "./git" { git_status, git_diff, git_commit, git_commit_preview }
+import std/test { assert_true, assert_eq_str }
+import "./git" { git_status, git_diff, git_commit, git_commit_preview, commit_message_with_attribution }
 
 // These run against the real repository the suite executes in, which is a
 // git checkout, so only the read-only tools are exercised for real; the
@@ -75,4 +75,15 @@ fun _run_git(args: List<String>) {
         Err(e) -> {},
     }
     return
+}
+
+fun test_attribution_trailer_appends_once_and_respects_the_toggle() {
+    let signed = commit_message_with_attribution("fix: a thing", true)
+    assert_true(
+        signed.contains("Co-Authored-By: Rook <308697149+rook-agent-code@users.noreply.github.com>"),
+    )
+    // Already signed: no duplicate trailer.
+    assert_eq_str(commit_message_with_attribution(signed, true), signed)
+    // Disabled: the message passes through untouched.
+    assert_eq_str(commit_message_with_attribution("fix: a thing", false), "fix: a thing")
 }
