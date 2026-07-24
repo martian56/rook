@@ -17,6 +17,7 @@ import "../tools/registry" { tools, needs_approval, call_approval_detail, dispat
 import "../tools/preview" { change_preview, append_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../tools/pricing" { usage_label }
+import "../config/config" { debug_log }
 import "../tools/args" { arg }
 import "../agents/dir" { roots }
 import "../agents/subagents" { Subagent, all_subagents, subagent_index }
@@ -91,6 +92,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
             },
         }
         if err != "" {
+            debug_log("turn error model=${model}: ${err}")
             let partial = _joined(streamed)
             if partial != "" {
                 st.push_assistant("${partial}\n[reply cut off by a connection error]")

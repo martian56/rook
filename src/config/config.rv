@@ -15,7 +15,8 @@ import std/string
 import std/env { get_env, has_env, args }
 import std/fs { read, write, exists, create_dir_all }
 import std/json { JsonValue, parse, stringify }
-import "github.com/martian56/aviary/jsonutil" { Obj }
+import std/time { now_millis }
+import "github.com/martian56/aviary/jsonutil" { Obj, field, as_int_or }
 import "../agents/dir" { project_root, global_root }
 import "../agents/settings" { setting_str }
 
@@ -482,4 +483,140 @@ fun _as_str(v: JsonValue) -> String {
         Some(s) -> s,
         None -> "",
     }
+}
+
+// Where the resolved model came from, mirroring resolve_model's chain, so
+// /status can say which layer won.
+fun model_source() -> String {
+    let a = args()
+    let i = 0
+    while i < a.len() {
+        if a[i] == "--model" && i + 1 < a.len() {
+            return "the --model flag"
+        }
+        i = i + 1
+    }
+    if has_env("ROOK_MODEL") && get_env("ROOK_MODEL") != "" {
+        return "ROOK_MODEL"
+    }
+    if _json_str(_read_opt("rook.json"), "model") != "" {
+        return "./rook.json"
+    }
+    if setting_str(project_root(), "model") != "" {
+        return "the project .agents settings"
+    }
+    let h = _home()
+    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "model") != "" {
+        return "~/.config/rook/rook.json"
+    }
+    if setting_str(global_root(), "model") != "" {
+        return "the global .agents settings"
+    }
+    if last_used() != "" {
+        return "the last session's pick"
+    }
+    return "the built-in default"
+}
+
+// Where the endpoint override came from, "" meaning the provider default.
+fun base_source() -> String {
+    if has_env("ROOK_BASE_URL") && get_env("ROOK_BASE_URL") != "" {
+        return "ROOK_BASE_URL"
+    }
+    if _json_str(_read_opt("rook.json"), "base_url") != "" {
+        return "./rook.json"
+    }
+    if setting_str(project_root(), "base_url") != "" {
+        return "the project .agents settings"
+    }
+    let h = _home()
+    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "base_url") != "" {
+        return "~/.config/rook/rook.json"
+    }
+    if setting_str(global_root(), "base_url") != "" {
+        return "the global .agents settings"
+    }
+    return ""
+}
+
+// Where the theme came from, mirroring resolve_theme.
+fun theme_source() -> String {
+    if _json_str(_read_opt("rook.json"), "theme") != "" {
+        return "./rook.json"
+    }
+    if setting_str(project_root(), "theme") != "" {
+        return "the project .agents settings"
+    }
+    let h = _home()
+    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "theme") != "" {
+        return "~/.config/rook/rook.json"
+    }
+    if setting_str(global_root(), "theme") != "" {
+        return "the global .agents settings"
+    }
+    if h != "" && _read_opt("${h}/.rook/last-theme").trim() != "" {
+        return "the last session's pick"
+    }
+    return "the default palette"
+}
+
+// Where the model's API key comes from: its environment variable, the stored
+// auth file, or nowhere.
+fun key_source(model: String) -> String {
+    let provider = provider_of(model)
+    if _key_optional(provider) {
+        return "not required for ${provider}"
+    }
+    let env = key_env(provider)
+    if env != "" && has_env(env) && get_env(env) != "" {
+        return "the ${env} environment variable"
+    }
+    if stored_key(provider) != "" {
+        return "~/.rook/auth.json"
+    }
+    return "nowhere: no key is set"
+}
+
+// The session spend ceiling in whole dollars, 0 when none is configured.
+// From "budget_usd" in ./rook.json, then the global rook.json.
+fun resolve_budget_usd() -> Int {
+    let proj = _budget_of(_read_opt("rook.json"))
+    if proj > 0 {
+        return proj
+    }
+    let h = _home()
+    if h == "" {
+        return 0
+    }
+    return _budget_of(_read_opt("${h}/.config/rook/rook.json"))
+}
+
+fun _budget_of(text: String) -> Int {
+    if text == "" {
+        return 0
+    }
+    return match parse(text) {
+        Ok(j) -> as_int_or(field(j, "budget_usd"), 0),
+        Err(e) -> 0,
+    }
+}
+
+// Append a line to ~/.rook/debug.log when ROOK_DEBUG is set, for provider
+// failures where the friendly message is not enough. Best effort.
+fun debug_log(line: String) {
+    if !has_env("ROOK_DEBUG") {
+        return
+    }
+    let h = _home()
+    if h == "" {
+        return
+    }
+    create_dir_all("${h}/.rook")
+    let path = "${h}/.rook/debug.log"
+    let existing = _read_opt(path)
+    match write(path, "${existing}[${now_millis()}] ${line}\n") {
+        Ok(ok) -> {},
+        Err(e) -> {},
+    }
+    return
 }

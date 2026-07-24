@@ -1,0 +1,47 @@
+// A quiet startup check against the releases feed: when a newer version
+// exists, one notice says so. Runs on a goroutine, fails silently (offline
+// is normal), and ROOK_NO_UPDATE_CHECK opts out entirely.
+
+import std/string
+import std/env { has_env }
+import std/http { request_with_timeout, HttpResponse }
+import "github.com/martian56/aviary/jsonutil" { field, as_str }
+import std/json { parse }
+import "../version" { version }
+import "./cmdq" { push_cmd_notice }
+
+const RELEASES_URL: String = "https://api.github.com/repos/martian56/rook/releases/latest"
+
+fun begin_update_check() {
+    if has_env("ROOK_NO_UPDATE_CHECK") {
+        return
+    }
+    spawn(fun() -> Unit {
+        let latest = _latest_tag()
+        if latest != "" && latest != "v${version()}" {
+            push_cmd_notice(
+                "rook ${latest} is available (you have v${version()}): github.com/martian56/rook/releases",
+            )
+        }
+    })
+    return
+}
+
+// The latest release tag, "" on any failure.
+fun _latest_tag() -> String {
+    let headers = "Accept: application/vnd.github+json\nUser-Agent: rook"
+    return match request_with_timeout("GET", RELEASES_URL, "", headers, 8000) {
+        Ok(resp) -> _tag_of(resp),
+        Err(e) -> "",
+    }
+}
+
+fun _tag_of(resp: HttpResponse) -> String {
+    if resp.status_code != 200 {
+        return ""
+    }
+    return match parse(resp.body) {
+        Ok(j) -> as_str(field(j, "tag_name")),
+        Err(e) -> "",
+    }
+}

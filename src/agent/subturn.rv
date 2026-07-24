@@ -17,7 +17,7 @@ import "../tools/preview" { change_preview, append_preview }
 import "../tools/permissions" { Verdict, check_permission }
 import "../hooks/hooks" { run_pre_tool_hooks_for_agent, fire_hooks_for_agent }
 import "../agents/subagents" { Subagent }
-import "../config/config" { resolve_key }
+import "../config/config" { resolve_key, debug_log }
 
 const SUB_ROUNDS: Int = 15
 
@@ -96,6 +96,7 @@ fun run_subagent(
             },
         }
         if err != "" {
+            debug_log("subagent ${agent.name} error model=${use_model}: ${err}")
             st.emit(DisplayEvent.AgentFinished(id, agent.name, used))
             return "error: ${err}"
         }

@@ -24,6 +24,7 @@ fun builtin_commands() -> List<CmdInfo> {
         CmdInfo { name: "mcp", desc: "MCP servers: status, connect, and run a prompt" },
         CmdInfo { name: "key", desc: "set the current provider's API key" },
         CmdInfo { name: "compact", desc: "summarize older turns to free context" },
+        CmdInfo { name: "status", desc: "show the resolved settings and where each came from" },
         CmdInfo { name: "copy", desc: "copy the last reply to the clipboard" },
         CmdInfo { name: "export", desc: "write the transcript to a file; /export <path> names it" },
         CmdInfo { name: "init", desc: "explore the project and write AGENTS.md" },
@@ -95,6 +96,7 @@ enum Command {
     Plan,
     Sessions,
     Compact,
+    Status,
     Copy,
     Export(String),
     Init,
@@ -145,6 +147,9 @@ fun parse_command(text: String) -> Command {
     if text == "/compact" {
         return Command.Compact
     }
+    if text == "/status" {
+        return Command.Status
+    }
     if text == "/copy" {
         return Command.Copy
     }
@@ -180,4 +185,23 @@ fun parse_command(text: String) -> Command {
         return Command.ThemeSet(arg)
     }
     return Command.Unknown(text)
+}
+
+// The /help rows matching a typed filter, name or description, any case.
+// An empty filter keeps everything.
+fun help_filtered(infos: List<CmdInfo>, q: String) -> List<CmdInfo> {
+    if q == "" {
+        return infos
+    }
+    let needle = q.to_lower()
+    let out: List<CmdInfo> = []
+    let i = 0
+    while i < infos.len() {
+        let hay = "${infos[i].name} ${infos[i].desc}".to_lower()
+        if hay.contains(needle) {
+            out.push(infos[i])
+        }
+        i = i + 1
+    }
+    return out
 }
