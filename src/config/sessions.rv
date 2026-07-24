@@ -9,7 +9,8 @@
 
 import std/string
 import std/sync { Mutex, mutex }
-import std/env { get_env, has_env }
+import std/env { get_env, has_env, os_name }
+import std/process { run }
 import std/fs { read, write, exists, create_dir_all, list_dir, remove_file }
 import std/json { JsonValue, parse, stringify }
 import std/time { now, now_millis }
@@ -18,12 +19,70 @@ import "github.com/martian56/aviary/message" { Message, ToolCall, Role, role_str
 import "../ui/transcript" { Entry }
 import "../agents/limits" { safe_cut }
 
-// A saved session's headline, for the picker.
+// A saved session's headline, for the picker. `cwd` is the directory the
+// session was saved from; sessions from before it was recorded carry "".
 struct SessionMeta {
     id: String,
     created: Int,
     model: String,
     title: String,
+    cwd: String,
+}
+
+// The process working directory, cached after the first read. The stdlib has
+// no cwd API, so one shell call fetches it: `cd` under cmd on Windows, pwd
+// elsewhere. "" when even that fails.
+struct CwdCache {
+    lock: Mutex,
+    ready: Bool,
+    cwd: String,
+}
+
+let CWD_CACHE: CwdCache = _new_cwd_cache()
+
+fun _new_cwd_cache() -> CwdCache {
+    return CwdCache { lock: mutex(), ready: false, cwd: "" }
+}
+
+fun session_cwd() -> String {
+    CWD_CACHE.lock.lock()
+    if CWD_CACHE.ready {
+        let c = CWD_CACHE.cwd
+        CWD_CACHE.lock.unlock()
+        return c
+    }
+    CWD_CACHE.lock.unlock()
+    let got = _read_cwd()
+    CWD_CACHE.lock.lock()
+    CWD_CACHE.cwd = got
+    CWD_CACHE.ready = true
+    CWD_CACHE.lock.unlock()
+    return got
+}
+
+fun _read_cwd() -> String {
+    let prog = "pwd"
+    let args: List<String> = []
+    if os_name() == "windows" {
+        prog = "cmd"
+        args = ["/c", "cd"]
+    }
+    return match run(prog, args) {
+        Ok(out) -> out.stdout.trim(),
+        Err(e) -> "",
+    }
+}
+
+// Whether a session's recorded directory is this one. Case folds on Windows,
+// where paths compare case-insensitively; "" (unrecorded) never matches.
+fun same_dir(recorded: String, here: String) -> Bool {
+    if recorded == "" || here == "" {
+        return false
+    }
+    if os_name() == "windows" {
+        return recorded.to_lower() == here.to_lower()
+    }
+    return recorded == here
 }
 
 struct SessionList {
@@ -110,8 +169,9 @@ fun save_session_to(
     }
     let title = _title(entries)
     let created = "${now()}"
+    let cwd = session_cwd()
     let doc = Obj.new().str("id", id).str("model", model).str("title", title)
-    doc = doc.str("created", created).set("entries", JsonValue.Array(arr))
+    doc = doc.str("created", created).str("cwd", cwd).set("entries", JsonValue.Array(arr))
     doc = doc.set("messages", JsonValue.Array(msgs))
     doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
     let save_error = match write("${dir}/${id}.json", stringify(doc.build())) {
@@ -127,7 +187,7 @@ fun save_session_to(
     let meta = Obj.new().str("id", id).str("model", model).str("title", title).str(
         "created",
         created,
-    )
+    ).str("cwd", cwd)
     match write("${dir}/${id}.meta.json", stringify(meta.build())) {
         Ok(ok) -> {},
         Err(e) -> {},
@@ -348,11 +408,20 @@ fun begin_load_latest() {
     LOADED_SLOT.ready = false
     LOADED_SLOT.lock.unlock()
     spawn(fun() -> Unit {
+        // The newest session saved from this directory, not the newest
+        // overall: --continue picks up where this project left off.
         let listed = list_sessions_result()
+        let here = session_cwd()
         let id = ""
-        let l = _empty_loaded("session error: no saved sessions to continue")
-        if listed.sessions.len() > 0 {
-            id = listed.sessions[0].id
+        let l = _empty_loaded("session error: no saved sessions for this directory to continue")
+        let i = 0
+        while i < listed.sessions.len() && id == "" {
+            if same_dir(listed.sessions[i].cwd, here) {
+                id = listed.sessions[i].id
+            }
+            i = i + 1
+        }
+        if id != "" {
             l = load_session(id)
         }
         LOADED_SLOT.lock.lock()
@@ -426,6 +495,7 @@ fun _meta_from_full_file(dir: String, filename: String, fallback_id: String) -> 
                 created: 0,
                 model: "",
                 title: "error: invalid session file: ${filename}",
+                cwd: "",
             },
         },
         Err(e) -> SessionMeta {
@@ -433,6 +503,7 @@ fun _meta_from_full_file(dir: String, filename: String, fallback_id: String) -> 
             created: 0,
             model: "",
             title: "error: could not read session file: ${filename}",
+            cwd: "",
         },
     }
 }
@@ -744,6 +815,7 @@ fun _meta_from_json(j: JsonValue, fallback_id: String) -> SessionMeta {
         created: _created(j),
         model: as_str(field(j, "model")),
         title: as_str(field(j, "title")),
+        cwd: as_str(field(j, "cwd")),
     }
 }
 

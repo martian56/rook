@@ -31,7 +31,7 @@ fun main() {
         println("")
         println("usage: rook [options]")
         println("  --model <provider/model>   use this model for the session")
-        println("  --continue, -c             reopen the most recent session")
+        println("  --continue, -c             reopen this directory's most recent session")
         println("  -p, --print <prompt>       run one prompt headless, stream to stdout, exit")
         println("  --version, -V              print the version and exit")
         println("  --help, -h                 this text")

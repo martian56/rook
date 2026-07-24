@@ -3,6 +3,7 @@
 // model; no state changes here.
 
 import std/string
+import std/path { basename }
 import "github.com/martian56/plumage" { Frame }
 import "github.com/martian56/plumage/layout" { Rect, Constraint, split_v }
 import "github.com/martian56/plumage/widgets/block" { Block }
@@ -388,10 +389,11 @@ fun _sessions_panel(m: Chat, f: Frame) {
     if count < 1 {
         count = 1
     }
-    if count > full.h - 6 {
-        count = full.h - 6
+    if count > full.h - 7 {
+        count = full.h - 7
     }
-    let h = count + 2
+    // One extra inner row for the tab bar above the list.
+    let h = count + 3
     let w = 72
     if w > full.w - 2 {
         w = full.w - 2
@@ -415,12 +417,24 @@ fun _sessions_panel(m: Chat, f: Frame) {
     )
     box.render(area, f.buf)
     let inner = box.inner(area)
+    let here_sty = m.theme.accent.reverse()
+    let all_sty = m.theme.dim
+    if m.sessions_tab == 1 {
+        here_sty = m.theme.dim
+        all_sty = m.theme.accent.reverse()
+    }
+    let tx = f.buf.set_string(inner.x + 1, inner.y, " This directory ", here_sty)
+    tx = f.buf.set_string(tx + 1, inner.y, " All sessions ", all_sty)
+    f.buf.set_string(tx + 2, inner.y, "tab switches", m.theme.dim)
     if list.len() == 0 {
         let empty_msg = "(no saved sessions)"
+        if m.sessions_tab == 0 {
+            empty_msg = "(no sessions for this directory; press tab for all)"
+        }
         if m.sessions_loading {
             empty_msg = "loading sessions…"
         }
-        f.buf.set_string(inner.x + 1, inner.y, empty_msg, m.theme.dim)
+        f.buf.set_string(inner.x + 1, inner.y + 1, empty_msg, m.theme.dim)
         return
     }
     let sel = m.sessions_sel
@@ -439,6 +453,10 @@ fun _sessions_panel(m: Chat, f: Frame) {
             title = "(untitled)"
         }
         let row = "${title}  ·  ${s.model}${_session_age(s.created)}"
+        // The all-sessions tab says where each one came from.
+        if m.sessions_tab == 1 && s.cwd != "" {
+            row = "${title}  ·  ${basename(s.cwd)}  ·  ${s.model}${_session_age(s.created)}"
+        }
         if row.length() > inner.w - 2 {
             row = row.substring(0, inner.w - 2)
         }
@@ -446,9 +464,9 @@ fun _sessions_panel(m: Chat, f: Frame) {
             while row.length() < inner.w - 1 {
                 row = row.concat(" ")
             }
-            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+            f.buf.set_string(inner.x + 1, inner.y + 1 + r, row, m.theme.accent.reverse())
         } else {
-            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.text)
+            f.buf.set_string(inner.x + 1, inner.y + 1 + r, row, m.theme.text)
         }
         r = r + 1
     }

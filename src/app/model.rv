@@ -180,6 +180,8 @@ struct Chat {
     rewind_open: Bool,
     rewind_sel: Int,
     last_esc: Int,
+    // The /sessions panel tab: 0 = this directory, 1 = all sessions.
+    sessions_tab: Int,
 }
 
 fun chat_init() -> Chat {
@@ -293,6 +295,7 @@ fun chat_init() -> Chat {
         rewind_open: false,
         rewind_sel: 0,
         last_esc: 0 - 100,
+        sessions_tab: 0,
     }
 }
 
