@@ -29,7 +29,22 @@ language.
 
 ## Install
 
-Download a build for your platform from the
+One command installs the latest release, and the same command updates it
+later (rook tells you when a newer version exists):
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/martian56/rook/main/scripts/install.ps1 | iex
+```
+
+Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/martian56/rook/main/scripts/install.sh | bash
+```
+
+Or download a build for your platform from the
 [latest release](https://github.com/martian56/rook/releases/latest):
 
 | Platform | File |

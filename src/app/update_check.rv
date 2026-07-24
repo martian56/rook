@@ -3,7 +3,7 @@
 // is normal), and ROOK_NO_UPDATE_CHECK opts out entirely.
 
 import std/string
-import std/env { has_env }
+import std/env { has_env, os_name }
 import std/http { request_with_timeout, HttpResponse }
 import "github.com/martian56/aviary/jsonutil" { field, as_str }
 import std/json { parse }
@@ -19,12 +19,21 @@ fun begin_update_check() {
     spawn(fun() -> Unit {
         let latest = _latest_tag()
         if latest != "" && latest != "v${version()}" {
-            push_cmd_notice(
-                "rook ${latest} is available (you have v${version()}): github.com/martian56/rook/releases",
-            )
+            push_cmd_notice(update_notice(latest, "v${version()}", os_name()))
         }
     })
     return
+}
+
+// The what-is-new notice with the copy-pasteable update command for this
+// platform: one command installs and updates, pulled fresh from the repo so
+// old versions always run current install logic.
+fun update_notice(latest: String, current: String, os: String) -> String {
+    let cmd = "curl -fsSL https://raw.githubusercontent.com/martian56/rook/main/scripts/install.sh | bash"
+    if os == "windows" {
+        cmd = "irm https://raw.githubusercontent.com/martian56/rook/main/scripts/install.ps1 | iex"
+    }
+    return "rook ${latest} is available (you have ${current}). Update, then restart rook:\n  ${cmd}"
 }
 
 // The latest release tag, "" on any failure.
