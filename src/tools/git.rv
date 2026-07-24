@@ -8,6 +8,7 @@
 
 import std/string
 import std/process { run, run_with_input, Output }
+import "../config/config" { attribution_enabled }
 import "./paths" { resolve_path }
 
 const MAX_DIFF: Int = 6000
@@ -68,7 +69,8 @@ fun git_commit(message: String) -> String {
     if staged.stdout.trim() == "" {
         return "error: no staged changes to commit; stage the intended files first"
     }
-    let out = match run_with_input("git", ["commit", "-F", "-"], message) {
+    let signed = commit_message_with_attribution(message, attribution_enabled())
+    let out = match run_with_input("git", ["commit", "-F", "-"], signed) {
         Ok(o) -> o,
         Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
     }
@@ -131,4 +133,21 @@ fun _git(args: List<String>) -> Output {
         Ok(o) -> o,
         Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
     }
+}
+
+// The trailer naming rook as a co-author, tied to its machine account so
+// the commit links to it.
+const ATTRIBUTION_TRAILER: String = "Co-Authored-By: Rook <308697149+rook-agent-code@users.noreply.github.com>"
+
+// The commit message with rook's co-author trailer appended, once, when
+// attribution is on. Pure, so the shaping is testable without running git.
+fun commit_message_with_attribution(message: String, enabled: Bool) -> String {
+    let m = message.trim()
+    if !enabled {
+        return m
+    }
+    if m.contains("Co-Authored-By: Rook") {
+        return m
+    }
+    return "${m}\n\n${ATTRIBUTION_TRAILER}"
 }
