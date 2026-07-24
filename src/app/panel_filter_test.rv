@@ -1,0 +1,38 @@
+import std/string
+import std/test { assert_eq_int, assert_eq_str }
+import "./panel_filter" { sessions_set_full, sessions_set_scope, sessions_type, sessions_clear }
+import "../config/sessions" { SessionMeta, session_cwd }
+
+fun _meta(id: String, title: String, cwd: String) -> SessionMeta {
+    return SessionMeta { id, created: 0, model: "m", title, cwd }
+}
+
+fun test_scope_and_query_filter_together() {
+    let here = session_cwd()
+    let full = [
+        _meta("1", "fix the parser", here),
+        _meta("2", "fix the lexer", "/somewhere/else"),
+        _meta("3", "write docs", here),
+        _meta("4", "old session", ""),
+    ]
+    // All tab: everything shows.
+    let _ = sessions_clear()
+    let all = sessions_set_scope("")
+    let listed = sessions_set_full(full)
+    assert_eq_int(listed.len(), 4)
+    // This-directory tab: only sessions recorded here, unrecorded ones hidden.
+    let scoped = sessions_set_scope(here)
+    assert_eq_int(scoped.len(), 2)
+    assert_eq_str(scoped[0].id, "1")
+    assert_eq_str(scoped[1].id, "3")
+    // Typing filters within the scope.
+    let typed = sessions_type("f")
+    assert_eq_int(typed.len(), 1)
+    assert_eq_str(typed[0].id, "1")
+    // Back to all sessions keeps the query.
+    let widened = sessions_set_scope("")
+    assert_eq_int(widened.len(), 2)
+    let _reset = sessions_clear()
+    let _wide = sessions_set_scope("")
+    return
+}

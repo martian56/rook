@@ -21,7 +21,7 @@ import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty
 import "../tools/clipboard" { ClipResult, copy_to_clipboard }
 import "../commands" { Command, parse_command, CmdInfo, menu_matches, help_filtered }
 import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, Loaded }
+import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, session_cwd, Loaded }
 import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
 import "../config/config" { provider_of, key_needed_with, save_key, save_theme, model_source, base_source, theme_source, key_source, debug_log }
 import "../ui/themes" { all_themes, theme_by_name, theme_index }
@@ -40,7 +40,7 @@ import "../tools/shell" { run_command }
 import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
 import "../tools/pricing" { cost_micros_cached }
 import "../tools/checkpoints" { rewind_last_batch, checkpoint_batches }
-import "./panel_filter" { sessions_set_full, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear }
+import "./panel_filter" { sessions_set_full, sessions_set_scope, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear }
 
 // The /init task: explore the repo and write (or improve) its AGENTS.md, the
 // memory file rook loads into every session here.
@@ -1068,6 +1068,16 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
             m.sessions_list = sessions_type(c)
             m.sessions_sel = 0
         },
+        Tab -> {
+            // Switch between the this-directory and all-sessions tabs.
+            m.sessions_tab = 1 - m.sessions_tab
+            let scope = ""
+            if m.sessions_tab == 0 {
+                scope = session_cwd()
+            }
+            m.sessions_list = sessions_set_scope(scope)
+            m.sessions_sel = 0
+        },
         Backspace -> {
             m.sessions_list = sessions_backspace()
             m.sessions_sel = 0
@@ -1652,7 +1662,9 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.sessions_sel = 0
             m.sessions_loading = true
             m.sessions_open = true
-            let _ = sessions_clear()
+            m.sessions_tab = 0
+            let _ = sessions_set_scope(session_cwd())
+            let _cleared = sessions_clear()
             begin_list_sessions()
             return next(m)
         },

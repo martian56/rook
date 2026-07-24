@@ -5,11 +5,14 @@
 
 import std/string
 import std/sync { Mutex, mutex }
-import "../config/sessions" { SessionMeta }
+import "../config/sessions" { SessionMeta, same_dir }
 
 struct PanelFilter {
     lock: Mutex,
     sessions_query: String,
+    // The active directory scope: only sessions saved from this directory
+    // show while it is set; "" shows all (the panel's second tab).
+    sessions_scope: String,
     sessions_full: List<SessionMeta>,
     help_query: String,
 }
@@ -18,17 +21,36 @@ let FILTER: PanelFilter = _new_filter()
 
 fun _new_filter() -> PanelFilter {
     let full: List<SessionMeta> = []
-    return PanelFilter { lock: mutex(), sessions_query: "", sessions_full: full, help_query: "" }
+    return PanelFilter {
+        lock: mutex(),
+        sessions_query: "",
+        sessions_scope: "",
+        sessions_full: full,
+        help_query: "",
+    }
 }
 
 // Store the freshly scanned session list and return it filtered by the
-// current query. Called when the panel opens and when a rescan lands.
+// current scope and query. Called when the panel opens and when a rescan
+// lands.
 fun sessions_set_full(full: List<SessionMeta>) -> List<SessionMeta> {
     FILTER.lock.lock()
     FILTER.sessions_full = full
+    let scope = FILTER.sessions_scope
     let q = FILTER.sessions_query
     FILTER.lock.unlock()
-    return _filter_sessions(full, q)
+    return _filter_sessions(full, scope, q)
+}
+
+// Switch the directory scope (the panel's tabs) and return the list
+// refiltered under it.
+fun sessions_set_scope(scope: String) -> List<SessionMeta> {
+    FILTER.lock.lock()
+    FILTER.sessions_scope = scope
+    let q = FILTER.sessions_query
+    let full = FILTER.sessions_full
+    FILTER.lock.unlock()
+    return _filter_sessions(full, scope, q)
 }
 
 fun sessions_query() -> String {
@@ -43,9 +65,10 @@ fun sessions_type(c: String) -> List<SessionMeta> {
     FILTER.lock.lock()
     FILTER.sessions_query = FILTER.sessions_query.concat(c)
     let q = FILTER.sessions_query
+    let scope = FILTER.sessions_scope
     let full = FILTER.sessions_full
     FILTER.lock.unlock()
-    return _filter_sessions(full, q)
+    return _filter_sessions(full, scope, q)
 }
 
 // Drop the query's last character and return the filtered list.
@@ -56,31 +79,45 @@ fun sessions_backspace() -> List<SessionMeta> {
         q = q.substring(0, q.length() - 1)
     }
     FILTER.sessions_query = q
+    let scope = FILTER.sessions_scope
     let full = FILTER.sessions_full
     FILTER.lock.unlock()
-    return _filter_sessions(full, q)
+    return _filter_sessions(full, scope, q)
 }
 
-// Clear the query and return the unfiltered list.
+// Clear the query and return the list filtered by scope alone.
 fun sessions_clear() -> List<SessionMeta> {
     FILTER.lock.lock()
     FILTER.sessions_query = ""
+    let scope = FILTER.sessions_scope
     let full = FILTER.sessions_full
     FILTER.lock.unlock()
-    return full
+    return _filter_sessions(full, scope, "")
 }
 
-fun _filter_sessions(full: List<SessionMeta>, q: String) -> List<SessionMeta> {
+fun _filter_sessions(full: List<SessionMeta>, scope: String, q: String) -> List<SessionMeta> {
+    let scoped = full
+    if scope != "" {
+        let kept: List<SessionMeta> = []
+        let s = 0
+        while s < full.len() {
+            if same_dir(full[s].cwd, scope) {
+                kept.push(full[s])
+            }
+            s = s + 1
+        }
+        scoped = kept
+    }
     if q == "" {
-        return full
+        return scoped
     }
     let needle = q.to_lower()
     let out: List<SessionMeta> = []
     let i = 0
-    while i < full.len() {
-        let hay = "${full[i].title} ${full[i].model}".to_lower()
+    while i < scoped.len() {
+        let hay = "${scoped[i].title} ${scoped[i].model}".to_lower()
         if hay.contains(needle) {
-            out.push(full[i])
+            out.push(scoped[i])
         }
         i = i + 1
     }

@@ -2,7 +2,7 @@ import std/string
 import std/test { assert_eq_str, assert_eq_int, assert_true }
 import std/fs { write, create_dir_all, remove_file, remove_dir }
 import std/env { get_env, has_env }
-import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from }
+import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from, session_cwd, same_dir }
 import "github.com/martian56/aviary/message" { Message, ToolCall, role_str }
 import "../ui/transcript" { Entry }
 
@@ -225,7 +225,30 @@ fun _find(xs: List<SessionMeta>, id: String) -> SessionMeta {
         }
         i = i + 1
     }
-    return SessionMeta { id: "", created: 0, model: "", title: "" }
+    return SessionMeta { id: "", created: 0, model: "", title: "", cwd: "" }
+}
+
+fun test_saved_sessions_record_their_directory() {
+    let root = "_rook_session_cwd_${new_session_id()}"
+    create_dir_all(root)
+    let id = new_session_id()
+    let entries: List<Entry> = [Entry.UserMsg("hello from here")]
+    assert_eq_str(save_session_to(root, id, "m", entries, _no_msgs(), 0, 0), "")
+    let listed = list_sessions_from(root)
+    let meta = _find(listed.sessions, id)
+    assert_true(meta.cwd != "")
+    assert_eq_str(meta.cwd, session_cwd())
+    delete_session_from(root, id)
+    remove_dir(root)
+    return
+}
+
+fun test_same_dir_matching() {
+    assert_true(same_dir(session_cwd(), session_cwd()))
+    // Unrecorded directories (old sessions) never match anything.
+    assert_true(!same_dir("", session_cwd()))
+    assert_true(!same_dir(session_cwd(), ""))
+    assert_true(!same_dir("/somewhere/else", session_cwd()))
 }
 
 fun test_listing_uses_the_metadata_sidecar() {
