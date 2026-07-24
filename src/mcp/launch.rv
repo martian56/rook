@@ -7,7 +7,7 @@
 
 import std/string
 import std/env { os_name, get_env, has_env }
-import std/fs { create_dir_all, write, exists }
+import std/fs { create_dir_all, read, write, exists }
 import std/time { now_millis }
 import "./config" { ServerSpec }
 
@@ -156,6 +156,13 @@ fun windows_launcher_path() -> String {
     return "${home}/.rook/mcp-env-launcher.ps1"
 }
 
+// Captured once at startup: two rook processes only share this when they
+// started in the same millisecond, which combined with the launch stamp
+// makes a handoff-path collision across processes structurally unlikely
+// (the existence check alone raced: both processes could pick the same
+// fresh path in the same millisecond).
+let PROC_STAMP: Int = now_millis()
+
 fun windows_environment_path() -> String {
     let launcher = windows_launcher_path()
     if launcher == "" {
@@ -165,10 +172,10 @@ fun windows_environment_path() -> String {
     let dir = launcher.substring(0, slash)
     let stamp = now_millis()
     let suffix = 0
-    let path = "${dir}/mcp-env-${stamp}.pending"
+    let path = "${dir}/mcp-env-${PROC_STAMP}-${stamp}.pending"
     while exists(path) {
         suffix = suffix + 1
-        path = "${dir}/mcp-env-${stamp}-${suffix}.pending"
+        path = "${dir}/mcp-env-${PROC_STAMP}-${stamp}-${suffix}.pending"
     }
     return path
 }
@@ -195,9 +202,29 @@ fun write_windows_environment(path: String, entries: List<String>) -> String {
     if validation_error != "" {
         return validation_error
     }
-    return match write(path, _environment_payload(entries)) {
-        Ok(ok) -> "",
-        Err(e) -> "MCP environment error: could not write Windows handoff: ${e.message}",
+    let payload = _environment_payload(entries)
+    let write_error = ""
+    match write(path, payload) {
+        Ok(ok) -> {},
+        Err(e) -> {
+            write_error = "MCP environment error: could not write Windows handoff: ${e.message}"
+        },
+    }
+    if write_error != "" {
+        return write_error
+    }
+    // Read back and verify: if another process clobbered the same path in
+    // the write window, fail this handshake cleanly instead of launching a
+    // server with someone else's environment.
+    return match read(path) {
+        Ok(back) -> {
+            if back == payload {
+                ""
+            } else {
+                "MCP environment error: the handoff file was overwritten by another process; retry the connection"
+            }
+        },
+        Err(e) -> "MCP environment error: could not verify the Windows handoff: ${e.message}",
     }
 }
 

@@ -11,7 +11,7 @@ import "github.com/martian56/plumage/widgets/list" { ListView }
 import "github.com/martian56/plumage/style" { Style }
 import "github.com/martian56/wingspan" { width }
 import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
-import "../ui/transcript" { validate_and_count, window_lines }
+import "../ui/transcript" { Entry, validate_and_count, window_lines }
 import "../ui/selection" { normalize, is_empty, contains }
 import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
 import "../ui/themes" { all_themes }
@@ -103,6 +103,9 @@ fun chat_view(m: Chat, f: Frame) {
     }
     if m.entering_key {
         _key_modal(m, f)
+    }
+    if m.rewind_open {
+        _rewind_picker(m, f)
     }
 }
 
@@ -1102,4 +1105,82 @@ fun _status(m: Chat, area: Rect, f: Frame) {
         return
     }
     return
+}
+
+// The edit-a-previous-message picker (double Esc): the last user messages,
+// newest first; enter rewinds the conversation to just before the chosen
+// one and puts its text back in the input.
+fun _rewind_picker(m: Chat, f: Frame) {
+    let full = f.area()
+    let idxs = _user_entry_texts(m)
+    let count = idxs.len()
+    if count < 1 {
+        count = 1
+    }
+    if count > full.h - 6 {
+        count = full.h - 6
+    }
+    let h = count + 2
+    let w = 72
+    if w > full.w - 2 {
+        w = full.w - 2
+    }
+    let x = full.x + (full.w - w) / 2
+    let y = full.y + (full.h - h) / 2
+    if y < full.y {
+        y = full.y
+    }
+    let area = Rect.new(x, y, w, h)
+    f.buf.fill(area, " ", m.theme.dim)
+    let box = Block.new().rounded().title("Edit a previous message  (enter rewinds to it, esc)").style(
+        m.theme.modal,
+    ).title_style(m.theme.modal.bold())
+    box.render(area, f.buf)
+    let inner = box.inner(area)
+    if idxs.len() == 0 {
+        f.buf.set_string(inner.x + 1, inner.y, "(no messages yet)", m.theme.dim)
+        return
+    }
+    let sel = m.rewind_sel
+    if sel >= idxs.len() {
+        sel = idxs.len() - 1
+    }
+    let r = 0
+    while r < count && r < idxs.len() {
+        let row = idxs[r]
+        if row.length() > inner.w - 2 {
+            row = row.substring(0, inner.w - 2)
+        }
+        if r == sel {
+            while row.length() < inner.w - 1 {
+                row = row.concat(" ")
+            }
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
+        } else {
+            f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.text)
+        }
+        r = r + 1
+    }
+    return
+}
+
+// The last user messages' first lines, newest first, for the picker rows.
+fun _user_entry_texts(m: Chat) -> List<String> {
+    let out: List<String> = []
+    let i = m.entries.len() - 1
+    while i >= 0 && out.len() < 10 {
+        match m.entries[i] {
+            UserMsg(t) -> {
+                let first = t
+                let lines = t.lines()
+                if lines.len() > 0 {
+                    first = lines[0]
+                }
+                out.push(first)
+            },
+            _ -> {},
+        }
+        i = i - 1
+    }
+    return out
 }

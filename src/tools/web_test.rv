@@ -78,13 +78,16 @@ fun test_web_fetch_approval_classifies_sensitive_targets() {
     assert_true(web_fetch_needs_approval("http://metadata.google.internal/computeMetadata/v1/"))
 }
 
-fun test_web_fetch_approval_leaves_public_ip_targets_automatic() {
-    assert_false(web_fetch_needs_approval("https://8.8.8.8/dns-query"))
-    assert_false(web_fetch_needs_approval("8.8.8.8/dns-query"))
-    assert_false(web_fetch_needs_approval("http://8.8.8.8/"))
-    assert_false(web_fetch_needs_approval("http://172.32.0.1/"))
-    assert_false(web_fetch_needs_approval("http://[2001:4860:4860::8888]/"))
-    assert_eq_str(web_fetch_approval_detail("https://8.8.8.8/dns-query"), "")
+fun test_web_fetch_approval_asks_for_public_targets_too() {
+    // Redirects are followed and cannot be inspected, so public hosts ask as
+    // well; the detail says why, without the sensitive-target label.
+    assert_true(web_fetch_needs_approval("https://8.8.8.8/dns-query"))
+    assert_true(web_fetch_needs_approval("8.8.8.8/dns-query"))
+    assert_true(web_fetch_needs_approval("http://172.32.0.1/"))
+    assert_true(web_fetch_needs_approval("http://[2001:4860:4860::8888]/"))
+    let detail = web_fetch_approval_detail("https://8.8.8.8/dns-query")
+    assert_true(detail.contains("redirects are followed"))
+    assert_true(!detail.contains("target:"))
 }
 
 fun test_web_fetch_approval_handles_host_parser_bypasses() {

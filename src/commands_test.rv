@@ -21,6 +21,7 @@ fun tag(c: Command) -> String {
         Copy -> "copy",
         Export(p) -> "export:${p}",
         Init -> "init",
+        Rewind -> "rewind",
         Plugins(a) -> "plugins:${a}",
         Mcp(a) -> "mcp:${a}",
         Login -> "login",
@@ -177,4 +178,8 @@ fun test_status_parses_and_help_filter_narrows() {
     assert_eq_str(hits[0].name, "copy")
     assert_true(help_filtered(all, "").len() == all.len())
     assert_true(help_filtered(all, "zzz-no-match").len() == 0)
+}
+
+fun test_rewind_parses() {
+    assert_eq_str(tag(parse_command("/rewind")), "rewind")
 }

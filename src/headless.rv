@@ -1,0 +1,81 @@
+// Print mode: run one prompt without the TUI and stream the reply to
+// stdout, so rook works in scripts, hooks, and pipelines. The turn runs on
+// its goroutine exactly as in the UI; this loop drains the same display
+// events and prints them. Mutating tools auto-deny (there is nobody to
+// approve), unless a permission rule in settings allows them, so a
+// pipeline can opt specific tools in; questions auto-decline.
+
+import std/string
+import std/io { print, println }
+import std/sync { sleep_millis }
+import "./agent/state" { AgentState, DisplayEvent }
+import "./agent/turn" { run_turn }
+import "./config/config" { resolve_model, resolve_base, resolve_key, key_needed_with, provider_of }
+
+fun run_print(prompt: String) {
+    let model = resolve_model()
+    let api_key = resolve_key(model)
+    let base_url = resolve_base()
+    if key_needed_with(model, api_key) {
+        println(
+            "error: no API key for ${provider_of(model)}; set its environment variable or run rook interactively and use /key",
+        )
+        return
+    }
+    let st = AgentState.new()
+    st.push_user(prompt)
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, model, api_key, base_url)
+    })
+    let running = true
+    while running {
+        sleep_millis(30)
+        let snap = st.drain()
+        let i = 0
+        while i < snap.events.len() {
+            _print_event(snap.events[i])
+            i = i + 1
+        }
+        // Nobody can approve here: deny mutating tools (permission "allow"
+        // rules still auto-run without asking) and decline questions.
+        if snap.pending != "" {
+            println("")
+            println("[denied without a terminal: ${snap.pending}; add a permission rule to allow it]")
+            st.decide(0)
+        }
+        if snap.question != "" {
+            st.decide(0 - 1)
+        }
+        if snap.done {
+            running = false
+        }
+    }
+    println("")
+    return
+}
+
+fun _print_event(e: DisplayEvent) {
+    match e {
+        Chunk(d) -> {
+            print(d)
+        },
+        ToolRan(label, result) -> {
+            println("")
+            println("[${label}]")
+        },
+        Info(t) -> {
+            println("")
+            println("[${t}]")
+        },
+        AgentStarted(id, name) -> {
+            println("")
+            println("[${name} agent started]")
+        },
+        AgentFinished(id, name, used) -> {
+            println("[${name} agent done, ${used} tools]")
+        },
+        _ -> {},
+    }
+    return
+}
