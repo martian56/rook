@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.59
+
+- One command installs or updates rook: scripts/install.ps1 (Windows) and scripts/install.sh (Linux) fetch the latest release and swap the binary in place, handling a running rook.exe and unwritable locations. The startup update notice now prints the exact command for your platform, and the README leads with the one-liners. (#322)
+- /sessions has two tabs: This directory (default) and All sessions, switched with Tab; rows on the All tab also name their folder, and type-to-filter works within the active tab. Sessions record the directory they were saved from. (#323)
+- --continue and -c resume the newest session saved from the current directory instead of the newest anywhere. Sessions saved before this release have no recorded directory and appear only under All sessions. (#323)
+
 ## 0.3.58
 
 - The thinking indicator no longer appears to flash green during tool-heavy turns: a permanent spacer row separates it from the transcript's green tool bullets, and it is indented past their column, so nothing green ever sits in or beside the animation.
