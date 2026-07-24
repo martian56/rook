@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.58
+
+- The thinking indicator no longer appears to flash green during tool-heavy turns: a permanent spacer row separates it from the transcript's green tool bullets, and it is indented past their column, so nothing green ever sits in or beside the animation.
+
 ## 0.3.57
 
 - rook signs its work: commits made through git_commit carry a Co-Authored-By trailer tied to the rook-agent-code account (added in the tool, once, never duplicated), and pull requests the agent opens end with a generated-by line. Set "attribution": false in rook.json to turn both off for repositories whose conventions forbid attribution.
