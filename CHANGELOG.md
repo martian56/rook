@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.56
+
+- Selecting text no longer slows the app: mouse drag bursts coalesce in the run loop (plumage 0.3.1), so a drag costs one render instead of one per motion report. Subagent tool rows append with a plain push in the common case, and custom slash commands are cached instead of re-reading every file per invocation. (#312, #253, #270)
+- rook -p "prompt" runs one prompt without the TUI and streams the reply to stdout, for scripts and pipelines. Mutating tools auto-deny (permission rules can allow specific ones); questions auto-decline. (#306)
+- Files are checkpointed before every write, edit, and multi_edit, one batch per turn; /rewind restores the newest batch, stackable across turns. (#308)
+- Double Esc opens an edit-a-previous-message picker: enter rewinds the conversation to just before the chosen message and puts its text back in the input. (#307)
+- /status shows the resolved model, endpoint, theme, and key with the config layer each came from. A leading # appends a note to AGENTS.md. budget_usd in rook.json warns once when the session cost passes it. ROOK_DEBUG=1 logs raw provider failures to ~/.rook/debug.log. A startup check mentions newer releases (ROOK_NO_UPDATE_CHECK opts out). (#309)
+- The sessions and help panels filter as you type; Esc clears the filter first. Session delete moves to the Delete key with a second-press confirm. (#288)
+- The Windows MCP environment handoff adds a per-process stamp and verifies its payload after writing, so simultaneous launches from two rook processes fail cleanly instead of crossing environments. (#238)
+- web_fetch always asks before fetching, because redirects are followed and cannot be inspected; a permission rule skips the prompt for trusted hosts. (#232)
+
 ## 0.3.55
 
 - Esc interrupts everywhere: during a subagent's in-flight request (which previously could not notice a cancel until the whole reply arrived), during context summarization, and on the question prompt, where Esc now declines and stops the turn like the approval prompt. (#305)
