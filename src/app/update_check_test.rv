@@ -1,0 +1,13 @@
+import std/string
+import std/test { assert_true }
+import "./update_check" { update_notice }
+
+fun test_update_notice_names_versions_and_the_platform_command() {
+    let win = update_notice("v0.4.0", "v0.3.58", "windows")
+    assert_true(win.contains("v0.4.0 is available"))
+    assert_true(win.contains("you have v0.3.58"))
+    assert_true(win.contains("install.ps1 | iex"))
+    let nix = update_notice("v0.4.0", "v0.3.58", "linux")
+    assert_true(nix.contains("install.sh | bash"))
+    assert_true(!nix.contains("install.ps1"))
+}
