@@ -902,10 +902,13 @@ fun _question_key(m: Chat, k: Key) -> Step<Chat> {
         },
         Esc -> {
             // Match the approval prompt: Esc backs out of the whole turn, not
-            // just the question, so an interrupt never feels swallowed.
+            // just the question, so an interrupt never feels swallowed. Raise
+            // the interrupt before answering: decide() unblocks the turn
+            // goroutine, and if the flag is not set yet it can get through the
+            // next round or tool call before it sees the stop.
+            m.agent.request_interrupt()
             m.agent.decide(0 - 1)
             m.question = ""
-            m.agent.request_interrupt()
         },
         _ -> {},
     }
@@ -935,9 +938,12 @@ fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
             m.pending = ""
         },
         Esc -> {
+            // Interrupt first, then answer: decide() releases the waiting turn
+            // goroutine immediately, so setting the flag afterwards races with
+            // it and the turn can run another tool call before noticing.
+            m.agent.request_interrupt()
             m.agent.decide(0)
             m.pending = ""
-            m.agent.request_interrupt()
         },
         _ -> {},
     }
