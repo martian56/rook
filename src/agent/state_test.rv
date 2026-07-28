@@ -118,6 +118,25 @@ fun test_interrupt_cancels_the_stream_token() {
     assert_false(st.token().canceled())
 }
 
+// Once Esc has asked the turn to stop, an approval is denied outright rather
+// than queued in front of the user. Both calls return without blocking on a
+// decision, which is what lets a turn with parallel agents actually end on
+// one Esc instead of one per waiting caller.
+fun test_approval_is_denied_without_prompting_after_an_interrupt() {
+    let st = AgentState.new()
+    st.request_interrupt()
+    assert_eq_int(st.ask_detail("write_file(a.txt)", ""), 0)
+    assert_eq_str(st.pending_now(), "")
+}
+
+fun test_question_is_declined_without_prompting_after_an_interrupt() {
+    let st = AgentState.new()
+    st.request_interrupt()
+    let options: List<String> = ["keep", "drop"]
+    assert_eq_int(st.ask_question("which?", options), 0 - 1)
+    assert_eq_str(st.question_now(), "")
+}
+
 fun test_pending_is_readable_without_draining_events() {
     let st = AgentState.new()
     st.emit(DisplayEvent.Started)

@@ -346,7 +346,19 @@ impl AgentState {
 
     // ask with extra lines (a diff preview) shown under the label.
     fun ask_detail(self, desc: String, detail: String) -> Int {
+        // Esc already asked to stop: answer deny without showing a prompt.
+        // Askers queue on ask_lock, so with parallel subagents running the
+        // user would otherwise have to dismiss one prompt per waiting caller
+        // before the turn actually ended.
+        if self.interrupted() {
+            return 0
+        }
         self.ask_lock.lock()
+        // The interrupt may have landed while this caller waited its turn.
+        if self.interrupted() {
+            self.ask_lock.unlock()
+            return 0
+        }
         self.lock.lock()
         self.pending = desc
         self.pending_detail = detail
@@ -381,7 +393,15 @@ impl AgentState {
     // ask_lock and decision channel with approvals, so only one prompt is
     // in front of the user at a time.
     fun ask_question(self, q: String, options: List<String>) -> Int {
+        // Declined without prompting once Esc has asked the turn to stop.
+        if self.interrupted() {
+            return 0 - 1
+        }
         self.ask_lock.lock()
+        if self.interrupted() {
+            self.ask_lock.unlock()
+            return 0 - 1
+        }
         self.lock.lock()
         self.question = q
         self.choices = options

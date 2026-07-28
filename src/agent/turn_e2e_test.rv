@@ -18,6 +18,8 @@ let fanout_hits = 0
 let ask_hits = 0
 let perm_hits = 0
 let plan_hits = 0
+let batch_hits = 0
+let fanout_stop_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun read_handler(req: Request) -> Response {
@@ -75,6 +77,56 @@ fun serve_plan() {
     let app = Server.new()
     app.post("/v1/chat/completions", plan_handler)
     app.listen("127.0.0.1:8469")
+}
+
+// Round 1: two write_file calls in one batch, so Esc can land between them.
+fun batch_handler(req: Request) -> Response {
+    batch_hits = batch_hits + 1
+    if batch_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"b1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e_batch_a.txt\\\",\\\"content\\\":\\\"a\\\"}\"}},{\"index\":1,\"id\":\"b2\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e_batch_b.txt\\\",\\\"content\\\":\\\"b\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Wrote both files.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_batch() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", batch_handler)
+    app.listen("127.0.0.1:8470")
+}
+
+// Round 1: dispatch, write_file, dispatch. The write in the middle needs
+// approval, which gives Esc a deterministic place to land with one agent
+// already spawned and one dispatch still ahead of it.
+fun fanout_stop_handler(req: Request) -> Response {
+    if req.body.contains("echo agent") {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"echo done\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    if req.body.contains("shout agent") {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"SHOUT DONE\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    fanout_stop_hits = fanout_stop_hits + 1
+    if fanout_stop_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"g1\",\"function\":{\"name\":\"dispatch\",\"arguments\":\"{\\\"agent\\\":\\\"echoer\\\",\\\"task\\\":\\\"say it\\\"}\"}},{\"index\":1,\"id\":\"g2\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_e2e_fanstop.txt\\\",\\\"content\\\":\\\"x\\\"}\"}},{\"index\":2,\"id\":\"g3\",\"function\":{\"name\":\"dispatch\",\"arguments\":\"{\\\"agent\\\":\\\"shouter\\\",\\\"task\\\":\\\"shout it\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"All three ran.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_fanout_stop() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", fanout_stop_handler)
+    app.listen("127.0.0.1:8471")
 }
 
 // One server plays both sides of a dispatch: the subagent's requests carry
@@ -416,6 +468,110 @@ fun test_plan_mode_blocks_a_write() {
     assert_true(got.contains("Plan mode is on"))
     assert_true(got.contains("Here is my plan instead."))
     assert_true(!exists("_rook_e2e_plan.txt"))
+    return
+}
+
+// Esc at the approval prompt for the first of two writes in one batch must
+// stop the whole batch: the second write neither runs nor re-prompts.
+fun test_esc_at_an_approval_stops_the_rest_of_the_batch() {
+    spawn(fun() -> Unit {
+        serve_batch()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("write both files")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8470/v1")
+    })
+    // Play the user pressing Esc at the prompt: deny, then interrupt.
+    _interrupt_when_pending(st)
+    let got = e2e_drain(st)
+    assert_true(got.contains("[info Interrupted]"))
+    // Neither file exists: the first was denied, the second never ran.
+    assert_true(!exists("_rook_e2e_batch_a.txt"))
+    assert_true(!exists("_rook_e2e_batch_b.txt"))
+    // The second call was never even offered for approval.
+    assert_true(!got.contains("write_file(_rook_e2e_batch_b.txt)"))
+    // Every call still carries a tool result, so the history stays balanced
+    // for a resume: user, assistant(two tool_calls), two tool_results.
+    let msgs = st.messages()
+    assert_eq_int(msgs.len(), 4)
+    assert_eq_str(msgs[2].tool_call_id, "b1")
+    assert_eq_str(msgs[3].tool_call_id, "b2")
+    assert_true(msgs[3].content.contains("interrupted by user"))
+    return
+}
+
+// Esc mid fan-out: the batch is dispatch, write_file, dispatch, so the stop
+// lands at the write's approval with the first agent already spawned and the
+// second dispatch still ahead. The turn must wait for the agent it started
+// (rather than for a slot nothing will ever fill), skip the one it did not,
+// and still leave every call with a result.
+fun test_esc_mid_fanout_waits_only_for_started_agents() {
+    create_dir_all(".agents/subagents")
+    fs_write(
+        ".agents/subagents/echoer.md",
+        "---\ndescription: echoes things\n---\nYou are the echo agent.",
+    )
+    fs_write(
+        ".agents/subagents/shouter.md",
+        "---\ndescription: shouts things\n---\nYou are the shout agent.",
+    )
+    spawn(fun() -> Unit {
+        serve_fanout_stop()
+    })
+    sleep_millis(200)
+    let st = AgentState.new()
+    st.push_user("run all three")
+    st.begin()
+    spawn(fun() -> Unit {
+        run_turn(st, "custom/local", "", "http://127.0.0.1:8471/v1")
+    })
+    _interrupt_when_pending(st)
+    // Reaching the end of the drain at all is the point: a stopped fan-out
+    // that waited on the unstarted dispatch's slot would block here forever.
+    let got = e2e_drain(st)
+    assert_true(got.contains("[info Interrupted]"))
+    // The first agent was already running when Esc landed; the second was
+    // never started, and the denied write never happened.
+    assert_true(got.contains("[agent echoer started]"))
+    assert_true(!got.contains("[agent shouter started]"))
+    assert_true(!exists("_rook_e2e_fanstop.txt"))
+    // All three calls carry a result, in call order: the started agent's (its
+    // own answer or an interrupted one, depending on where the cancel landed),
+    // the denied write, then the placeholder for the dispatch that never ran.
+    let msgs = st.messages()
+    assert_eq_int(msgs.len(), 5)
+    assert_eq_str(msgs[2].tool_call_id, "g1")
+    assert_eq_str(msgs[3].tool_call_id, "g2")
+    assert_eq_str(msgs[4].tool_call_id, "g3")
+    assert_true(msgs[4].content.contains("interrupted by user"))
+    remove_file(".agents/subagents/echoer.md")
+    remove_file(".agents/subagents/shouter.md")
+    remove_dir(".agents/subagents")
+    remove_dir(".agents")
+    return
+}
+
+// Poll for a pending approval and answer it the way Esc does: deny the call
+// and ask the turn to stop.
+fun _interrupt_when_pending(st: AgentState) {
+    spawn(fun() -> Unit {
+        let tries = 0
+        let answered = false
+        while tries < 400 && !answered {
+            if st.pending_now() != "" {
+                // Same order the UI uses: raise the flag, then release the
+                // goroutine, so it cannot slip past the stop.
+                st.request_interrupt()
+                st.decide(0)
+                answered = true
+            }
+            sleep_millis(10)
+            tries = tries + 1
+        }
+    })
     return
 }
 

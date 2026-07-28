@@ -156,3 +156,30 @@ fun test_subagent_write_approval_shows_and_records_the_preview() {
     remove_file(path)
     return
 }
+
+// A subagent's mutating call after Esc is denied on the spot: it must not put
+// a fresh approval prompt in front of a user who already asked to stop, and
+// the write must not happen. Runs inline, since nothing should block.
+fun test_subagent_mutation_after_an_interrupt_is_denied_without_prompting() {
+    reset_hooks()
+    let path = "_rook_sub_interrupted.txt"
+    if exists(path) {
+        remove_file(path)
+    }
+    let st = AgentState.new()
+    st.request_interrupt()
+    let allowed: List<String> = []
+    let result = _sub_one_with_hooks(
+        st,
+        full_agent("worker"),
+        call("write_file", "{\"path\":\"_rook_sub_interrupted.txt\",\"content\":\"changed\"}"),
+        allowed,
+        allowing_pre_hook,
+        record_post_hook,
+        ask_permission,
+    )
+    assert_true(result.contains("denied"))
+    assert_eq_str(st.pending_now(), "")
+    assert_true(!exists(path))
+    return
+}

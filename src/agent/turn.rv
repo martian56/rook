@@ -127,27 +127,29 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         // in one batch fan out to concurrent goroutines; everything else
         // runs in order on this one.
         st.push_assistant_calls(reply_text, calls)
-        // Esc may have landed while the model was streaming this tool request.
-        // Skip running the batch so a tool the user pre-approved this turn does
-        // not execute after they asked to stop, but still record a result for
-        // each call so the conversation stays balanced for a resume.
-        if st.interrupted() {
-            let c = 0
-            while c < calls.len() {
-                st.push_tool_result(calls[c].id, calls[c].name, "(interrupted by user before running)")
-                c = c + 1
-            }
-            st.emit(DisplayEvent.Info("Interrupted"))
-            _end_turn(st)
-            return
-        }
         let fanout = _count_dispatch(calls) >= 2
         let fanout_results = ToolResults.new(calls.len())
-        if fanout {
+        // Nothing is about to run if Esc already landed while the model was
+        // streaming this request, so do not announce a fan-out that will not
+        // happen.
+        if fanout && !st.interrupted() {
             st.emit(DisplayEvent.Info("running ${_count_dispatch(calls)} agents in parallel…"))
         }
         let i = 0
+        // The index of the first call left unrun by an Esc, -1 when the whole
+        // batch ran and 0 when the stop arrived before any call started.
+        let stopped = 0 - 1
         while i < calls.len() {
+            // Esc can land between the calls of one batch, not just before it.
+            // Without this the rest of the batch still runs: read-only calls
+            // silently, and a mutating one puts another approval prompt in
+            // front of a user who already asked to stop. Checking here rather
+            // than before the loop keeps the interrupted bookkeeping in one
+            // place below, since a stop that beat the batch is just stopped=0.
+            if st.interrupted() {
+                stopped = i
+                break
+            }
             let call = calls[i]
             if fanout && call.name == "dispatch" {
                 let idx = i
@@ -176,6 +178,31 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 }
             }
             i = i + 1
+        }
+        // Esc stopped the batch part way. Wait only for the calls that were
+        // actually started (a spawned agent still owns its slot), then record a
+        // result for each one that never ran so the conversation stays balanced
+        // for a resume, and end the turn.
+        if stopped >= 0 {
+            if fanout {
+                while fanout_results.count() < stopped {
+                    sleep_millis(20)
+                }
+                let d = 0
+                while d < stopped {
+                    st.push_tool_result(calls[d].id, calls[d].name, fanout_results.get(d))
+                    d = d + 1
+                }
+            }
+            let c = stopped
+            while c < calls.len() {
+                st.push_tool_result(calls[c].id, calls[c].name, "(interrupted by user before running)")
+                c = c + 1
+            }
+            st.emit(DisplayEvent.Info("Interrupted"))
+            _report_usage(st, model)
+            _end_turn(st)
+            return
         }
         // Every agent's result must be in the conversation before the next
         // round's request is built.
