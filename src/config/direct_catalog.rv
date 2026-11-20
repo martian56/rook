@@ -21,7 +21,7 @@
 // https://console.sakana.ai/models
 // https://ollama.com/library
 
-fun direct_catalog() -> List<String> {
+fun direct_catalog() -> list[str] {
     return [
         // OpenAI. These models support Chat Completions and function calling.
         "openai/gpt-5.6",

@@ -5,14 +5,14 @@
 // approve), unless a permission rule in settings allows them, so a
 // pipeline can opt specific tools in; questions auto-decline.
 
-import std/string
-import std/io { print, println }
-import std/sync { sleep_millis }
-import "./agent/state" { AgentState, DisplayEvent }
-import "./agent/turn" { run_turn }
-import "./config/config" { resolve_model, resolve_base, resolve_key, key_needed_with, provider_of }
+import std.string
+from std.io import print, println
+from std.sync import sleep_millis
+from "./agent/state" import AgentState, DisplayEvent
+from "./agent/turn" import run_turn
+from "./config/config" import resolve_model, resolve_base, resolve_key, key_needed_with, provider_of
 
-fun run_print(prompt: String) {
+fun run_print(prompt: str) {
     let model = resolve_model()
     let api_key = resolve_key(model)
     let base_url = resolve_base()
@@ -25,14 +25,14 @@ fun run_print(prompt: String) {
     let st = AgentState.new()
     st.push_user(prompt)
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, model, api_key, base_url)
-    })
-    let running = true
+    }
+    var running = true
     while running {
         sleep_millis(30)
         let snap = st.drain()
-        let i = 0
+        var i = 0
         while i < snap.events.len() {
             _print_event(snap.events[i])
             i = i + 1
@@ -57,25 +57,21 @@ fun run_print(prompt: String) {
 
 fun _print_event(e: DisplayEvent) {
     match e {
-        Chunk(d) -> {
-            print(d)
-        },
-        ToolRan(label, result) -> {
+        case Chunk(d) { print(d) }
+        case ToolRan(label, result) {
             println("")
             println("[${label}]")
-        },
-        Info(t) -> {
+        }
+        case Info(t) {
             println("")
             println("[${t}]")
-        },
-        AgentStarted(id, name) -> {
+        }
+        case AgentStarted(id, name) {
             println("")
             println("[${name} agent started]")
-        },
-        AgentFinished(id, name, used) -> {
-            println("[${name} agent done, ${used} tools]")
-        },
-        _ -> {},
+        }
+        case AgentFinished(id, name, used) { println("[${name} agent done, ${used} tools]") }
+        case _ {}
     }
     return
 }

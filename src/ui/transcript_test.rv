@@ -1,12 +1,12 @@
-import std/string
-import std/test { assert_eq_str, assert_true, assert_eq_int }
-import "github.com/martian56/plumage/text" { Line }
-import "./transcript" { Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines, transcript_texts }
-import "./theme" { default_theme }
+import std.string
+from std.test import assert_eq_str, assert_true, assert_eq_int
+from "github.com/martian56/plumage/text" import Line
+from "./transcript" import Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines, transcript_texts
+from "./theme" import default_theme
 
-fun line_text(lines: List<Line>, i: Int) -> String {
-    let out = ""
-    let s = 0
+fun line_text(lines: list[Line], i: int) -> str {
+    var out = ""
+    var s = 0
     while s < lines[i].spans.len() {
         out = out.concat(lines[i].spans[s].text)
         s = s + 1
@@ -49,7 +49,7 @@ fun test_cached_assembly_matches_build_lines_and_fills_the_cache() {
         Entry.BotMsg("an answer with several words to wrap too"),
         Entry.ToolMsg("Bash(ls)", "one\ntwo"),
     ]
-    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines(), empty_entry_lines()]
+    let cache: list[EntryLines] = [empty_entry_lines(), empty_entry_lines(), empty_entry_lines()]
 
     // The cached path produces exactly the same lines as the direct build.
     let direct = build_lines(entries, 20, default_theme())
@@ -68,7 +68,7 @@ fun test_cached_assembly_matches_build_lines_and_fills_the_cache() {
 
 fun test_invalid_slot_is_recomputed() {
     let entries = [Entry.UserMsg("first"), Entry.BotMsg("second")]
-    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines()]
+    let cache: list[EntryLines] = [empty_entry_lines(), empty_entry_lines()]
     let first = assemble_cached(entries, cache, 40, default_theme())
     // Invalidate one slot; the next assembly recomputes it and stays correct.
     cache[1] = empty_entry_lines()
@@ -79,7 +79,7 @@ fun test_invalid_slot_is_recomputed() {
 
 fun test_window_returns_only_the_visible_slice() {
     let entries = [Entry.UserMsg("a"), Entry.BotMsg("b"), Entry.UserMsg("c"), Entry.BotMsg("d")]
-    let cache: List<EntryLines> = [
+    let cache: list[EntryLines] = [
         empty_entry_lines(),
         empty_entry_lines(),
         empty_entry_lines(),
@@ -101,7 +101,7 @@ fun test_window_returns_only_the_visible_slice() {
 
 fun test_window_past_the_end_is_short() {
     let entries = [Entry.UserMsg("only")]
-    let cache: List<EntryLines> = [empty_entry_lines()]
+    let cache: list[EntryLines] = [empty_entry_lines()]
     let total = validate_and_count(entries, cache, 40, default_theme())
     // Asking for more lines than exist returns just what is there.
     let win = window_lines(entries, cache, 0, 50)
@@ -110,7 +110,7 @@ fun test_window_past_the_end_is_short() {
 
 fun test_transcript_texts_are_the_plain_rendered_lines() {
     let entries = [Entry.UserMsg("hello"), Entry.BotMsg("world")]
-    let cache: List<EntryLines> = [empty_entry_lines(), empty_entry_lines()]
+    let cache: list[EntryLines] = [empty_entry_lines(), empty_entry_lines()]
     let texts = transcript_texts(entries, cache, 40, default_theme())
     // Same count as the rendered lines, with the markers included, so a mouse
     // selection maps cell columns to these strings.
@@ -128,16 +128,16 @@ fun test_bot_markdown_renders_structure_not_markers() {
     // The heading keeps its text, not its # marks; the bullet renders as a
     // dot; inline code loses its backticks.
     assert_eq_str(line_text(lines, 0), "● Done")
-    let all = ""
-    let i = 0
+    var all = ""
+    var i = 0
     while i < lines.len() {
         all = "${all}|${line_text(lines, i)}"
         i = i + 1
     }
     assert_true(all.contains("The fix is in main.rv:"))
     assert_true(all.contains("• fast path"))
-    assert_true(!all.contains("##"))
-    assert_true(!all.contains("**"))
+    assert_true(not all.contains("##"))
+    assert_true(not all.contains("**"))
 }
 
 fun test_bot_code_block_stays_verbatim() {
@@ -152,8 +152,8 @@ fun test_bot_code_block_stays_verbatim() {
 fun test_bot_tables_checkboxes_and_strikethrough_render() {
     let md = "| a | b |\n|---|---|\n| 1 | 2 |\n\n- [x] shipped\n\n~~old~~ new"
     let lines = build_lines([Entry.BotMsg(md)], 60, default_theme())
-    let all = ""
-    let i = 0
+    var all = ""
+    var i = 0
     while i < lines.len() {
         all = "${all}|${line_text(lines, i)}"
         i = i + 1
@@ -164,15 +164,15 @@ fun test_bot_tables_checkboxes_and_strikethrough_render() {
     // The task box is a checkbox glyph, the strike markers are consumed.
     assert_true(all.contains("☑ shipped"))
     assert_true(all.contains("old new"))
-    assert_true(!all.contains("~~"))
-    assert_true(!all.contains("[x]"))
+    assert_true(not all.contains("~~"))
+    assert_true(not all.contains("[x]"))
 }
 
 fun test_bot_quotes_nest_and_diff_fences_color() {
     let md = "> ### Inside\n> - quoted item\n\n```diff\n- old\n+ new\n```"
     let lines = build_lines([Entry.BotMsg(md)], 60, default_theme())
-    let all = ""
-    let i = 0
+    var all = ""
+    var i = 0
     while i < lines.len() {
         all = "${all}|${line_text(lines, i)}"
         i = i + 1
@@ -180,7 +180,7 @@ fun test_bot_quotes_nest_and_diff_fences_color() {
     // The quoted heading and bullet render behind the bar, marks consumed.
     assert_true(all.contains("▎ Inside"))
     assert_true(all.contains("▎ • quoted item"))
-    assert_true(!all.contains("###"))
+    assert_true(not all.contains("###"))
     // The diff lines keep their +/- text.
     assert_true(all.contains("- old"))
     assert_true(all.contains("+ new"))

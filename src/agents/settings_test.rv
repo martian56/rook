@@ -1,9 +1,9 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./settings" { setting_str, setting_from, setting_section, settings_errors_from }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./settings" import setting_str, setting_from, setting_section, settings_errors_from
 
-const DOC: String = "{\"model\": \"openai/gpt-4o\", \"theme\": \"Nord\", \"permissions\": {\"allow\": [\"read_file\"]}}"
+let DOC: str = "{\"model\": \"openai/gpt-4o\", \"theme\": \"Nord\", \"permissions\": {\"allow\": [\"read_file\"]}}"
 
 fun test_setting_from_reads_string_fields() {
     assert_eq_str(setting_from(DOC, "model"), "openai/gpt-4o")
@@ -32,20 +32,20 @@ fun test_setting_str_reads_a_root() {
 fun test_setting_section_finds_objects() {
     create_dir_all("_rook_sec")
     write("_rook_sec/settings.json", DOC)
-    let found = false
+    var found = false
     match setting_section("_rook_sec", "permissions") {
-        Some(v) -> {
+        case Some(v) {
             found = true
-        },
-        None -> {},
+        }
+        case None {}
     }
     assert_true(found)
-    let absent = true
+    var absent = true
     match setting_section("_rook_sec", "mcp") {
-        Some(v) -> {
+        case Some(v) {
             absent = false
-        },
-        None -> {},
+        }
+        case None {}
     }
     assert_true(absent)
     remove_file("_rook_sec/settings.json")
@@ -65,12 +65,12 @@ fun test_settings_errors_report_invalid_project_and_global_files() {
     assert_true(errors[1].contains("_rook_bad_global/settings.json"))
     assert_true(errors[1].contains("invalid JSON"))
     assert_eq_str(setting_str("_rook_bad_project", "model"), "")
-    let section_missing = true
+    var section_missing = true
     match setting_section("_rook_bad_project", "permissions") {
-        Some(v) -> {
+        case Some(v) {
             section_missing = false
-        },
-        None -> {},
+        }
+        case None {}
     }
     assert_true(section_missing)
     remove_file("_rook_bad_project/settings.json")

@@ -2,34 +2,34 @@
 // exists, one notice says so. Runs on a goroutine, fails silently (offline
 // is normal), and ROOK_NO_UPDATE_CHECK opts out entirely.
 
-import std/string
-import std/env { has_env, os_name }
-import std/http { request_with_timeout, HttpResponse }
-import "github.com/martian56/aviary/jsonutil" { field, as_str }
-import std/json { parse }
-import "../version" { version }
-import "./cmdq" { push_cmd_notice }
+import std.string
+from std.env import has_env, os_name
+from std.http import request_with_timeout, HttpResponse
+from "github.com/martian56/aviary/jsonutil" import field, as_str
+from std.json import parse
+from "../version" import version
+from "./cmdq" import push_cmd_notice
 
-const RELEASES_URL: String = "https://api.github.com/repos/martian56/rook/releases/latest"
+let RELEASES_URL: str = "https://api.github.com/repos/martian56/rook/releases/latest"
 
 fun begin_update_check() {
     if has_env("ROOK_NO_UPDATE_CHECK") {
         return
     }
-    spawn(fun() -> Unit {
+    spawn {
         let latest = _latest_tag()
-        if latest != "" && latest != "v${version()}" {
+        if latest != "" and latest != "v${version()}" {
             push_cmd_notice(update_notice(latest, "v${version()}", os_name()))
         }
-    })
+    }
     return
 }
 
 // The what-is-new notice with the copy-pasteable update command for this
 // platform: one command installs and updates, pulled fresh from the repo so
 // old versions always run current install logic.
-fun update_notice(latest: String, current: String, os: String) -> String {
-    let cmd = "curl -fsSL https://raw.githubusercontent.com/martian56/rook/main/scripts/install.sh | bash"
+fun update_notice(latest: str, current: str, os: str) -> str {
+    var cmd = "curl -fsSL https://raw.githubusercontent.com/martian56/rook/main/scripts/install.sh | bash"
     if os == "windows" {
         cmd = "irm https://raw.githubusercontent.com/martian56/rook/main/scripts/install.ps1 | iex"
     }
@@ -37,20 +37,20 @@ fun update_notice(latest: String, current: String, os: String) -> String {
 }
 
 // The latest release tag, "" on any failure.
-fun _latest_tag() -> String {
+fun _latest_tag() -> str {
     let headers = "Accept: application/vnd.github+json\nUser-Agent: rook"
     return match request_with_timeout("GET", RELEASES_URL, "", headers, 8000) {
-        Ok(resp) -> _tag_of(resp),
-        Err(e) -> "",
+        case Ok(resp) { _tag_of(resp) }
+        case Err(e) { "" }
     }
 }
 
-fun _tag_of(resp: HttpResponse) -> String {
+fun _tag_of(resp: HttpResponse) -> str {
     if resp.status_code != 200 {
         return ""
     }
     return match parse(resp.body) {
-        Ok(j) -> as_str(field(j, "tag_name")),
-        Err(e) -> "",
+        case Ok(j) { as_str(field(j, "tag_name")) }
+        case Err(e) { "" }
     }
 }

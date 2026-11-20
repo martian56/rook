@@ -1,8 +1,8 @@
-import std/string
-import std/test { assert_eq_str, assert_true, assert_eq_int }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./dir" { roots, merged_names, path_of, first_file, existing, compose_roots }
-import "./skills" { load_skills }
+import std.string
+from std.test import assert_eq_str, assert_true, assert_eq_int
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./dir" import roots, merged_names, path_of, first_file, existing, compose_roots
+from "./skills" import load_skills
 
 // Two fake roots: a "project" one and a "global" one, with skills/b.md
 // present in both so shadowing is observable.
@@ -72,7 +72,7 @@ fun test_existing_lists_every_copy_in_precedence_order() {
 }
 
 fun test_missing_roots_yield_empty_results() {
-    let none: List<String> = []
+    let none: list[str] = []
     assert_true(merged_names(none, "skills").len() == 0)
     assert_true(merged_names(["_rook_ag_missing"], "skills").len() == 0)
     assert_eq_str(first_file(["_rook_ag_missing"], "settings.json"), "")
@@ -93,7 +93,7 @@ fun test_compose_roots_orders_project_plugins_global() {
 }
 
 fun test_compose_roots_skips_empties() {
-    let none: List<String> = []
+    let none: list[str] = []
     assert_eq_int(compose_roots("", none, "").len(), 0)
     let only_global = compose_roots("", none, "/g")
     assert_eq_int(only_global.len(), 1)
@@ -112,8 +112,8 @@ fun test_a_plugin_dir_contributes_its_skills() {
     )
     let rs = compose_roots("", ["_rook_plgroot"], "")
     let skills = load_skills(rs)
-    let found = false
-    let i = 0
+    var found = false
+    var i = 0
     while i < skills.len() {
         if skills[i].name == "hello" {
             found = true
@@ -128,8 +128,8 @@ fun test_a_plugin_dir_contributes_its_skills() {
     return
 }
 
-fun _has(xs: List<String>, x: String) -> Bool {
-    let i = 0
+fun _has(xs: list[str], x: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == x {
             return true

@@ -1,8 +1,8 @@
-import std/string
-import std/test { assert_true, assert_eq_int }
-import "github.com/martian56/plumage/buffer" { Buffer }
-import "github.com/martian56/plumage/style" { Color }
-import "./logo" { draw_logo, rendered_height, master_width, master_rows }
+import std.string
+from std.test import assert_true, assert_eq_int
+from "github.com/martian56/plumage/buffer" import Buffer
+from "github.com/martian56/plumage/style" import Color
+from "./logo" import draw_logo, rendered_height, master_width, master_rows
 
 fun test_logo_paints_half_blocks() {
     let tw = master_width()
@@ -12,13 +12,13 @@ fun test_logo_paints_half_blocks() {
     // The logo should paint a substantial number of half-block cells (the
     // bird, the prompt, and the wordmark), leaving the black background as
     // untouched, transparent cells.
-    let painted = 0
-    let y = 0
+    var painted = 0
+    var y = 0
     while y < th {
-        let x = 0
+        var x = 0
         while x < tw {
             let ch = buf.get(x, y).ch
-            if ch == "▀" || ch == "▄" {
+            if ch == "▀" or ch == "▄" {
                 painted = painted + 1
             }
             x = x + 1
@@ -45,18 +45,18 @@ fun test_logo_maps_the_violet_accent() {
     // The >_ prompt and the eye are a bright violet (~149 blue). Finding it
     // proves the palette is decoded and averaged through to real colors, not
     // just black and navy, so the color path works end to end.
-    let max_blue = 0
-    let y = 0
+    var max_blue = 0
+    var y = 0
     while y < rendered_height(tw) {
-        let x = 0
+        var x = 0
         while x < tw {
             match buf.get(x, y).style.fg {
-                Rgb(r, g, b) -> {
+                case Rgb(r, g, b) {
                     if b > max_blue {
                         max_blue = b
                     }
-                },
-                _ -> {},
+                }
+                case _ {}
             }
             x = x + 1
         }

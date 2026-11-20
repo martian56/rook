@@ -1,5 +1,5 @@
-import std/test { assert_eq_str }
-import "./theme" { Theme, default_theme }
+from std.test import assert_eq_str
+from "./theme" import Theme, default_theme
 
 fun test_default_theme_is_named() {
     assert_eq_str(default_theme().name, "Rook")
@@ -9,7 +9,7 @@ fun test_default_theme_is_named() {
 // active, so swapping the value swaps the whole palette.
 fun test_theme_name_is_read_from_the_value() {
     let base = default_theme()
-    let custom = Theme {
+    let custom = Theme(
         name: "Midnight",
         accent: base.accent,
         dim: base.dim,
@@ -24,6 +24,6 @@ fun test_theme_name_is_read_from_the_value() {
         spinner: base.spinner,
         warn: base.warn,
         error: base.error,
-    }
+    )
     assert_eq_str(custom.name, "Midnight")
 }

@@ -50,7 +50,7 @@ Or download a build for your platform from the
 | Platform | File |
 |----------|------|
 | Windows | `rook-<version>-x86_64.msi` (adds rook to your PATH) or `rook-<version>-x86_64.zip` |
-| Debian / Ubuntu | `rook_<version>_amd64.deb` |
+| Debian / Ubuntu | `rook_[version]_amd64.deb` |
 | Fedora / RHEL | `rook-<version>-1.x86_64.rpm` |
 | Linux (any) | `rook-<version>-x86_64.tar.gz` |
 
@@ -527,7 +527,7 @@ use the portable form `A-Z`, `a-z`, `0-9`, and `_`, and cannot start with
 a digit. Invalid entries appear in `/mcp` status without showing their
 values.
 
-- **Tools** a server exposes reach the model as `mcp__<server>__<tool>`.
+- **Tools** a server exposes reach the model as `mcp__[server]__[tool]`.
   Being external, they always ask for approval.
 - **Resources** are readable context. The model pulls one in with the
   `mcp_read_resource` tool, which runs without approval since it only

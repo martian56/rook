@@ -1,12 +1,12 @@
-import std/test { assert_eq_str, assert_eq_int }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./state" { AgentState }
-import "./turn" { ToolResults, _push_tool_results }
+from std.test import assert_eq_str, assert_eq_int
+from "github.com/martian56/aviary/message" import ToolCall
+from "./state" import AgentState
+from "./turn" import ToolResults, _push_tool_results
 
 fun test_parallel_dispatch_results_are_pushed_in_call_order() {
     let calls = [
-        ToolCall { id: "f1", name: "dispatch", arguments: "{\"agent\":\"slow\"}" },
-        ToolCall { id: "f2", name: "dispatch", arguments: "{\"agent\":\"fast\"}" },
+        ToolCall(id: "f1", name: "dispatch", arguments: "{\"agent\":\"slow\"}"),
+        ToolCall(id: "f2", name: "dispatch", arguments: "{\"agent\":\"fast\"}"),
     ]
     let results = ToolResults.new(calls.len())
     results.set(1, "fast finished first")

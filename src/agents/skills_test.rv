@@ -1,9 +1,9 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./skills" { Skill, load_skills, parse_skill, skills_prompt, skill_body }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./skills" import Skill, load_skills, parse_skill, skills_prompt, skill_body
 
-const SAMPLE: String = "---\nname: release\ndescription: \"How to cut a release\"\n---\n\nSteps:\n1. bump the version"
+let SAMPLE: str = "---\nname: release\ndescription: \"How to cut a release\"\n---\n\nSteps:\n1. bump the version"
 
 fun test_parse_reads_frontmatter_and_body() {
     let s = parse_skill(SAMPLE, "folder-name", "x/SKILL.md")
@@ -63,9 +63,9 @@ fun test_load_skills_shadows_project_over_global() {
 }
 
 fun test_prompt_lists_names_and_descriptions() {
-    let none: List<Skill> = []
+    let none: list[Skill] = []
     assert_eq_str(skills_prompt(none), "")
-    let one = [Skill { name: "release", description: "cut a release", body: "b", path: "p" }]
+    let one = [Skill(name: "release", description: "cut a release", body: "b", path: "p")]
     let p = skills_prompt(one)
     assert_true(p.contains("[project skills]"))
     assert_true(p.contains("- release: cut a release"))
@@ -85,7 +85,7 @@ fun test_skill_body_finds_ignoring_case_and_reports_unknowns() {
     let miss = skill_body(["_rook_sb"], "deploy")
     assert_true(miss.starts_with("error:"))
     assert_true(miss.contains("release"))
-    let empty: List<String> = []
+    let empty: list[str] = []
     assert_true(skill_body(empty, "x").starts_with("error:"))
 
     remove_file("_rook_sb/skills/release/SKILL.md")
@@ -118,15 +118,15 @@ fun test_skill_body_caps_an_oversized_body() {
 // A very long description is clipped in the index so one skill cannot bloat
 // the roster the model sees.
 fun test_prompt_clips_a_long_description() {
-    let one = [Skill { name: "big", description: _repeat("d", 500), body: "b", path: "p" }]
+    let one = [Skill(name: "big", description: _repeat("d", 500), body: "b", path: "p")]
     let p = skills_prompt(one)
     assert_true(p.contains("…"))
-    assert_true(!p.contains(_repeat("d", 300)))
+    assert_true(not p.contains(_repeat("d", 300)))
 }
 
-fun _repeat(s: String, n: Int) -> String {
-    let out = ""
-    let i = 0
+fun _repeat(s: str, n: int) -> str {
+    var out = ""
+    var i = 0
     while i < n {
         out = out.concat(s)
         i = i + 1
@@ -134,13 +134,13 @@ fun _repeat(s: String, n: Int) -> String {
     return out
 }
 
-fun _find(skills: List<Skill>, name: String) -> Skill {
-    let i = 0
+fun _find(skills: list[Skill], name: str) -> Skill {
+    var i = 0
     while i < skills.len() {
         if skills[i].name == name {
             return skills[i]
         }
         i = i + 1
     }
-    return Skill { name: "", description: "", body: "", path: "" }
+    return Skill(name: "", description: "", body: "", path: "")
 }

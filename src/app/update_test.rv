@@ -1,28 +1,28 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import "github.com/martian56/perch/keys" { Key, MouseEvent, MouseKind }
-import "github.com/martian56/plumage" { Event }
-import "github.com/martian56/plumage/widgets/input" { TextInput }
-import "./model" { Chat, chat_init }
-import "./update" { apply_events, chat_update, _apply_loaded, _run, _after_model_set, ensure_catalog, refresh_pick }
-import "../agent/state" { DisplayEvent }
-import "../ui/transcript" { Entry }
-import "../config/sessions" { load_session }
+import std.string
+from std.test import assert_eq_str, assert_true
+from "github.com/martian56/perch/keys" import Key, MouseEvent, MouseKind
+from "github.com/martian56/plumage" import Event
+from "github.com/martian56/plumage/widgets/input" import TextInput
+from "./model" import Chat, chat_init
+from "./update" import apply_events, chat_update, _apply_loaded, _run, _after_model_set, ensure_catalog, refresh_pick
+from "../agent/state" import DisplayEvent
+from "../ui/transcript" import Entry
+from "../config/sessions" import load_session
 
-fun tag(e: Entry) -> String {
+fun tag(e: Entry) -> str {
     return match e {
-        UserMsg(t) -> "u",
-        BotMsg(t) -> "b",
-        ToolMsg(n, r) -> "t:${n}",
-        Notice(t) -> "n",
-        AgentHeader(name, status) -> "h:${name}:${status}",
-        AgentTool(agent, n, r) -> "a:${agent}:${n}",
+        case UserMsg(t) { "u" }
+        case BotMsg(t) { "b" }
+        case ToolMsg(n, r) { "t:${n}" }
+        case Notice(t) { "n" }
+        case AgentHeader(name, status) { "h:${name}:${status}" }
+        case AgentTool(agent, n, r) { "a:${agent}:${n}" }
     }
 }
 
-fun tags(m: Chat) -> String {
-    let out = ""
-    let i = 0
+fun tags(m: Chat) -> str {
+    var out = ""
+    var i = 0
     while i < m.entries.len() {
         out = "${out}|${tag(m.entries[i])}"
         i = i + 1
@@ -30,17 +30,17 @@ fun tags(m: Chat) -> String {
     return out
 }
 
-fun notice_text(e: Entry) -> String {
+fun notice_text(e: Entry) -> str {
     return match e {
-        Notice(t) -> t,
-        _ -> "",
+        case Notice(t) { t }
+        case _ { "" }
     }
 }
 
-fun bot_text(e: Entry) -> String {
+fun bot_text(e: Entry) -> str {
     return match e {
-        BotMsg(t) -> t,
-        _ -> "",
+        case BotMsg(t) { t }
+        case _ { "" }
     }
 }
 
@@ -202,7 +202,7 @@ fun test_permissions_command_opens_and_esc_closes_the_panel() {
     assert_true(opened.permissions_open)
     assert_true(opened.permissions_items.len() == 5)
     let closed = chat_update(opened, Event.KeyPress(Key.Esc)).model
-    assert_true(!closed.permissions_open)
+    assert_true(not closed.permissions_open)
 }
 
 fun test_active_ticks_preserve_manual_scroll_until_the_user_returns_to_bottom() {
@@ -225,7 +225,7 @@ fun test_active_ticks_preserve_mouse_wheel_scroll() {
     let m = chat_init()
     m.active = true
     m.agent.begin()
-    let wheel = MouseEvent { kind: MouseKind.ScrollUp, button: 0 - 1, x: 0, y: 0 }
+    let wheel = MouseEvent(kind: MouseKind.ScrollUp, button: 0 - 1, x: 0, y: 0)
     let scrolled = chat_update(m, Event.Mouse(wheel)).model
     assert_true(scrolled.scroll_up == 3)
     let after_tick = chat_update(scrolled, Event.Tick).model
@@ -244,8 +244,8 @@ fun test_malformed_mcp_prompt_arguments_are_visible() {
     let updated = _run(m, "/mcp prompt docs summarize query=\"unterminated").model
     assert_true(updated.entries.len() == 2)
     match updated.entries[1] {
-        Notice(text) -> assert_true(text.contains("unterminated")),
-        _ -> assert_true(false),
+        case Notice(text) { assert_true(text.contains("unterminated")) }
+        case _ { assert_true(false) }
     }
 }
 

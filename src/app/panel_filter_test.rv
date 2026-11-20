@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_eq_int, assert_eq_str }
-import "./panel_filter" { sessions_set_full, sessions_set_scope, sessions_type, sessions_clear }
-import "../config/sessions" { SessionMeta, session_cwd }
+import std.string
+from std.test import assert_eq_int, assert_eq_str
+from "./panel_filter" import sessions_set_full, sessions_set_scope, sessions_type, sessions_clear
+from "../config/sessions" import SessionMeta, session_cwd
 
-fun _meta(id: String, title: String, cwd: String) -> SessionMeta {
-    return SessionMeta { id, created: 0, model: "m", title, cwd }
+fun _meta(id: str, title: str, cwd: str) -> SessionMeta {
+    return SessionMeta(id: id, created: 0, model: "m", title: title, cwd: cwd)
 }
 
 fun test_scope_and_query_filter_together() {

@@ -7,44 +7,44 @@
 // model picks up with the same context it had. Sessions saved before the
 // message history existed fall back to a text-only rebuild.
 
-import std/string
-import std/sync { Mutex, mutex }
-import std/env { get_env, has_env, os_name }
-import std/process { run }
-import std/fs { read, write, exists, create_dir_all, list_dir, remove_file }
-import std/json { JsonValue, parse, stringify }
-import std/time { now, now_millis }
-import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
-import "github.com/martian56/aviary/message" { Message, ToolCall, Role, role_str }
-import "../ui/transcript" { Entry }
-import "../agents/limits" { safe_cut }
+import std.string
+from std.sync import Mutex, mutex
+from std.env import get_env, has_env, os_name
+from std.process import run
+from std.fs import read, write, exists, create_dir_all, list_dir, remove_file
+from std.json import JsonValue, parse, stringify
+from std.time import now, now_millis
+from "github.com/martian56/aviary/jsonutil" import Obj, field, as_str, as_list
+from "github.com/martian56/aviary/message" import Message, ToolCall, Role, role_str
+from "../ui/transcript" import Entry
+from "../agents/limits" import safe_cut
 
 // A saved session's headline, for the picker. `cwd` is the directory the
 // session was saved from; sessions from before it was recorded carry "".
-struct SessionMeta {
-    id: String,
-    created: Int,
-    model: String,
-    title: String,
-    cwd: String,
+class SessionMeta {
+    id: str
+    created: int
+    model: str
+    title: str
+    cwd: str
 }
 
 // The process working directory, cached after the first read. The stdlib has
 // no cwd API, so one shell call fetches it: `cd` under cmd on Windows, pwd
 // elsewhere. "" when even that fails.
-struct CwdCache {
-    lock: Mutex,
-    ready: Bool,
-    cwd: String,
+class CwdCache {
+    lock: Mutex
+    ready: bool
+    cwd: str
 }
 
 let CWD_CACHE: CwdCache = _new_cwd_cache()
 
 fun _new_cwd_cache() -> CwdCache {
-    return CwdCache { lock: mutex(), ready: false, cwd: "" }
+    return CwdCache(lock: mutex(), ready: false, cwd: "")
 }
 
-fun session_cwd() -> String {
+fun session_cwd() -> str {
     CWD_CACHE.lock.lock()
     if CWD_CACHE.ready {
         let c = CWD_CACHE.cwd
@@ -60,23 +60,23 @@ fun session_cwd() -> String {
     return got
 }
 
-fun _read_cwd() -> String {
-    let prog = "pwd"
-    let args: List<String> = []
+fun _read_cwd() -> str {
+    var prog = "pwd"
+    var args: list[str] = []
     if os_name() == "windows" {
         prog = "cmd"
         args = ["/c", "cd"]
     }
     return match run(prog, args) {
-        Ok(out) -> out.stdout.trim(),
-        Err(e) -> "",
+        case Ok(out) { out.stdout.trim() }
+        case Err(e) { "" }
     }
 }
 
 // Whether a session's recorded directory is this one. Case folds on Windows,
 // where paths compare case-insensitively; "" (unrecorded) never matches.
-fun same_dir(recorded: String, here: String) -> Bool {
-    if recorded == "" || here == "" {
+fun same_dir(recorded: str, here: str) -> bool {
+    if recorded == "" or here == "" {
         return false
     }
     if os_name() == "windows" {
@@ -85,28 +85,28 @@ fun same_dir(recorded: String, here: String) -> Bool {
     return recorded == here
 }
 
-struct SessionList {
-    sessions: List<SessionMeta>,
-    error: String,
+class SessionList {
+    sessions: list[SessionMeta]
+    error: str
 }
 
 // The restored contents of a session: the display transcript and the
 // model-visible history. `messages` is empty for sessions saved before the
 // history was persisted, in which case the caller rebuilds a text-only
 // context from `entries`.
-struct Loaded {
-    model: String,
-    entries: List<Entry>,
-    messages: List<Message>,
+class Loaded {
+    model: str
+    entries: list[Entry]
+    messages: list[Message]
     // The session's running token totals, restored so the usage indicator
     // reflects the resumed session instead of resetting to zero.
-    usage_prompt: Int,
-    usage_completion: Int,
-    error: String,
+    usage_prompt: int
+    usage_completion: int
+    error: str
 }
 
 // A fresh session id, unique to the millisecond.
-fun new_session_id() -> String {
+fun new_session_id() -> str {
     return "${now_millis()}"
 }
 
@@ -117,13 +117,13 @@ fun new_session_id() -> String {
 // `usage_prompt`/`usage_completion` are the session's running token totals, so
 // the usage indicator survives a resume.
 fun save_session(
-    id: String,
-    model: String,
-    entries: List<Entry>,
-    messages: List<Message>,
-    usage_prompt: Int,
-    usage_completion: Int,
-) -> String {
+    id: str,
+    model: str,
+    entries: list[Entry],
+    messages: list[Message],
+    usage_prompt: int,
+    usage_completion: int,
+) -> str {
     if entries.len() == 0 {
         return ""
     }
@@ -135,14 +135,14 @@ fun save_session(
 }
 
 fun save_session_to(
-    dir: String,
-    id: String,
-    model: String,
-    entries: List<Entry>,
-    messages: List<Message>,
-    usage_prompt: Int,
-    usage_completion: Int,
-) -> String {
+    dir: str,
+    id: str,
+    model: str,
+    entries: list[Entry],
+    messages: list[Message],
+    usage_prompt: int,
+    usage_completion: int,
+) -> str {
     if entries.len() == 0 {
         return ""
     }
@@ -150,19 +150,19 @@ fun save_session_to(
         return "session error: no session directory"
     }
     match create_dir_all(dir) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             return "session error: could not create session directory: ${e.message}"
-        },
+        }
     }
-    let arr: List<JsonValue> = []
-    let i = 0
+    let arr: list[JsonValue] = []
+    var i = 0
     while i < entries.len() {
         arr.push(_entry_json(entries[i]))
         i = i + 1
     }
-    let msgs: List<JsonValue> = []
-    let m = 0
+    let msgs: list[JsonValue] = []
+    var m = 0
     while m < messages.len() {
         msgs.push(_msg_json(messages[m]))
         m = m + 1
@@ -170,13 +170,13 @@ fun save_session_to(
     let title = _title(entries)
     let created = "${now()}"
     let cwd = session_cwd()
-    let doc = Obj.new().str("id", id).str("model", model).str("title", title)
+    var doc = Obj.new().str("id", id).str("model", model).str("title", title)
     doc = doc.str("created", created).str("cwd", cwd).set("entries", JsonValue.Array(arr))
     doc = doc.set("messages", JsonValue.Array(msgs))
     doc = doc.str("usage_prompt", "${usage_prompt}").str("usage_completion", "${usage_completion}")
     let save_error = match write("${dir}/${id}.json", stringify(doc.build())) {
-        Ok(ok) -> "",
-        Err(e) -> "session error: could not save session ${id}: ${e.message}",
+        case Ok(ok) { "" }
+        case Err(e) { "session error: could not save session ${id}: ${e.message}" }
     }
     if save_error != "" {
         return save_error
@@ -189,8 +189,8 @@ fun save_session_to(
         created,
     ).str("cwd", cwd)
     match write("${dir}/${id}.meta.json", stringify(meta.build())) {
-        Ok(ok) -> {},
-        Err(e) -> {},
+        case Ok(ok) {}
+        case Err(e) {}
     }
     return ""
 }
@@ -198,17 +198,17 @@ fun save_session_to(
 // Saving runs off the UI thread. The writer goroutine serializes on SAVE_LOCK
 // so overlapping turns cannot corrupt the file, and reports any error through
 // SAVE_ERRORS for the UI to drain on its next tick.
-struct SaveErrors {
-    lock: Mutex,
-    pending: List<String>,
+class SaveErrors {
+    lock: Mutex
+    pending: list[str]
 }
 
 let SAVE_LOCK: Mutex = mutex()
 let SAVE_ERRORS: SaveErrors = _new_save_errors()
 
 fun _new_save_errors() -> SaveErrors {
-    let pending: List<String> = []
-    return SaveErrors { lock: mutex(), pending }
+    let pending: list[str] = []
+    return SaveErrors(lock: mutex(), pending: pending)
 }
 
 // Persist the session without blocking the UI: snapshot the transcript (the
@@ -216,12 +216,12 @@ fun _new_save_errors() -> SaveErrors {
 // and disk write on a goroutine. A full save at turn end can be hundreds of
 // KB, so keeping it off the render thread removes the per-turn hitch.
 fun save_session_async(
-    id: String,
-    model: String,
-    entries: List<Entry>,
-    messages: List<Message>,
-    usage_prompt: Int,
-    usage_completion: Int,
+    id: str,
+    model: str,
+    entries: list[Entry],
+    messages: list[Message],
+    usage_prompt: int,
+    usage_completion: int,
 ) {
     if entries.len() == 0 {
         return
@@ -232,28 +232,28 @@ fun save_session_async(
         return
     }
     let snapshot = _copy_entries(entries)
-    spawn(fun() -> Unit {
+    spawn {
         SAVE_LOCK.lock()
         let err = save_session_to(dir, id, model, snapshot, messages, usage_prompt, usage_completion)
         SAVE_LOCK.unlock()
         _record_save_error(err)
         return
-    })
+    }
     return
 }
 
 // The queued save errors, cleared as they are returned. Drained by the UI loop
 // so a failed background write still surfaces as a transcript notice.
-fun drain_save_errors() -> List<String> {
+fun drain_save_errors() -> list[str] {
     SAVE_ERRORS.lock.lock()
     let out = SAVE_ERRORS.pending
-    let empty: List<String> = []
+    let empty: list[str] = []
     SAVE_ERRORS.pending = empty
     SAVE_ERRORS.lock.unlock()
     return out
 }
 
-fun _record_save_error(msg: String) {
+fun _record_save_error(msg: str) {
     if msg == "" {
         return
     }
@@ -266,9 +266,9 @@ fun _record_save_error(msg: String) {
 // A shallow copy of the transcript, so the writer reads a stable list while the
 // UI thread keeps appending on later turns. Entries are replaced, never mutated
 // in place, so copying the references is enough.
-fun _copy_entries(entries: List<Entry>) -> List<Entry> {
-    let out: List<Entry> = []
-    let i = 0
+fun _copy_entries(entries: list[Entry]) -> list[Entry] {
+    let out: list[Entry] = []
+    var i = 0
     while i < entries.len() {
         out.push(entries[i])
         i = i + 1
@@ -277,44 +277,44 @@ fun _copy_entries(entries: List<Entry>) -> List<Entry> {
 }
 
 // Every saved session, newest first.
-fun list_sessions() -> List<SessionMeta> {
+fun list_sessions() -> list[SessionMeta] {
     return list_sessions_result().sessions
 }
 
 fun list_sessions_result() -> SessionList {
-    let out: List<SessionMeta> = []
+    let out: list[SessionMeta] = []
     let dir = _sessions_dir()
     if dir == "" {
-        return SessionList { sessions: out, error: "session error: no home directory for sessions" }
+        return SessionList(sessions: out, error: "session error: no home directory for sessions")
     }
     return list_sessions_from(dir)
 }
 
-fun list_sessions_from(dir: String) -> SessionList {
-    let out: List<SessionMeta> = []
+fun list_sessions_from(dir: str) -> SessionList {
+    let out: list[SessionMeta] = []
     if dir == "" {
-        return SessionList { sessions: out, error: "session error: no session directory" }
+        return SessionList(sessions: out, error: "session error: no session directory")
     }
-    let names: List<String> = []
+    var names: list[str] = []
     match list_dir(dir) {
-        Ok(ns) -> {
+        case Ok(ns) {
             names = ns
-        },
-        Err(e) -> {
-            return SessionList {
+        }
+        case Err(e) {
+            return SessionList(
                 sessions: out,
                 error: "session error: could not list sessions: ${e.message}",
-            }
-        },
+            )
+        }
     }
-    let i = 0
+    var i = 0
     while i < names.len() {
-        if names[i].ends_with(".json") && !names[i].ends_with(".meta.json") {
+        if names[i].ends_with(".json") and not names[i].ends_with(".meta.json") {
             out.push(_read_meta(dir, names[i], _id_from_filename(names[i])))
         }
         i = i + 1
     }
-    return SessionList { sessions: _sort_newest(out), error: "" }
+    return SessionList(sessions: _sort_newest(out), error: "")
 }
 
 // Listing runs off the UI thread too. /sessions reads one metadata file per
@@ -322,27 +322,27 @@ fun list_sessions_from(dir: String) -> SessionList {
 // panel from appearing. begin_list_sessions runs the scan on a goroutine and
 // stashes the result; the UI opens the panel immediately and picks the result
 // up on a later tick via take_session_list.
-struct SessionListSlot {
-    lock: Mutex,
-    ready: Bool,
-    result: SessionList,
+class SessionListSlot {
+    lock: Mutex
+    ready: bool
+    result: SessionList
 }
 
 // Whether the background scan has finished, and its result when it has.
-struct SessionListReady {
-    ready: Bool,
-    result: SessionList,
+class SessionListReady {
+    ready: bool
+    result: SessionList
 }
 
 let SESSION_LIST_SLOT: SessionListSlot = _new_session_list_slot()
 
 fun _new_session_list_slot() -> SessionListSlot {
-    let empty: List<SessionMeta> = []
-    return SessionListSlot {
+    let empty: list[SessionMeta] = []
+    return SessionListSlot(
         lock: mutex(),
         ready: false,
-        result: SessionList { sessions: empty, error: "" },
-    }
+        result: SessionList(sessions: empty, error: ""),
+    )
 }
 
 // Start scanning saved sessions on a goroutine. The result is picked up by
@@ -351,14 +351,14 @@ fun begin_list_sessions() {
     SESSION_LIST_SLOT.lock.lock()
     SESSION_LIST_SLOT.ready = false
     SESSION_LIST_SLOT.lock.unlock()
-    spawn(fun() -> Unit {
+    spawn {
         let r = list_sessions_result()
         SESSION_LIST_SLOT.lock.lock()
         SESSION_LIST_SLOT.result = r
         SESSION_LIST_SLOT.ready = true
         SESSION_LIST_SLOT.lock.unlock()
         return
-    })
+    }
     return
 }
 
@@ -372,7 +372,7 @@ fun take_session_list() -> SessionListReady {
         SESSION_LIST_SLOT.ready = false
     }
     SESSION_LIST_SLOT.lock.unlock()
-    return SessionListReady { ready, result }
+    return SessionListReady(ready: ready, result: result)
 }
 
 // Resuming a session also runs off the UI thread. A session file can be
@@ -380,24 +380,24 @@ fun take_session_list() -> SessionListReady {
 // transcript entry and the full model-visible history), so doing it inline on
 // the Enter key froze the picker. begin_load_session runs the read on a
 // goroutine; the UI applies the restored state on a later tick.
-struct LoadedSlot {
-    lock: Mutex,
-    ready: Bool,
-    id: String,
-    loaded: Loaded,
+class LoadedSlot {
+    lock: Mutex
+    ready: bool
+    id: str
+    loaded: Loaded
 }
 
 // Whether the background load has finished, and its result when it has.
-struct LoadedReady {
-    ready: Bool,
-    id: String,
-    loaded: Loaded,
+class LoadedReady {
+    ready: bool
+    id: str
+    loaded: Loaded
 }
 
 let LOADED_SLOT: LoadedSlot = _new_loaded_slot()
 
 fun _new_loaded_slot() -> LoadedSlot {
-    return LoadedSlot { lock: mutex(), ready: false, id: "", loaded: _empty_loaded("") }
+    return LoadedSlot(lock: mutex(), ready: false, id: "", loaded: _empty_loaded(""))
 }
 
 // Start loading the most recent session on a goroutine, for a --continue
@@ -407,15 +407,15 @@ fun begin_load_latest() {
     LOADED_SLOT.lock.lock()
     LOADED_SLOT.ready = false
     LOADED_SLOT.lock.unlock()
-    spawn(fun() -> Unit {
+    spawn {
         // The newest session saved from this directory, not the newest
         // overall: --continue picks up where this project left off.
         let listed = list_sessions_result()
         let here = session_cwd()
-        let id = ""
-        let l = _empty_loaded("session error: no saved sessions for this directory to continue")
-        let i = 0
-        while i < listed.sessions.len() && id == "" {
+        var id = ""
+        var l = _empty_loaded("session error: no saved sessions for this directory to continue")
+        var i = 0
+        while i < listed.sessions.len() and id == "" {
             if same_dir(listed.sessions[i].cwd, here) {
                 id = listed.sessions[i].id
             }
@@ -430,17 +430,17 @@ fun begin_load_latest() {
         LOADED_SLOT.ready = true
         LOADED_SLOT.lock.unlock()
         return
-    })
+    }
     return
 }
 
 // Start reading a session on a goroutine. The result is picked up by
 // take_loaded_session on a later tick.
-fun begin_load_session(id: String) {
+fun begin_load_session(id: str) {
     LOADED_SLOT.lock.lock()
     LOADED_SLOT.ready = false
     LOADED_SLOT.lock.unlock()
-    spawn(fun() -> Unit {
+    spawn {
         let l = load_session(id)
         LOADED_SLOT.lock.lock()
         LOADED_SLOT.id = id
@@ -448,7 +448,7 @@ fun begin_load_session(id: String) {
         LOADED_SLOT.ready = true
         LOADED_SLOT.lock.unlock()
         return
-    })
+    }
     return
 }
 
@@ -463,54 +463,60 @@ fun take_loaded_session() -> LoadedReady {
         LOADED_SLOT.ready = false
     }
     LOADED_SLOT.lock.unlock()
-    return LoadedReady { ready, id, loaded }
+    return LoadedReady(ready: ready, id: id, loaded: loaded)
 }
 
 // Read a session's metadata, preferring the small sidecar so the full
 // transcript is not parsed just to list titles. Falls back to the session file
 // itself for sessions saved before the sidecar existed.
-fun _read_meta(dir: String, filename: String, fallback_id: String) -> SessionMeta {
+fun _read_meta(dir: str, filename: str, fallback_id: str) -> SessionMeta {
     match read("${dir}/${fallback_id}.meta.json") {
-        Ok(text) -> {
+        case Ok(text) {
             match parse(text) {
-                Ok(j) -> {
+                case Ok(j) {
                     return _meta_from_json(j, fallback_id)
-                },
-                Err(e) -> {},
+                }
+                case Err(e) {}
             }
-        },
-        Err(e) -> {},
+        }
+        case Err(e) {}
     }
     return _meta_from_full_file(dir, filename, fallback_id)
 }
 
 // Metadata read from the full session file, for sessions whose sidecar is
 // missing (saved before it existed) or unreadable.
-fun _meta_from_full_file(dir: String, filename: String, fallback_id: String) -> SessionMeta {
+fun _meta_from_full_file(dir: str, filename: str, fallback_id: str) -> SessionMeta {
     return match read("${dir}/${filename}") {
-        Ok(text) -> match parse(text) {
-            Ok(j) -> _meta_from_json(j, fallback_id),
-            Err(e) -> SessionMeta {
+        case Ok(text) {
+            match parse(text) {
+                case Ok(j) { _meta_from_json(j, fallback_id) }
+                case Err(e) {
+                    SessionMeta(
+                        id: fallback_id,
+                        created: 0,
+                        model: "",
+                        title: "error: invalid session file: ${filename}",
+                        cwd: "",
+                    )
+                }
+            }
+        }
+        case Err(e) {
+            SessionMeta(
                 id: fallback_id,
                 created: 0,
                 model: "",
-                title: "error: invalid session file: ${filename}",
+                title: "error: could not read session file: ${filename}",
                 cwd: "",
-            },
-        },
-        Err(e) -> SessionMeta {
-            id: fallback_id,
-            created: 0,
-            model: "",
-            title: "error: could not read session file: ${filename}",
-            cwd: "",
-        },
+            )
+        }
     }
 }
 
 // Delete a saved session (and its metadata sidecar). "" on success, an
 // error message otherwise.
-fun delete_session(id: String) -> String {
+fun delete_session(id: str) -> str {
     let dir = _sessions_dir()
     if dir == "" {
         return "session error: no home directory for sessions"
@@ -518,30 +524,30 @@ fun delete_session(id: String) -> String {
     return delete_session_from(dir, id)
 }
 
-fun delete_session_from(dir: String, id: String) -> String {
+fun delete_session_from(dir: str, id: str) -> str {
     let path = "${dir}/${id}.json"
-    if !exists(path) {
+    if not exists(path) {
         return "session error: no saved session '${id}'"
     }
     match remove_file(path) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             return "session error: could not delete '${id}': ${e.message}"
-        },
+        }
     }
     // The sidecar is best effort, like its write.
     let meta = "${dir}/${id}.meta.json"
     if exists(meta) {
         match remove_file(meta) {
-            Ok(ok) -> {},
-            Err(e) -> {},
+            case Ok(ok) {}
+            case Err(e) {}
         }
     }
     return ""
 }
 
 // Restore a session by id.
-fun load_session(id: String) -> Loaded {
+fun load_session(id: str) -> Loaded {
     let dir = _sessions_dir()
     if dir == "" {
         return _empty_loaded("session error: no home directory for sessions")
@@ -549,136 +555,135 @@ fun load_session(id: String) -> Loaded {
     return load_session_from(dir, id)
 }
 
-fun load_session_from(dir: String, id: String) -> Loaded {
+fun load_session_from(dir: str, id: str) -> Loaded {
     if dir == "" {
         return _empty_loaded("session error: no session directory")
     }
     let path = "${dir}/${id}.json"
-    if !exists(path) {
+    if not exists(path) {
         return _empty_loaded("session error: no saved session '${id}'")
     }
-    let text = ""
+    var text = ""
     match read(path) {
-        Ok(s) -> {
+        case Ok(s) {
             text = s
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return _empty_loaded("session error: could not read session '${id}': ${e.message}")
-        },
+        }
     }
     return parse_loaded(text, id)
 }
 
-fun parse_loaded(text: String, id: String) -> Loaded {
+fun parse_loaded(text: str, id: str) -> Loaded {
     return match parse(text) {
-        Ok(j) -> _loaded_from_json(j, id),
-        Err(e) -> _empty_loaded("session error: invalid JSON in session '${id}': ${e.message}"),
+        case Ok(j) { _loaded_from_json(j, id) }
+        case Err(e) { _empty_loaded("session error: invalid JSON in session '${id}': ${e.message}") }
     }
 }
 
-fun _loaded_from_json(j: JsonValue, id: String) -> Loaded {
+fun _loaded_from_json(j: JsonValue, id: str) -> Loaded {
     let shape_error = _session_shape_error(j)
     if shape_error != "" {
         return _empty_loaded("session error: invalid session '${id}': ${shape_error}")
     }
-    let entries: List<Entry> = []
+    let entries: list[Entry] = []
     let arr = as_list(field(j, "entries"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         entries.push(_json_entry(arr[i]))
         i = i + 1
     }
-    let messages: List<Message> = []
+    let messages: list[Message] = []
     let marr = as_list(field(j, "messages"))
-    let k = 0
+    var k = 0
     while k < marr.len() {
         messages.push(_json_msg(marr[k]))
         k = k + 1
     }
-    return Loaded {
+    return Loaded(
         model: as_str(field(j, "model")),
-        entries,
-        messages,
+        entries: entries,
+        messages: messages,
         usage_prompt: _int_field(j, "usage_prompt"),
         usage_completion: _int_field(j, "usage_completion"),
         error: "",
-    }
+    )
 }
 
-fun _session_shape_error(j: JsonValue) -> String {
+fun _session_shape_error(j: JsonValue) -> str {
     return match j {
-        Object(obj) -> {
-            let err = ""
-            if !_is_str(field(j, "model")) {
+        case Object(obj) {
+            var err = ""
+            if not _is_str(field(j, "model")) {
                 err = "expected string field 'model'"
             }
-            if err == "" && !_is_array(field(j, "entries")) {
+            if err == "" and not _is_array(field(j, "entries")) {
                 err = "expected array field 'entries'"
             }
             let messages = field(j, "messages")
-            if err == "" && !_is_missing(messages) && !_is_array(messages) {
+            if err == "" and not _is_missing(messages) and not _is_array(messages) {
                 err = "expected array field 'messages'"
             }
             err
-        },
-        _ -> "expected an object",
+        }
+        case _ { "expected an object" }
     }
 }
 
-fun _is_str(j: JsonValue) -> Bool {
+fun _is_str(j: JsonValue) -> bool {
     return match j {
-        Str(s) -> true,
-        _ -> false,
+        case Str(s) { true }
+        case _ { false }
     }
 }
 
-fun _is_array(j: JsonValue) -> Bool {
+fun _is_array(j: JsonValue) -> bool {
     return match j {
-        Array(items) -> true,
-        _ -> false,
+        case Array(items) { true }
+        case _ { false }
     }
 }
 
-fun _is_missing(j: JsonValue) -> Bool {
+fun _is_missing(j: JsonValue) -> bool {
     return match j {
-        Null -> true,
-        _ -> false,
+        case Null { true }
+        case _ { false }
     }
 }
 
-fun _empty_loaded(error: String) -> Loaded {
-    let empty: List<Entry> = []
-    let no_msgs: List<Message> = []
-    return Loaded {
+fun _empty_loaded(error: str) -> Loaded {
+    let empty: list[Entry] = []
+    let no_msgs: list[Message] = []
+    return Loaded(
         model: "",
         entries: empty,
         messages: no_msgs,
         usage_prompt: 0,
         usage_completion: 0,
-        error,
-    }
+        error: error,
+    )
 }
 
 // An integer stored as a string field, 0 when missing or unparseable (older
 // sessions have no usage totals).
-fun _int_field(j: JsonValue, key: String) -> Int {
+fun _int_field(j: JsonValue, key: str) -> int {
     return match as_str(field(j, key)).parse_int() {
-        Some(n) -> n,
-        None -> 0,
+        case Some(n) { n }
+        case None { 0 }
     }
 }
 
 fun _entry_json(e: Entry) -> JsonValue {
     return match e {
-        UserMsg(t) -> Obj.new().str("k", "user").str("a", t).build(),
-        BotMsg(t) -> Obj.new().str("k", "bot").str("a", t).build(),
-        ToolMsg(name, result) -> Obj.new().str("k", "tool").str("a", name).str("b", result).build(),
-        Notice(t) -> Obj.new().str("k", "notice").str("a", t).build(),
-        AgentHeader(name, status) -> Obj.new().str("k", "ahdr").str("a", name).str("b", status).build(),
-        AgentTool(agent, name, result) -> Obj.new().str("k", "atool").str("a", agent).str("b", name).str(
-            "c",
-            result,
-        ).build(),
+        case UserMsg(t) { Obj.new().str("k", "user").str("a", t).build() }
+        case BotMsg(t) { Obj.new().str("k", "bot").str("a", t).build() }
+        case ToolMsg(name, result) { Obj.new().str("k", "tool").str("a", name).str("b", result).build() }
+        case Notice(t) { Obj.new().str("k", "notice").str("a", t).build() }
+        case AgentHeader(name, status) { Obj.new().str("k", "ahdr").str("a", name).str("b", status).build() }
+        case AgentTool(agent, name, result) {
+            Obj.new().str("k", "atool").str("a", agent).str("b", name).str("c", result).build()
+        }
     }
 }
 
@@ -708,8 +713,8 @@ fun _json_entry(j: JsonValue) -> Entry {
 // on an assistant turn and the tool_call_id/name on a tool result, so the
 // exact structure round-trips.
 fun _msg_json(m: Message) -> JsonValue {
-    let calls: List<JsonValue> = []
-    let i = 0
+    let calls: list[JsonValue] = []
+    var i = 0
     while i < m.tool_calls.len() {
         let c = m.tool_calls[i]
         calls.push(Obj.new().str("id", c.id).str("name", c.name).str("args", c.arguments).build())
@@ -722,30 +727,30 @@ fun _msg_json(m: Message) -> JsonValue {
 }
 
 fun _json_msg(j: JsonValue) -> Message {
-    let calls: List<ToolCall> = []
+    let calls: list[ToolCall] = []
     let arr = as_list(field(j, "calls"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         calls.push(
-            ToolCall {
+            ToolCall(
                 id: as_str(field(arr[i], "id")),
                 name: as_str(field(arr[i], "name")),
                 arguments: as_str(field(arr[i], "args")),
-            },
+            ),
         )
         i = i + 1
     }
-    return Message {
+    return Message(
         role: _role_of(as_str(field(j, "role"))),
         content: as_str(field(j, "content")),
         tool_calls: calls,
         tool_call_id: as_str(field(j, "tool_call_id")),
         name: as_str(field(j, "name")),
-    }
+    )
 }
 
 // A stored role name back to a Role; unknown names fall back to User.
-fun _role_of(s: String) -> Role {
+fun _role_of(s: str) -> Role {
     if s == "system" {
         return Role.System
     }
@@ -759,15 +764,15 @@ fun _role_of(s: String) -> Role {
 }
 
 // The session title: the first user message, trimmed to one short line.
-fun _title(entries: List<Entry>) -> String {
-    let i = 0
+fun _title(entries: list[Entry]) -> str {
+    var i = 0
     while i < entries.len() {
         let t = match entries[i] {
-            UserMsg(txt) -> txt,
-            _ -> "",
+            case UserMsg(txt) { txt }
+            case _ { "" }
         }
         if t != "" {
-            let line = t
+            var line = t
             let nl = line.index_of("\n")
             if nl >= 0 {
                 line = line.substring(0, nl)
@@ -782,13 +787,13 @@ fun _title(entries: List<Entry>) -> String {
     return "(no messages)"
 }
 
-fun _sort_newest(xs: List<SessionMeta>) -> List<SessionMeta> {
+fun _sort_newest(xs: list[SessionMeta]) -> list[SessionMeta] {
     // Small lists; a simple selection sort by created, descending.
     let out = xs
-    let i = 0
+    var i = 0
     while i < out.len() {
-        let best = i
-        let j = i + 1
+        var best = i
+        var j = i + 1
         while j < out.len() {
             if out[j].created > out[best].created {
                 best = j
@@ -805,36 +810,36 @@ fun _sort_newest(xs: List<SessionMeta>) -> List<SessionMeta> {
     return out
 }
 
-fun _meta_from_json(j: JsonValue, fallback_id: String) -> SessionMeta {
-    let id = as_str(field(j, "id"))
+fun _meta_from_json(j: JsonValue, fallback_id: str) -> SessionMeta {
+    var id = as_str(field(j, "id"))
     if id == "" {
         id = fallback_id
     }
-    return SessionMeta {
-        id,
+    return SessionMeta(
+        id: id,
         created: _created(j),
         model: as_str(field(j, "model")),
         title: as_str(field(j, "title")),
         cwd: as_str(field(j, "cwd")),
-    }
+    )
 }
 
 // The created timestamp, stored as a string.
-fun _created(j: JsonValue) -> Int {
+fun _created(j: JsonValue) -> int {
     return match as_str(field(j, "created")).parse_int() {
-        Some(n) -> n,
-        None -> 0,
+        case Some(n) { n }
+        case None { 0 }
     }
 }
 
-fun _id_from_filename(name: String) -> String {
+fun _id_from_filename(name: str) -> str {
     if name.ends_with(".json") {
         return name.substring(0, name.length() - 5)
     }
     return name
 }
 
-fun _sessions_dir() -> String {
+fun _sessions_dir() -> str {
     let h = _home()
     if h == "" {
         return ""
@@ -842,7 +847,7 @@ fun _sessions_dir() -> String {
     return "${h}/.rook/sessions"
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

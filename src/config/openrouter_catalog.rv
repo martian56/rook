@@ -2,7 +2,7 @@
 // https://openrouter.ai/api/v1/models. Contains 343 models, including 75 without advertised tool support. Do not edit by hand.
 // kimi-k3 added by hand on release, ahead of the next sync.
 
-fun openrouter_catalog() -> List<String> {
+fun openrouter_catalog() -> list[str] {
     return [
         "openrouter/kwaipilot/kat-coder-air-v2.5",
         "openrouter/kwaipilot/kat-coder-pro-v2.5",
@@ -350,7 +350,7 @@ fun openrouter_catalog() -> List<String> {
     ]
 }
 
-fun openrouter_models_without_tools() -> List<String> {
+fun openrouter_models_without_tools() -> list[str] {
     return [
         "openrouter/google/gemini-3.1-flash-lite-image",
         "openrouter/google/gemini-3.1-flash-image",

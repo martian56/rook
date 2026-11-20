@@ -1,5 +1,5 @@
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./ask_options" { parse_ask_options, option_labels, option_count_error }
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./ask_options" import parse_ask_options, option_labels, option_count_error
 
 fun test_array_string_options_keep_commas() {
     let options = parse_ask_options(

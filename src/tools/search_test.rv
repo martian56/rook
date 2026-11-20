@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_true }
-import std/fs { create_dir_all, remove_file, remove_dir, write as fs_write }
-import "./search" { grep }
+import std.string
+from std.test import assert_true
+from std.fs import create_dir_all, remove_file, remove_dir, write as fs_write
+from "./search" import grep
 
 fun test_grep_finds_matching_lines() {
     create_dir_all("_rook_gr")
@@ -33,7 +33,7 @@ fun test_grep_matches_regex_pattern() {
     let out = grep("order [0-9]+", "_rook_gr3", "")
     assert_true(out.contains("order 7"))
     assert_true(out.contains("order 42"))
-    assert_true(!out.contains("no digits here"))
+    assert_true(not out.contains("no digits here"))
     remove_file("_rook_gr3/f.txt")
     remove_dir("_rook_gr3")
     return
@@ -59,7 +59,7 @@ fun test_grep_glob_filters_files() {
     fs_write("_rook_gr5/skip.txt", "needle here too")
     let out = grep("needle", "_rook_gr5", "*.rv")
     assert_true(out.contains("keep.rv"))
-    assert_true(!out.contains("skip.txt"))
+    assert_true(not out.contains("skip.txt"))
     remove_file("_rook_gr5/keep.rv")
     remove_file("_rook_gr5/skip.txt")
     remove_dir("_rook_gr5")
@@ -78,9 +78,9 @@ fun test_grep_skips_noise_directories_by_default() {
 
     let out = grep("needle", "_rook_gr6", "")
     assert_true(out.contains("src/main.rv"))
-    assert_true(!out.contains("target"))
-    assert_true(!out.contains("node_modules"))
-    assert_true(!out.contains(".git"))
+    assert_true(not out.contains("target"))
+    assert_true(not out.contains("node_modules"))
+    assert_true(not out.contains(".git"))
 
     remove_file("_rook_gr6/src/main.rv")
     remove_file("_rook_gr6/target/debug/app.txt")

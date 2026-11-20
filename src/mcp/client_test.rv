@@ -1,9 +1,9 @@
-import std/string
-import std/json { parse, JsonValue }
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./client" { McpTool, McpResource, McpPrompt, parse_tools, parse_resources, parse_prompts }
+import std.string
+from std.json import parse, JsonValue
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./client" import McpTool, McpResource, McpPrompt, parse_tools, parse_resources, parse_prompts
 
-const TOOLS: String = "{\"tools\": [{\"name\": \"echo\", \"description\": \"echoes input\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}}, {\"description\": \"no name, dropped\"}, {\"name\": \"add\", \"inputSchema\": {\"type\": \"object\"}}]}"
+let TOOLS: str = "{\"tools\": [{\"name\": \"echo\", \"description\": \"echoes input\", \"inputSchema\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}}, {\"description\": \"no name, dropped\"}, {\"name\": \"add\", \"inputSchema\": {\"type\": \"object\"}}]}"
 
 fun test_parse_tools_reads_name_desc_and_schema() {
     let tools = parse_tools(_json(TOOLS))
@@ -45,9 +45,9 @@ fun test_parse_prompts_reads_name_and_arguments() {
     assert_true(ps[0].arguments.contains("path"))
 }
 
-fun _json(text: String) -> JsonValue {
+fun _json(text: str) -> JsonValue {
     return match parse(text) {
-        Ok(j) -> j,
-        Err(e) -> JsonValue.Null,
+        case Ok(j) { j }
+        case Err(e) { JsonValue.Null }
     }
 }

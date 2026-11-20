@@ -7,29 +7,29 @@
 // The estimate, the split, and the rebuild are pure so they are tested
 // directly; only the summarize call and the state swap touch the outside.
 
-import std/string
-import "github.com/martian56/aviary" { complete_stream }
-import "github.com/martian56/aviary/request" { CancelToken }
-import "github.com/martian56/aviary/request" { ChatRequest }
-import "github.com/martian56/aviary/message" { Message, Role }
-import "./state" { AgentState, DisplayEvent }
+import std.string
+from "github.com/martian56/aviary" import complete_stream
+from "github.com/martian56/aviary/request" import CancelToken
+from "github.com/martian56/aviary/request" import ChatRequest
+from "github.com/martian56/aviary/message" import Message, Role
+from "./state" import AgentState, DisplayEvent
 
 // Keep this many recent user turns verbatim; summarize everything before.
-const KEEP_TURNS: Int = 4
-const DEFAULT_WINDOW: Int = 128000
+let KEEP_TURNS: int = 4
+let DEFAULT_WINDOW: int = 128000
 // Compact once the estimate passes this percent of the window.
-const COMPACT_RATIO_PCT: Int = 70
+let COMPACT_RATIO_PCT: int = 70
 
-const SUMMARY_SYSTEM: String = "You compress a coding assistant's conversation so it can continue with less context. Keep only what matters for continuing the work."
-const SUMMARY_INSTRUCTION: String = "Summarize the conversation so far into a compact note. Keep: the user's goals and decisions, files created or changed and how, commands run and their outcomes, and anything still in progress or unresolved. Drop pleasantries and redundant detail. Write it as notes you can rely on to keep working."
+let SUMMARY_SYSTEM: str = "You compress a coding assistant's conversation so it can continue with less context. Keep only what matters for continuing the work."
+let SUMMARY_INSTRUCTION: str = "Summarize the conversation so far into a compact note. Keep: the user's goals and decisions, files created or changed and how, commands run and their outcomes, and anything still in progress or unresolved. Drop pleasantries and redundant detail. Write it as notes you can rely on to keep working."
 
 // Check the running conversation and, if it is large enough, replace the
 // older turns with a summary. Returns how many messages were summarized away
 // (0 when nothing was compacted). Runs on the turn goroutine before the
 // request is built.
-fun maybe_compact(st: AgentState, model: String, api_key: String, base_url: String) -> Int {
+fun maybe_compact(st: AgentState, model: str, api_key: str, base_url: str) -> int {
     let msgs = st.messages()
-    if !should_compact(msgs, model) {
+    if not should_compact(msgs, model) {
         return 0
     }
     // The turn's cancel token, so Esc lands during the summarization request
@@ -42,24 +42,24 @@ fun maybe_compact(st: AgentState, model: String, api_key: String, base_url: Stri
 // folded into the summary, 0 when there is not enough history to fold. A
 // fresh token, not the turn's: /compact runs between turns, and the last
 // turn's token may already be canceled from an old Esc.
-fun force_compact(st: AgentState, model: String, api_key: String, base_url: String) -> Int {
+fun force_compact(st: AgentState, model: str, api_key: str, base_url: str) -> int {
     return _compact_now(st, st.messages(), model, api_key, base_url, CancelToken.new())
 }
 
 fun _compact_now(
     st: AgentState,
-    msgs: List<Message>,
-    model: String,
-    api_key: String,
-    base_url: String,
+    msgs: list[Message],
+    model: str,
+    api_key: str,
+    base_url: str,
     token: CancelToken,
-) -> Int {
+) -> int {
     let split = split_index(msgs, KEEP_TURNS)
     if split < 0 {
         return 0
     }
-    let old: List<Message> = []
-    let i = 0
+    let old: list[Message] = []
+    var i = 0
     while i < split {
         old.push(msgs[i])
         i = i + 1
@@ -75,12 +75,12 @@ fun _compact_now(
 
 // A rough token estimate: about four characters per token, plus a little per
 // message for the role and any tool-call arguments.
-fun estimate_tokens(msgs: List<Message>) -> Int {
-    let chars = 0
-    let i = 0
+fun estimate_tokens(msgs: list[Message]) -> int {
+    var chars = 0
+    var i = 0
     while i < msgs.len() {
         chars = chars + msgs[i].content.length() + 8
-        let j = 0
+        var j = 0
         while j < msgs[i].tool_calls.len() {
             chars = chars + msgs[i].tool_calls[j].arguments.length() + msgs[i].tool_calls[j].name.length()
             j = j + 1
@@ -91,7 +91,7 @@ fun estimate_tokens(msgs: List<Message>) -> Int {
 }
 
 // The context window for a model, by family, with a conservative default.
-fun context_window(model: String) -> Int {
+fun context_window(model: str) -> int {
     let m = model.to_lower()
     if m.contains("claude") {
         return 200000
@@ -99,7 +99,7 @@ fun context_window(model: String) -> Int {
     if m.contains("gemini") {
         return 1000000
     }
-    if m.contains("gpt-4o") || m.contains("gpt-4.1") || m.contains("o1") || m.contains("o3") || m.contains(
+    if m.contains("gpt-4o") or m.contains("gpt-4.1") or m.contains("o1") or m.contains("o3") or m.contains(
         "gpt-4-turbo",
     ) {
         return 128000
@@ -108,7 +108,7 @@ fun context_window(model: String) -> Int {
 }
 
 // Whether the conversation is large enough to compact.
-fun should_compact(msgs: List<Message>, model: String) -> Bool {
+fun should_compact(msgs: list[Message], model: str) -> bool {
     let budget = (context_window(model) * COMPACT_RATIO_PCT) / 100
     return estimate_tokens(msgs) > budget
 }
@@ -118,9 +118,9 @@ fun should_compact(msgs: List<Message>, model: String) -> Bool {
 // a User-role message (a tool result is a Tool-role message, not a boundary).
 // Returns -1 when there are not enough turns to bother, so recent history is
 // never summarized.
-fun split_index(msgs: List<Message>, keep_turns: Int) -> Int {
-    let user_idx: List<Int> = []
-    let i = 0
+fun split_index(msgs: list[Message], keep_turns: int) -> int {
+    let user_idx: list[int] = []
+    var i = 0
     while i < msgs.len() {
         if _is_user(msgs[i]) {
             user_idx.push(i)
@@ -140,10 +140,10 @@ fun split_index(msgs: List<Message>, keep_turns: Int) -> Int {
 // The conversation with [0, split) replaced by one summary message and the
 // rest kept verbatim. Pure. The summary is a user message so it is a valid
 // standalone start (a tool result would be orphaned).
-fun rebuild(msgs: List<Message>, split: Int, summary: String) -> List<Message> {
-    let out: List<Message> = []
+fun rebuild(msgs: list[Message], split: int, summary: str) -> list[Message] {
+    let out: list[Message] = []
     out.push(Message.user("[Earlier conversation, summarized to save context]\n\n${summary}"))
-    let i = split
+    var i = split
     while i < msgs.len() {
         out.push(msgs[i])
         i = i + 1
@@ -153,13 +153,13 @@ fun rebuild(msgs: List<Message>, split: Int, summary: String) -> List<Message> {
 
 // Flatten messages into a plain transcript for the summarizer, so the
 // summarize request carries no tool-call structure of its own to keep valid.
-fun flatten(msgs: List<Message>) -> String {
-    let out = ""
-    let i = 0
+fun flatten(msgs: list[Message]) -> str {
+    var out = ""
+    var i = 0
     while i < msgs.len() {
         let m = msgs[i]
-        let body = m.content
-        let j = 0
+        var body = m.content
+        var j = 0
         while j < m.tool_calls.len() {
             if body != "" {
                 body = body.concat(" ")
@@ -179,17 +179,17 @@ fun flatten(msgs: List<Message>) -> String {
 }
 
 fun summarize(
-    old: List<Message>,
-    model: String,
-    api_key: String,
-    base_url: String,
+    old: list[Message],
+    model: str,
+    api_key: str,
+    base_url: str,
     token: CancelToken,
-) -> String {
+) -> str {
     let transcript = flatten(old)
     if transcript.trim() == "" {
         return ""
     }
-    let req = ChatRequest.new(model).system(SUMMARY_SYSTEM).user(
+    var req = ChatRequest.new(model).system(SUMMARY_SYSTEM).user(
         "${SUMMARY_INSTRUCTION}\n\n${transcript}",
     )
     if api_key != "" {
@@ -202,33 +202,27 @@ fun summarize(
     // Streamed with a discarding callback so the cancel token is checked at
     // every chunk; a canceled summary comes back partial and is discarded.
     return match complete_stream(req, _discard_delta) {
-        Ok(reply) -> {
-            if reply.finish_reason == "canceled" {
-                ""
-            } else {
-                reply.content
-            }
-        },
-        Err(e) -> "",
+        case Ok(reply) { "" if reply.finish_reason == "canceled" else reply.content }
+        case Err(e) { "" }
     }
 }
 
-fun _discard_delta(d: String) {
+fun _discard_delta(d: str) {
     return
 }
 
-fun _is_user(m: Message) -> Bool {
+fun _is_user(m: Message) -> bool {
     return match m.role {
-        User -> true,
-        _ -> false,
+        case User { true }
+        case _ { false }
     }
 }
 
-fun _role_label(m: Message) -> String {
+fun _role_label(m: Message) -> str {
     return match m.role {
-        System -> "SYSTEM",
-        User -> "USER",
-        Assistant -> "ASSISTANT",
-        Tool -> "TOOL(${m.name})",
+        case System { "SYSTEM" }
+        case User { "USER" }
+        case Assistant { "ASSISTANT" }
+        case Tool { "TOOL(${m.name})" }
     }
 }

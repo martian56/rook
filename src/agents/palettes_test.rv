@@ -1,18 +1,18 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./palettes" { load_custom_themes, parse_palette, is_hex }
-import "../ui/theme" { Theme }
-import "../ui/themes" { merge_custom, builtin_themes }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./palettes" import load_custom_themes, parse_palette, is_hex
+from "../ui/theme" import Theme
+from "../ui/themes" import merge_custom, builtin_themes
 
-const DOC: String = "{\"name\": \"Midnight\", \"accent\": \"#7aa2f7\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
+let DOC: str = "{\"name\": \"Midnight\", \"accent\": \"#7aa2f7\", \"dim\": \"#565f89\", \"text\": \"#c0caf5\", \"tool\": \"#9ece6a\", \"warn\": \"#e0af68\", \"error\": \"#f7768e\"}"
 
 fun test_is_hex() {
     assert_true(is_hex("#7aa2f7"))
     assert_true(is_hex("#FFFFFF"))
-    assert_true(!is_hex("7aa2f7"))
-    assert_true(!is_hex("#fff"))
-    assert_true(!is_hex("#zzzzzz"))
+    assert_true(not is_hex("7aa2f7"))
+    assert_true(not is_hex("#fff"))
+    assert_true(not is_hex("#zzzzzz"))
 }
 
 fun test_parse_palette_reads_the_document() {

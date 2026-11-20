@@ -5,17 +5,17 @@
 // deletes it, sets the variables only in its own process, then launches the
 // server.
 
-import std/string
-import std/env { os_name, get_env, has_env }
-import std/fs { create_dir_all, read, write, exists }
-import std/time { now_millis }
-import "./config" { ServerSpec }
+import std.string
+from std.env import os_name, get_env, has_env
+from std.fs import create_dir_all, read, write, exists
+from std.time import now_millis
+from "./config" import ServerSpec
 
-struct LaunchSpec {
-    command: String,
-    args: List<String>,
-    error: String,
-    env_file: String,
+class LaunchSpec {
+    command: str
+    args: list[str]
+    error: str
+    env_file: str
 }
 
 // The runtime launch plan, including creation of the secret-free Windows
@@ -25,7 +25,7 @@ fun launch_for(spec: ServerSpec) -> LaunchSpec {
     if validation_error != "" {
         return _failed_launch(validation_error)
     }
-    if os_name() != "windows" || spec.env.len() == 0 {
+    if os_name() != "windows" or spec.env.len() == 0 {
         return launch_for_os(spec, os_name(), "", "")
     }
     let path = windows_launcher_path()
@@ -49,18 +49,13 @@ fun launch_for(spec: ServerSpec) -> LaunchSpec {
 
 // Pure launch construction for tests. `launcher_path` is required only for a
 // Windows spec with environment entries; `env_file` is its prepared handoff.
-fun launch_for_os(
-    spec: ServerSpec,
-    os: String,
-    launcher_path: String,
-    env_file: String,
-) -> LaunchSpec {
+fun launch_for_os(spec: ServerSpec, os: str, launcher_path: str, env_file: str) -> LaunchSpec {
     let validation_error = env_error(spec.env)
     if validation_error != "" {
         return _failed_launch(validation_error)
     }
     if spec.env.len() == 0 {
-        return LaunchSpec { command: spec.command, args: spec.args, error: "", env_file: "" }
+        return LaunchSpec(command: spec.command, args: spec.args, error: "", env_file: "")
     }
     if os == "windows" {
         if launcher_path == "" {
@@ -80,36 +75,36 @@ fun launch_for_os(
             env_file,
         ]
         args.push(spec.command)
-        let a = 0
+        var a = 0
         while a < spec.args.len() {
             args.push(spec.args[a])
             a = a + 1
         }
-        return LaunchSpec { command: "powershell", args, error: "", env_file }
+        return LaunchSpec(command: "powershell", args: args, error: "", env_file: env_file)
     }
-    let args: List<String> = []
-    let e = 0
+    let args: list[str] = []
+    var e = 0
     while e < spec.env.len() {
         args.push(spec.env[e])
         e = e + 1
     }
     args.push(spec.command)
-    let a = 0
+    var a = 0
     while a < spec.args.len() {
         args.push(spec.args[a])
         a = a + 1
     }
-    return LaunchSpec { command: "env", args, error: "", env_file: "" }
+    return LaunchSpec(command: "env", args: args, error: "", env_file: "")
 }
 
 // Validate a portable environment assignment. Errors name only the entry
 // position and expected shape, never the entry text or value.
-fun env_error(entries: List<String>) -> String {
-    let i = 0
+fun env_error(entries: list[str]) -> str {
+    var i = 0
     while i < entries.len() {
         let entry = entries[i]
         let equal = entry.index_of("=")
-        if equal <= 0 || !_valid_env_name(entry.substring(0, equal)) || entry.contains(
+        if equal <= 0 or not _valid_env_name(entry.substring(0, equal)) or entry.contains(
             __str_from_byte(0),
         ) {
             return "MCP environment error at entry ${i + 1}: expected KEY=value with a portable variable name"
@@ -119,13 +114,13 @@ fun env_error(entries: List<String>) -> String {
     return ""
 }
 
-fun _valid_env_name(name: String) -> Bool {
-    if name == "" || !_env_start(name.byte_at(0)) {
+fun _valid_env_name(name: str) -> bool {
+    if name == "" or not _env_start(name.byte_at(0)) {
         return false
     }
-    let i = 1
+    var i = 1
     while i < name.length() {
-        if !_env_rest(name.byte_at(i)) {
+        if not _env_rest(name.byte_at(i)) {
             return false
         }
         i = i + 1
@@ -133,16 +128,16 @@ fun _valid_env_name(name: String) -> Bool {
     return true
 }
 
-fun _env_start(b: Int) -> Bool {
-    return b == 95 || (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+fun _env_start(b: int) -> bool {
+    return b == 95 or (b >= 65 and b <= 90) or (b >= 97 and b <= 122)
 }
 
-fun _env_rest(b: Int) -> Bool {
-    return _env_start(b) || (b >= 48 && b <= 57)
+fun _env_rest(b: int) -> bool {
+    return _env_start(b) or (b >= 48 and b <= 57)
 }
 
-fun windows_launcher_path() -> String {
-    let home = ""
+fun windows_launcher_path() -> str {
+    var home = ""
     if has_env("USERPROFILE") {
         home = get_env("USERPROFILE")
     } else {
@@ -161,9 +156,9 @@ fun windows_launcher_path() -> String {
 // makes a handoff-path collision across processes structurally unlikely
 // (the existence check alone raced: both processes could pick the same
 // fresh path in the same millisecond).
-let PROC_STAMP: Int = now_millis()
+let PROC_STAMP: int = now_millis()
 
-fun windows_environment_path() -> String {
+fun windows_environment_path() -> str {
     let launcher = windows_launcher_path()
     if launcher == "" {
         return ""
@@ -171,8 +166,8 @@ fun windows_environment_path() -> String {
     let slash = launcher.last_index_of("/")
     let dir = launcher.substring(0, slash)
     let stamp = now_millis()
-    let suffix = 0
-    let path = "${dir}/mcp-env-${PROC_STAMP}-${stamp}.pending"
+    var suffix = 0
+    var path = "${dir}/mcp-env-${PROC_STAMP}-${stamp}.pending"
     while exists(path) {
         suffix = suffix + 1
         path = "${dir}/mcp-env-${PROC_STAMP}-${stamp}-${suffix}.pending"
@@ -180,35 +175,35 @@ fun windows_environment_path() -> String {
     return path
 }
 
-fun write_windows_launcher(path: String) -> String {
+fun write_windows_launcher(path: str) -> str {
     let slash = path.last_index_of("/")
     if slash > 0 {
         let dir = path.substring(0, slash)
         match create_dir_all(dir) {
-            Ok(ok) -> {},
-            Err(e) -> {
+            case Ok(ok) {}
+            case Err(e) {
                 return "MCP environment error: could not create Windows launcher directory: ${e.message}"
-            },
+            }
         }
     }
     return match write(path, windows_launcher_script()) {
-        Ok(ok) -> "",
-        Err(e) -> "MCP environment error: could not write Windows launcher: ${e.message}",
+        case Ok(ok) { "" }
+        case Err(e) { "MCP environment error: could not write Windows launcher: ${e.message}" }
     }
 }
 
-fun write_windows_environment(path: String, entries: List<String>) -> String {
+fun write_windows_environment(path: str, entries: list[str]) -> str {
     let validation_error = env_error(entries)
     if validation_error != "" {
         return validation_error
     }
     let payload = _environment_payload(entries)
-    let write_error = ""
+    var write_error = ""
     match write(path, payload) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             write_error = "MCP environment error: could not write Windows handoff: ${e.message}"
-        },
+        }
     }
     if write_error != "" {
         return write_error
@@ -217,22 +212,16 @@ fun write_windows_environment(path: String, entries: List<String>) -> String {
     // the write window, fail this handshake cleanly instead of launching a
     // server with someone else's environment.
     return match read(path) {
-        Ok(back) -> {
-            if back == payload {
-                ""
-            } else {
-                "MCP environment error: the handoff file was overwritten by another process; retry the connection"
-            }
-        },
-        Err(e) -> "MCP environment error: could not verify the Windows handoff: ${e.message}",
+        case Ok(back) { "" if back == payload else "MCP environment error: the handoff file was overwritten by another process; retry the connection" }
+        case Err(e) { "MCP environment error: could not verify the Windows handoff: ${e.message}" }
     }
 }
 
 // This script contains no configured names or values. It reads a NUL-separated
 // handoff file, removes it before starting the server, and applies the entries
 // only to the PowerShell process and its child.
-fun windows_launcher_script() -> String {
-    let script = "param(\n"
+fun windows_launcher_script() -> str {
+    var script = "param(\n"
     script = script.concat("  [string]$EnvironmentFile,\n")
     script = script.concat("  [string]$Program\n")
     script = script.concat(")\n\n")
@@ -258,10 +247,10 @@ fun windows_launcher_script() -> String {
     return script
 }
 
-fun _environment_payload(entries: List<String>) -> String {
-    let out = ""
+fun _environment_payload(entries: list[str]) -> str {
+    var out = ""
     let nul = __str_from_byte(0)
-    let i = 0
+    var i = 0
     while i < entries.len() {
         out = out.concat(entries[i]).concat(nul)
         i = i + 1
@@ -269,7 +258,7 @@ fun _environment_payload(entries: List<String>) -> String {
     return out
 }
 
-fun _failed_launch(error: String) -> LaunchSpec {
-    let args: List<String> = []
-    return LaunchSpec { command: "", args, error, env_file: "" }
+fun _failed_launch(error: str) -> LaunchSpec {
+    let args: list[str] = []
+    return LaunchSpec(command: "", args: args, error: error, env_file: "")
 }

@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_true, assert_eq_str }
-import std/fs { read, write, exists, remove_file }
-import "./checkpoints" { begin_checkpoint_batch, checkpoint_file, rewind_last_batch, checkpoint_batches, clear_checkpoints }
+import std.string
+from std.test import assert_true, assert_eq_str
+from std.fs import read, write, exists, remove_file
+from "./checkpoints" import begin_checkpoint_batch, checkpoint_file, rewind_last_batch, checkpoint_batches, clear_checkpoints
 
 fun test_rewind_restores_edits_and_deletes_created_files() {
     clear_checkpoints()
@@ -15,10 +15,10 @@ fun test_rewind_restores_edits_and_deletes_created_files() {
     let summary = rewind_last_batch()
     assert_true(summary.contains("2 file(s)"))
     match read("_rook_ckpt_a.txt") {
-        Ok(t) -> assert_eq_str(t, "original"),
-        Err(e) -> assert_true(false),
+        case Ok(t) { assert_eq_str(t, "original") }
+        case Err(e) { assert_true(false) }
     }
-    assert_true(!exists("_rook_ckpt_b.txt"))
+    assert_true(not exists("_rook_ckpt_b.txt"))
     remove_file("_rook_ckpt_a.txt")
     return
 }
@@ -35,13 +35,13 @@ fun test_batches_rewind_newest_first() {
     assert_true(checkpoint_batches() == 2)
     let _ = rewind_last_batch()
     match read("_rook_ckpt_c.txt") {
-        Ok(t) -> assert_eq_str(t, "two"),
-        Err(e) -> assert_true(false),
+        case Ok(t) { assert_eq_str(t, "two") }
+        case Err(e) { assert_true(false) }
     }
     let _ = rewind_last_batch()
     match read("_rook_ckpt_c.txt") {
-        Ok(t) -> assert_eq_str(t, "one"),
-        Err(e) -> assert_true(false),
+        case Ok(t) { assert_eq_str(t, "one") }
+        case Err(e) { assert_true(false) }
     }
     assert_eq_str(rewind_last_batch(), "")
     remove_file("_rook_ckpt_c.txt")

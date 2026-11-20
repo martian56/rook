@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import "./framing" { LineBuffer }
+import std.string
+from std.test import assert_eq_str, assert_true
+from "./framing" import LineBuffer
 
 fun test_yields_complete_lines_only() {
     let b = LineBuffer.new()
@@ -30,16 +30,16 @@ fun test_strips_carriage_return() {
     assert_eq_str(_line(b), "next")
 }
 
-fun _line(b: LineBuffer) -> String {
+fun _line(b: LineBuffer) -> str {
     return match b.next_line() {
-        Some(s) -> s,
-        None -> "<none>",
+        case Some(s) { s }
+        case None { "<none>" }
     }
 }
 
-fun _none(b: LineBuffer) -> Bool {
+fun _none(b: LineBuffer) -> bool {
     return match b.next_line() {
-        Some(s) -> false,
-        None -> true,
+        case Some(s) { false }
+        case None { true }
     }
 }

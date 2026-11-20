@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./manage" { run_plugins_command, contrib, removal_error }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./manage" import run_plugins_command, contrib, removal_error
 
 fun test_router_usage_and_unknown() {
     assert_true(run_plugins_command("bogus").starts_with("unknown /plugins command"))
@@ -34,7 +34,7 @@ fun test_contrib_counts_the_bundle_subfolders() {
     assert_true(c.contains("2 skills"))
     assert_true(c.contains("1 commands"))
     // No subagents or themes folders, so they are omitted.
-    assert_true(!c.contains("subagents"))
+    assert_true(not c.contains("subagents"))
 
     // A path with no bundle folders contributes nothing.
     assert_eq_str(contrib("_rook_contrib_absent"), "")

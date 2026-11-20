@@ -6,15 +6,15 @@
 // notice) that the UI drains and replays on every tick, and it owns the
 // conversation (the model-visible message list) which persists here across
 // turns. Approval is a one-slot channel: the goroutine blocks asking, the UI
-// answers with an Int.
+// answers with an int.
 //
 // The UI never starts a new turn until the current one reports done, so a
 // single goroutine writes the conversation and the event log at any time.
 
-import std/string
-import std/sync { Mutex, mutex, Channel, channel_buffered }
-import "github.com/martian56/aviary/message" { Message, ToolCall }
-import "github.com/martian56/aviary/request" { CancelToken }
+import std.string
+from std.sync import Mutex, mutex, Channel, channel_buffered
+from "github.com/martian56/aviary/message" import Message, ToolCall
+from "github.com/martian56/aviary/request" import CancelToken
 
 // What the goroutine tells the UI to show, in order. The Agent* events
 // bracket a subagent run so the UI can render its activity as a nested
@@ -22,94 +22,94 @@ import "github.com/martian56/aviary/request" { CancelToken }
 // used), letting the display group and collapse the block.
 enum DisplayEvent {
     Started,
-    Chunk(String),
-    ToolRan(String, String),
-    Info(String),
-    AgentStarted(String, String),
-    AgentTool(String, String, String, String),
-    AgentFinished(String, String, Int),
+    Chunk(str),
+    ToolRan(str, str),
+    Info(str),
+    AgentStarted(str, str),
+    AgentTool(str, str, str, str),
+    AgentFinished(str, str, int),
 }
 
 // A drained batch plus the turn's status, read under the lock and handed to
 // the UI to apply lock-free.
-struct Snapshot {
-    events: List<DisplayEvent>,
-    done: Bool,
-    pending: String,
+class Snapshot {
+    events: list[DisplayEvent]
+    done: bool
+    pending: str
     // A question awaiting the user's pick, "" when none; the options ride
     // alongside.
-    question: String,
-    choices: List<String>,
+    question: str
+    choices: list[str]
     // Extra lines shown under the pending approval (a diff preview).
-    pending_detail: String,
+    pending_detail: str
     // Session token totals, for the status bar.
-    sess_prompt: Int,
-    sess_completion: Int,
-    sess_cache_read: Int,
-    sess_cache_write: Int,
+    sess_prompt: int
+    sess_completion: int
+    sess_cache_read: int
+    sess_cache_write: int
 }
 
 // Token counts, for reporting a turn's usage.
-struct Tokens {
-    prompt: Int,
-    completion: Int,
-    cache_read: Int,
-    cache_write: Int,
+class Tokens {
+    prompt: int
+    completion: int
+    cache_read: int
+    cache_write: int
 }
 
-struct AgentState {
-    lock: Mutex,
-    convo: List<Message>,
-    events: List<DisplayEvent>,
-    done: Bool,
-    interrupt: Bool,
+class AgentState {
+    lock: Mutex
+    convo: list[Message]
+    events: list[DisplayEvent]
+    done: bool
+    interrupt: bool
     // The tool label awaiting approval, "" when none is pending.
-    pending: String,
+    pending: str
     // The question awaiting an answer, "" when none, and its options.
-    question: String,
-    choices: List<String>,
+    question: str
+    choices: list[str]
     // Extra lines under the pending approval (a diff preview), "" when none.
-    pending_detail: String,
+    pending_detail: str
     // One-slot decision channel: 0 deny, 1 allow, 2 allow all of this kind.
-    decisions: Channel,
+    decisions: Channel[int]
     // Serializes ask() so parallel subagents queue for the one approval
     // prompt instead of overwriting each other's pending label.
-    ask_lock: Mutex,
+    ask_lock: Mutex
     // The turn's stream cancel token, fresh each begin(). request_interrupt
     // cancels it so an in-flight reply stops at the next delta instead of
     // running to the end.
-    cancel: CancelToken,
+    cancel: CancelToken
     // Plan mode: read-only research, mutating tools blocked. A session
     // toggle set from the UI before each turn, not reset by begin().
-    plan_flag: Bool,
+    plan_flag: bool
     // Token usage: the current turn's (reset by begin) and the session's
     // running total (reset by clear_convo).
-    turn_prompt: Int,
-    turn_completion: Int,
-    sess_prompt: Int,
-    sess_completion: Int,
+    turn_prompt: int
+    turn_completion: int
+    sess_prompt: int
+    sess_completion: int
     // How much of the prompt totals was served from or written to the
     // provider's prompt cache, for the discounted cost estimate.
-    turn_cache_read: Int,
-    turn_cache_write: Int,
-    sess_cache_read: Int,
-    sess_cache_write: Int,
+    turn_cache_read: int
+    turn_cache_write: int
+    sess_cache_read: int
+    sess_cache_write: int
 }
 
 impl AgentState {
     fun new() -> AgentState {
-        let convo: List<Message> = []
-        let events: List<DisplayEvent> = []
-        let choices: List<String> = []
-        return AgentState {
+        let convo: list[Message] = []
+        let events: list[DisplayEvent] = []
+        let choices: list[str] = []
+        return AgentState(
             lock: mutex(),
-            convo,
-            events,
+            convo: convo,
+            events: events,
             done: false,
             interrupt: false,
             pending: "",
             question: "",
-            choices,
+            choices: choices,
             pending_detail: "",
             decisions: channel_buffered(1),
             ask_lock: mutex(),
@@ -123,13 +123,13 @@ impl AgentState {
             turn_cache_write: 0,
             sess_cache_read: 0,
             sess_cache_write: 0,
-        }
+        )
     }
 
     // Add one reply's token usage to the current turn and the session total.
     // cache_read/cache_write are the reply's prompt-cache breakdown (already
     // included in `prompt`), kept so the cost estimate can discount them.
-    fun add_usage(self, prompt: Int, completion: Int, cache_read: Int, cache_write: Int) {
+    fun add_usage(self, prompt: int, completion: int, cache_read: int, cache_write: int) {
         self.lock.lock()
         self.turn_prompt = self.turn_prompt + prompt
         self.turn_completion = self.turn_completion + completion
@@ -146,7 +146,7 @@ impl AgentState {
     // session is resumed. Does not touch the per-turn counters. Saved sessions
     // do not persist the cache breakdown, so it restarts at zero and the
     // estimate is simply conservative for the restored history.
-    fun set_usage(self, prompt: Int, completion: Int) {
+    fun set_usage(self, prompt: int, completion: int) {
         self.lock.lock()
         self.sess_prompt = prompt
         self.sess_completion = completion
@@ -158,25 +158,25 @@ impl AgentState {
     // This turn's accumulated usage, for the end-of-turn summary.
     fun turn_tokens(self) -> Tokens {
         self.lock.lock()
-        let t = Tokens {
+        let t = Tokens(
             prompt: self.turn_prompt,
             completion: self.turn_completion,
             cache_read: self.turn_cache_read,
             cache_write: self.turn_cache_write,
-        }
+        )
         self.lock.unlock()
         return t
     }
 
     // Set plan mode. The UI calls this before begin() when it changes.
-    fun set_plan(self, on: Bool) {
+    fun set_plan(self, on: bool) {
         self.lock.lock()
         self.plan_flag = on
         self.lock.unlock()
     }
 
     // Whether the turn is in plan mode (read-only, no mutations).
-    fun plan(self) -> Bool {
+    fun plan(self) -> bool {
         self.lock.lock()
         let p = self.plan_flag
         self.lock.unlock()
@@ -190,9 +190,9 @@ impl AgentState {
         self.interrupt = false
         self.pending = ""
         self.question = ""
-        let none: List<String> = []
+        let none: list[str] = []
         self.choices = none
-        let e: List<DisplayEvent> = []
+        let e: list[DisplayEvent] = []
         self.events = e
         self.cancel = CancelToken.new()
         self.turn_prompt = 0
@@ -212,7 +212,7 @@ impl AgentState {
 
     fun clear_convo(self) {
         self.lock.lock()
-        let c: List<Message> = []
+        let c: list[Message] = []
         self.convo = c
         self.turn_prompt = 0
         self.turn_completion = 0
@@ -225,25 +225,25 @@ impl AgentState {
         self.lock.unlock()
     }
 
-    fun push_user(self, text: String) {
+    fun push_user(self, text: str) {
         self.lock.lock()
         self.convo.push(Message.user(text))
         self.lock.unlock()
     }
 
-    fun push_assistant(self, text: String) {
+    fun push_assistant(self, text: str) {
         self.lock.lock()
         self.convo.push(Message.assistant(text))
         self.lock.unlock()
     }
 
-    fun push_assistant_calls(self, text: String, calls: List<ToolCall>) {
+    fun push_assistant_calls(self, text: str, calls: list[ToolCall]) {
         self.lock.lock()
         self.convo.push(Message.assistant_calls(text, calls))
         self.lock.unlock()
     }
 
-    fun push_tool_result(self, id: String, name: String, content: String) {
+    fun push_tool_result(self, id: str, name: str, content: str) {
         self.lock.lock()
         self.convo.push(Message.tool_result(id, name, content))
         self.lock.unlock()
@@ -252,17 +252,17 @@ impl AgentState {
     // Replace the whole conversation, for context compaction. The display
     // transcript is separate and stays intact; this only changes what the
     // model sees on the next request.
-    fun replace_convo(self, msgs: List<Message>) {
+    fun replace_convo(self, msgs: list[Message]) {
         self.lock.lock()
         self.convo = msgs
         self.lock.unlock()
     }
 
     // A copy of the conversation, for building a request.
-    fun messages(self) -> List<Message> {
+    fun messages(self) -> list[Message] {
         self.lock.lock()
-        let out: List<Message> = []
-        let i = 0
+        let out: list[Message] = []
+        var i = 0
         while i < self.convo.len() {
             out.push(self.convo[i])
             i = i + 1
@@ -277,7 +277,7 @@ impl AgentState {
         self.lock.unlock()
     }
 
-    fun chunk(self, d: String) {
+    fun chunk(self, d: str) {
         self.lock.lock()
         self.events.push(DisplayEvent.Chunk(d))
         self.lock.unlock()
@@ -287,9 +287,9 @@ impl AgentState {
     fun drain(self) -> Snapshot {
         self.lock.lock()
         let evs = self.events
-        let empty: List<DisplayEvent> = []
+        let empty: list[DisplayEvent] = []
         self.events = empty
-        let s = Snapshot {
+        let s = Snapshot(
             events: evs,
             done: self.done,
             pending: self.pending,
@@ -300,7 +300,7 @@ impl AgentState {
             sess_completion: self.sess_completion,
             sess_cache_read: self.sess_cache_read,
             sess_cache_write: self.sess_cache_write,
-        }
+        )
         self.lock.unlock()
         return s
     }
@@ -313,7 +313,7 @@ impl AgentState {
 
     // Read the pending approval without draining events, so a second reader
     // (a test's approver) can watch for it without stealing display events.
-    fun pending_now(self) -> String {
+    fun pending_now(self) -> str {
         self.lock.lock()
         let p = self.pending
         self.lock.unlock()
@@ -330,7 +330,7 @@ impl AgentState {
         t.cancel()
     }
 
-    fun interrupted(self) -> Bool {
+    fun interrupted(self) -> bool {
         self.lock.lock()
         let v = self.interrupt
         self.lock.unlock()
@@ -340,12 +340,12 @@ impl AgentState {
     // Goroutine side: publish a pending approval and block until the UI
     // answers. Returns 0 deny, 1 allow, 2 allow all of this kind. Callers
     // queue: with agents running in parallel, one approval shows at a time.
-    fun ask(self, desc: String) -> Int {
+    fun ask(self, desc: str) -> int {
         return self.ask_detail(desc, "")
     }
 
     // ask with extra lines (a diff preview) shown under the label.
-    fun ask_detail(self, desc: String, detail: String) -> Int {
+    fun ask_detail(self, desc: str, detail: str) -> int {
         // Esc already asked to stop: answer deny without showing a prompt.
         // Askers queue on ask_lock, so with parallel subagents running the
         // user would otherwise have to dismiss one prompt per waiting caller
@@ -377,12 +377,12 @@ impl AgentState {
     // lands between this send and the goroutine clearing it would re-show the
     // just-answered prompt, and a second keypress would leak a decision into
     // the buffered channel that silently answers the following prompt.
-    fun decide(self, d: Int) {
+    fun decide(self, d: int) {
         self.lock.lock()
         self.pending = ""
         self.pending_detail = ""
         self.question = ""
-        let none: List<String> = []
+        let none: list[str] = []
         self.choices = none
         self.lock.unlock()
         self.decisions.send(d)
@@ -392,7 +392,7 @@ impl AgentState {
     // UI answers with the chosen index (or -1 for declined). Shares the
     // ask_lock and decision channel with approvals, so only one prompt is
     // in front of the user at a time.
-    fun ask_question(self, q: String, options: List<String>) -> Int {
+    fun ask_question(self, q: str, options: list[str]) -> int {
         // Declined without prompting once Esc has asked the turn to stop.
         if self.interrupted() {
             return 0 - 1
@@ -409,7 +409,7 @@ impl AgentState {
         let d = self.decisions.recv()
         self.lock.lock()
         self.question = ""
-        let none: List<String> = []
+        let none: list[str] = []
         self.choices = none
         self.lock.unlock()
         self.ask_lock.unlock()
@@ -417,7 +417,7 @@ impl AgentState {
     }
 
     // Read the pending question without draining events (for tests).
-    fun question_now(self) -> String {
+    fun question_now(self) -> str {
         self.lock.lock()
         let q = self.question
         self.lock.unlock()

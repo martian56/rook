@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import "./paths" { resolve_path, display_path, _is_reserved }
+import std.string
+from std.test import assert_eq_str, assert_true
+from "./paths" import resolve_path, display_path, _is_reserved
 
 fun test_windows_reserved_names_are_flagged() {
     assert_true(_is_reserved("con"))
@@ -8,9 +8,9 @@ fun test_windows_reserved_names_are_flagged() {
     assert_true(_is_reserved("com1"))
     assert_true(_is_reserved("lpt9"))
     assert_true(_is_reserved("con.txt"))
-    assert_true(!_is_reserved("console"))
-    assert_true(!_is_reserved("com0"))
-    assert_true(!_is_reserved("main.rv"))
+    assert_true(not _is_reserved("console"))
+    assert_true(not _is_reserved("com0"))
+    assert_true(not _is_reserved("main.rv"))
 }
 
 fun test_resolve_path_normalizes_relative_paths() {
@@ -21,14 +21,14 @@ fun test_resolve_path_normalizes_relative_paths() {
 
 fun test_resolve_path_rejects_parent_escape() {
     let r = resolve_path("../outside.txt", "")
-    assert_true(!r.ok)
+    assert_true(not r.ok)
     assert_true(r.error.contains("escapes the workspace"))
 }
 
 fun test_resolve_path_rejects_absolute_and_drive_paths() {
-    assert_true(!resolve_path("/tmp/outside.txt", "").ok)
-    assert_true(!resolve_path("C:\\tmp\\outside.txt", "").ok)
-    assert_true(!resolve_path("\\\\server\\share\\file.txt", "").ok)
+    assert_true(not resolve_path("/tmp/outside.txt", "").ok)
+    assert_true(not resolve_path("C:\\tmp\\outside.txt", "").ok)
+    assert_true(not resolve_path("\\\\server\\share\\file.txt", "").ok)
 }
 
 fun test_resolve_path_uses_fallback() {

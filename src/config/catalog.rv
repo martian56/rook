@@ -4,14 +4,14 @@
 // any string aviary can route, so a newly released model is still reachable
 // by typing it before the next catalog refresh.
 
-import std/string
-import "./openrouter_catalog" { openrouter_catalog, openrouter_models_without_tools }
-import "./direct_catalog" { direct_catalog }
+import std.string
+from "./openrouter_catalog" import openrouter_catalog, openrouter_models_without_tools
+from "./direct_catalog" import direct_catalog
 
-fun catalog() -> List<String> {
+fun catalog() -> list[str] {
     let items = openrouter_catalog()
     let direct = direct_catalog()
-    let i = 0
+    var i = 0
     while i < direct.len() {
         items.push(direct[i])
         i = i + 1
@@ -21,13 +21,13 @@ fun catalog() -> List<String> {
 
 // The catalog narrowed to entries containing `query`, ignoring case. An
 // empty query is the whole catalog. Feeds the picker's search bar.
-fun filter_catalog(items: List<String>, query: String) -> List<String> {
+fun filter_catalog(items: list[str], query: str) -> list[str] {
     let q = query.trim().to_lower()
     if q == "" {
         return items
     }
-    let out: List<String> = []
-    let i = 0
+    let out: list[str] = []
+    var i = 0
     while i < items.len() {
         if items[i].to_lower().contains(q) {
             out.push(items[i])
@@ -39,9 +39,9 @@ fun filter_catalog(items: List<String>, query: String) -> List<String> {
 
 // A lowercased copy of each entry, built once so the picker can filter on
 // every keystroke without lowercasing the whole catalog each time.
-fun catalog_lower(items: List<String>) -> List<String> {
-    let out: List<String> = []
-    let i = 0
+fun catalog_lower(items: list[str]) -> list[str] {
+    let out: list[str] = []
+    var i = 0
     while i < items.len() {
         out.push(items[i].to_lower())
         i = i + 1
@@ -51,17 +51,17 @@ fun catalog_lower(items: List<String>) -> List<String> {
 
 // The picker label keeps capability text separate from the real model ID, so
 // searching and selection still operate on the provider/model string.
-fun catalog_label(model: String) -> String {
+fun catalog_label(model: str) -> str {
     if supports_tools(model) {
         return "[tools] ${model}"
     }
     return "[no tools] ${model}"
 }
 
-fun catalog_labels(items: List<String>) -> List<String> {
-    let labels: List<String> = []
+fun catalog_labels(items: list[str]) -> list[str] {
+    let labels: list[str] = []
     let without = openrouter_models_without_tools()
-    let i = 0
+    var i = 0
     while i < items.len() {
         if _supports_tools(items[i], without) {
             labels.push("[tools] ${items[i]}")
@@ -75,15 +75,15 @@ fun catalog_labels(items: List<String>) -> List<String> {
 
 // Direct choices are curated for agent use. OpenRouter publishes capability
 // metadata, so its generated no-tools list is authoritative for those rows.
-fun supports_tools(model: String) -> Bool {
+fun supports_tools(model: str) -> bool {
     return _supports_tools(model, openrouter_models_without_tools())
 }
 
-fun _supports_tools(model: String, without: List<String>) -> Bool {
-    if !model.starts_with("openrouter/") {
+fun _supports_tools(model: str, without: list[str]) -> bool {
+    if not model.starts_with("openrouter/") {
         return true
     }
-    let i = 0
+    var i = 0
     while i < without.len() {
         if without[i] == model {
             return false
@@ -95,7 +95,7 @@ fun _supports_tools(model: String, without: List<String>) -> Bool {
 
 // Selecting a text-only model is allowed, but normal Rook turns may need
 // function calls to inspect, edit, or test a project.
-fun model_capability_warning(model: String) -> String {
+fun model_capability_warning(model: str) -> str {
     if supports_tools(model) {
         return ""
     }
@@ -104,9 +104,9 @@ fun model_capability_warning(model: String) -> String {
 
 // The index of `model` in the catalog, or 0 when it is not listed (so the
 // picker opens at the top rather than out of range).
-fun index_of(model: String) -> Int {
+fun index_of(model: str) -> int {
     let items = catalog()
-    let i = 0
+    var i = 0
     while i < items.len() {
         if items[i] == model {
             return i

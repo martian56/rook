@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./model" { Plugin, parse_manifest, read_plugin, plugin_path, plugins_dir }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./model" import Plugin, parse_manifest, read_plugin, plugin_path, plugins_dir
 
 fun test_parse_manifest_reads_the_fields() {
     let p = parse_manifest(

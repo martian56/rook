@@ -1,14 +1,14 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./permissions" { Verdict, check_permission_from_roots, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "github.com/martian56/aviary/message" import ToolCall
+from "./permissions" import Verdict, check_permission_from_roots, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of
 
-fun tag(v: Verdict) -> String {
+fun tag(v: Verdict) -> str {
     return match v {
-        Allow -> "allow",
-        Deny(rule) -> "deny:${rule}",
-        Ask -> "ask",
+        case Allow { "allow" }
+        case Deny(rule) { "deny:${rule}" }
+        case Ask { "ask" }
     }
 }
 
@@ -17,15 +17,15 @@ fun test_glob_matching() {
     assert_true(glob_match("*", "anything at all"))
     assert_true(glob_match("src/*.rv", "src/main.rv"))
     assert_true(glob_match("*secret*", "a secret place"))
-    assert_true(!glob_match("rvpm *", "cargo test"))
-    assert_true(!glob_match("src/*.rv", "src/main.rs"))
+    assert_true(not glob_match("rvpm *", "cargo test"))
+    assert_true(not glob_match("src/*.rv", "src/main.rs"))
     assert_true(glob_match("exact", "exact"))
-    assert_true(!glob_match("exact", "exactly"))
+    assert_true(not glob_match("exact", "exactly"))
     // A trailing literal that also occurs earlier must still match at the end,
     // so a deny rule like write_file(*.env) is not silently skipped.
     assert_true(glob_match("*.env", "a.env.env"))
     assert_true(glob_match("*.env", ".env"))
-    assert_true(!glob_match("*.env", "a.env.txt"))
+    assert_true(not glob_match("*.env", "a.env.txt"))
 }
 
 fun test_rule_shapes() {
@@ -33,10 +33,10 @@ fun test_rule_shapes() {
     assert_true(rule_matches("run_command(rvpm *)", "run_command", "rvpm build"))
     assert_true(rule_matches("mcp__*", "mcp__fs__write", ""))
     assert_true(rule_matches("mcp__fs__*(delete *)", "mcp__fs__remove", "delete a"))
-    assert_true(!rule_matches("run_command(rvpm *)", "run_command", "rm -rf x"))
-    assert_true(!rule_matches("mcp__fs__*", "mcp__git__status", ""))
-    assert_true(!rule_matches("run_command(rvpm *)", "write_file", "rvpm build"))
-    assert_true(!rule_matches("broken(", "broken", "x"))
+    assert_true(not rule_matches("run_command(rvpm *)", "run_command", "rm -rf x"))
+    assert_true(not rule_matches("mcp__fs__*", "mcp__git__status", ""))
+    assert_true(not rule_matches("run_command(rvpm *)", "write_file", "rvpm build"))
+    assert_true(not rule_matches("broken(", "broken", "x"))
 }
 
 fun test_deny_beats_allow_and_default_asks() {
@@ -48,13 +48,13 @@ fun test_deny_beats_allow_and_default_asks() {
         "deny:run_command(rvpm dist*)",
     )
     assert_eq_str(tag(verdict(allow, deny, "run_command", "cargo test")), "ask")
-    let none: List<String> = []
+    let none: list[str] = []
     assert_eq_str(tag(verdict(none, none, "write_file", "a.txt")), "ask")
 }
 
 fun test_untrusted_allow_rules_do_not_skip_approval() {
     let allow = ["write_file(*)"]
-    let deny: List<String> = []
+    let deny: list[str] = []
     assert_eq_str(
         tag(verdict_with_allow_trust(false, allow, deny, "write_file", "src/main.rv")),
         "ask",
@@ -66,7 +66,7 @@ fun test_untrusted_allow_rules_do_not_skip_approval() {
 }
 
 fun test_untrusted_deny_rules_still_block() {
-    let allow: List<String> = []
+    let allow: list[str] = []
     let deny = ["run_command(rm *)"]
     assert_eq_str(
         tag(verdict_with_allow_trust(false, allow, deny, "run_command", "rm -rf target")),
@@ -82,7 +82,7 @@ fun test_malformed_settings_fail_closed_for_permissions() {
         "{\"permissions\":{\"allow\":[\"run_command(rvpm *)\"]}}",
     )
     write("_rook_bad_perms/settings.json", "{\"permissions\":")
-    let call = ToolCall { id: "1", name: "run_command", arguments: "{\"command\":\"rvpm test\"}" }
+    let call = ToolCall(id: "1", name: "run_command", arguments: "{\"command\":\"rvpm test\"}")
     let result = tag(check_permission_from_roots(["_rook_bad_perms"], call))
     assert_true(result.starts_with("deny:settings error: invalid JSON"))
     let mixed = tag(check_permission_from_roots(["_rook_good_perms", "_rook_bad_perms"], call))
@@ -95,36 +95,32 @@ fun test_malformed_settings_fail_closed_for_permissions() {
 }
 
 fun test_subjects_per_tool() {
-    let sh = ToolCall { id: "1", name: "run_command", arguments: "{\"command\":\"ls -la\"}" }
+    let sh = ToolCall(id: "1", name: "run_command", arguments: "{\"command\":\"ls -la\"}")
     assert_eq_str(subject_of(sh), "ls -la")
-    let wf = ToolCall {
+    let wf = ToolCall(
         id: "2",
         name: "write_file",
         arguments: "{\"path\":\"src/x.rv\",\"content\":\"y\"}",
-    }
+    )
     assert_eq_str(subject_of(wf), "src/x.rv")
-    let ks = ToolCall { id: "3", name: "kill_shell", arguments: "{\"id\":\"4\"}" }
+    let ks = ToolCall(id: "3", name: "kill_shell", arguments: "{\"id\":\"4\"}")
     assert_eq_str(subject_of(ks), "4")
     // multi_edit carries a top-level path; without it, path-scoped rules could
     // not gate the tool.
-    let me = ToolCall {
+    let me = ToolCall(
         id: "4",
         name: "multi_edit",
         arguments: "{\"path\":\"src/x.rv\",\"edits\":[]}",
-    }
+    )
     assert_eq_str(subject_of(me), "src/x.rv")
-    let au = ToolCall { id: "4", name: "ask_user", arguments: "{\"question\":\"q\"}" }
+    let au = ToolCall(id: "4", name: "ask_user", arguments: "{\"question\":\"q\"}")
     assert_eq_str(subject_of(au), "")
-    let fetch = ToolCall {
+    let fetch = ToolCall(
         id: "5",
         name: "web_fetch",
         arguments: "{\"url\":\"http://127.0.0.1:11434/api/tags\"}",
-    }
+    )
     assert_eq_str(subject_of(fetch), "http://127.0.0.1:11434/api/tags")
-    let search = ToolCall {
-        id: "6",
-        name: "web_search",
-        arguments: "{\"query\":\"rook docs\"}",
-    }
+    let search = ToolCall(id: "6", name: "web_search", arguments: "{\"query\":\"rook docs\"}")
     assert_eq_str(subject_of(search), "rook docs")
 }

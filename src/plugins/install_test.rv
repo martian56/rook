@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/env { os_name }
-import std/fs { write, read, exists, create_dir_all }
-import std/process { run }
-import "./install" { install_into, plugin_name_from_url, normalize_url, plugin_source }
-import "./model" { valid_plugin_name, plugin_target_path }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.env import os_name
+from std.fs import write, read, exists, create_dir_all
+from std.process import run
+from "./install" import install_into, plugin_name_from_url, normalize_url, plugin_source
+from "./model" import valid_plugin_name, plugin_target_path
 
 fun test_plugin_name_from_url() {
     assert_eq_str(plugin_name_from_url("github.com/user/rook-fmt"), "rook-fmt")
@@ -17,18 +17,18 @@ fun test_valid_plugin_name_rejects_unsafe_names() {
     assert_true(valid_plugin_name("rook-fmt"))
     assert_true(valid_plugin_name("rook.fmt_1"))
     assert_true(valid_plugin_name(plugin_name_from_url("https://github.com/user/rook-fmt.git")))
-    assert_true(!valid_plugin_name(""))
-    assert_true(!valid_plugin_name("."))
-    assert_true(!valid_plugin_name(".."))
-    assert_true(!valid_plugin_name("has/slash"))
-    assert_true(!valid_plugin_name("has\\slash"))
-    assert_true(!valid_plugin_name("has:colon"))
-    assert_true(!valid_plugin_name("C:drive"))
-    assert_true(!valid_plugin_name("trailing."))
-    assert_true(!valid_plugin_name("trailing "))
-    assert_true(!valid_plugin_name(" leading"))
-    assert_true(!valid_plugin_name("CON"))
-    assert_true(!valid_plugin_name("com1.txt"))
+    assert_true(not valid_plugin_name(""))
+    assert_true(not valid_plugin_name("."))
+    assert_true(not valid_plugin_name(".."))
+    assert_true(not valid_plugin_name("has/slash"))
+    assert_true(not valid_plugin_name("has\\slash"))
+    assert_true(not valid_plugin_name("has:colon"))
+    assert_true(not valid_plugin_name("C:drive"))
+    assert_true(not valid_plugin_name("trailing."))
+    assert_true(not valid_plugin_name("trailing "))
+    assert_true(not valid_plugin_name(" leading"))
+    assert_true(not valid_plugin_name("CON"))
+    assert_true(not valid_plugin_name("com1.txt"))
 }
 
 fun test_plugin_target_path_only_uses_safe_child_names() {
@@ -121,7 +121,7 @@ fun test_invalid_replacement_keeps_installed_plugin() {
     assert_true(r.starts_with("error:"))
     assert_true(r.contains("no plugin.json"))
     assert_eq_str(_read("_rook_plugins_invalid/_rook_bad_src/working.txt"), "old copy")
-    assert_true(!exists("_rook_plugins_invalid/.rook-transactions/_rook_bad_src.staging"))
+    assert_true(not exists("_rook_plugins_invalid/.rook-transactions/_rook_bad_src.staging"))
 
     _rmtree("_rook_bad_src")
     _rmtree("_rook_plugins_invalid")
@@ -144,13 +144,13 @@ fun test_successful_update_replaces_plugin_and_lock() {
 
     let r = install_into("_rook_plugins_update", "./_rook_update_src", "")
     assert_true(r.starts_with("installed updated-plugin 2.0.0"))
-    assert_true(!exists("_rook_plugins_update/_rook_update_src/old.txt"))
+    assert_true(not exists("_rook_plugins_update/_rook_update_src/old.txt"))
     assert_eq_str(_read("_rook_plugins_update/_rook_update_src/current.txt"), "new copy")
     let src = plugin_source("_rook_plugins_update/_rook_update_src")
     assert_eq_str(src.name, "./_rook_update_src")
     assert_eq_str(src.version, "2.0.0")
-    assert_true(!exists("_rook_plugins_update/.rook-transactions/_rook_update_src.staging"))
-    assert_true(!exists("_rook_plugins_update/.rook-transactions/_rook_update_src.backup"))
+    assert_true(not exists("_rook_plugins_update/.rook-transactions/_rook_update_src.staging"))
+    assert_true(not exists("_rook_plugins_update/.rook-transactions/_rook_update_src.backup"))
 
     _rmtree("_rook_update_src")
     _rmtree("_rook_plugins_update")
@@ -161,11 +161,11 @@ fun test_install_rejects_unsafe_derived_name_before_touching_target() {
     _rmtree("_rook_plugins_bad")
     let r = install_into("_rook_plugins_bad", "https://example.invalid/owner/..", "")
     assert_true(r.starts_with("error: unsafe plugin name"))
-    assert_true(!exists("_rook_plugins_bad"))
+    assert_true(not exists("_rook_plugins_bad"))
     return
 }
 
-fun _init_repo(path: String) {
+fun _init_repo(path: str) {
     _git(["init", path])
     _git(["-C", path, "add", "-A"])
     _git(
@@ -184,35 +184,35 @@ fun _init_repo(path: String) {
     return
 }
 
-fun _read(path: String) -> String {
+fun _read(path: str) -> str {
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
 }
 
-fun _git(args: List<String>) {
+fun _git(args: list[str]) {
     match run("git", args) {
-        Ok(o) -> {},
-        Err(e) -> {},
+        case Ok(o) {}
+        case Err(e) {}
     }
     return
 }
 
-fun _rmtree(path: String) {
+fun _rmtree(path: str) {
     if os_name() == "windows" {
         match run("attrib", ["-r", "-s", "-h", "/s", "/d", "${path}\\*"]) {
-            Ok(o) -> {},
-            Err(e) -> {},
+            case Ok(o) {}
+            case Err(e) {}
         }
         match run("cmd", ["/c", "rmdir", "/s", "/q", path]) {
-            Ok(o) -> {},
-            Err(e) -> {},
+            case Ok(o) {}
+            case Err(e) {}
         }
     } else {
         match run("rm", ["-rf", path]) {
-            Ok(o) -> {},
-            Err(e) -> {},
+            case Ok(o) {}
+            case Err(e) {}
         }
     }
     return

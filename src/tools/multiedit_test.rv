@@ -1,10 +1,10 @@
-import std/string
-import std/fs { write, read, exists, remove_file }
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./multiedit" { Edit, EditOutcome, apply_edits, parse_edits, multi_edit }
+import std.string
+from std.fs import write, read, exists, remove_file
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./multiedit" import Edit, EditOutcome, apply_edits, parse_edits, multi_edit
 
 fun test_apply_edits_applies_in_order() {
-    let edits = [Edit { old_text: "one", new_text: "1" }, Edit { old_text: "two", new_text: "2" }]
+    let edits = [Edit(old_text: "one", new_text: "1"), Edit(old_text: "two", new_text: "2")]
     let out = apply_edits("one two three", edits)
     assert_true(out.ok)
     assert_eq_str(out.text, "1 2 three")
@@ -13,29 +13,26 @@ fun test_apply_edits_applies_in_order() {
 
 fun test_apply_edits_sees_earlier_edits() {
     // The second edit matches text the first produced.
-    let edits = [Edit { old_text: "a", new_text: "b" }, Edit { old_text: "b", new_text: "c" }]
+    let edits = [Edit(old_text: "a", new_text: "b"), Edit(old_text: "b", new_text: "c")]
     let out = apply_edits("a", edits)
     assert_true(out.ok)
     assert_eq_str(out.text, "c")
 }
 
 fun test_apply_edits_is_atomic_on_a_miss() {
-    let edits = [
-        Edit { old_text: "here", new_text: "HERE" },
-        Edit { old_text: "absent", new_text: "X" },
-    ]
+    let edits = [Edit(old_text: "here", new_text: "HERE"), Edit(old_text: "absent", new_text: "X")]
     let out = apply_edits("here it is", edits)
     // The second edit misses, so the whole batch fails and nothing is kept.
-    assert_true(!out.ok)
+    assert_true(not out.ok)
     assert_eq_int(out.applied, 1)
     assert_true(out.text.contains("edit 2"))
     assert_true(out.text.contains("not found"))
 }
 
 fun test_apply_edits_refuses_an_ambiguous_old_text() {
-    let edits = [Edit { old_text: "x", new_text: "y" }]
+    let edits = [Edit(old_text: "x", new_text: "y")]
     let out = apply_edits("x x", edits)
-    assert_true(!out.ok)
+    assert_true(not out.ok)
     assert_true(out.text.contains("more than once"))
     assert_eq_int(out.applied, 0)
 }
@@ -92,9 +89,9 @@ fun test_multi_edit_rejects_workspace_escape() {
     )
 }
 
-fun _read(path: String) -> String {
+fun _read(path: str) -> str {
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "error: ${e.message}",
+        case Ok(s) { s }
+        case Err(e) { "error: ${e.message}" }
     }
 }

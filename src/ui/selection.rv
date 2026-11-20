@@ -6,65 +6,65 @@
 // extraction maps them to byte offsets through the UTF-8 line: a marker glyph
 // or any non-ASCII character is more bytes than cells.
 
-import std/string
-import "github.com/martian56/wingspan" { decode }
+import std.string
+from "github.com/martian56/wingspan" import decode
 
 // A selection over the transcript. `active` is a drag in progress; `present`
 // is a finalized selection still shown. When both are false there is none.
-struct Selection {
-    active: Bool,
-    present: Bool,
-    a_line: Int,
-    a_col: Int,
-    b_line: Int,
-    b_col: Int,
+class Selection {
+    active: bool
+    present: bool
+    a_line: int
+    a_col: int
+    b_line: int
+    b_col: int
 }
 
 fun no_selection() -> Selection {
-    return Selection { active: false, present: false, a_line: 0, a_col: 0, b_line: 0, b_col: 0 }
+    return Selection(active: false, present: false, a_line: 0, a_col: 0, b_line: 0, b_col: 0)
 }
 
 // A selection normalized so (lo_line, lo_col) precedes (hi_line, hi_col).
 // hi_col is exclusive.
-struct SelSpan {
-    lo_line: Int,
-    lo_col: Int,
-    hi_line: Int,
-    hi_col: Int,
+class SelSpan {
+    lo_line: int
+    lo_col: int
+    hi_line: int
+    hi_col: int
 }
 
 fun normalize(s: Selection) -> SelSpan {
     if s.a_line < s.b_line {
-        return SelSpan { lo_line: s.a_line, lo_col: s.a_col, hi_line: s.b_line, hi_col: s.b_col }
+        return SelSpan(lo_line: s.a_line, lo_col: s.a_col, hi_line: s.b_line, hi_col: s.b_col)
     }
     if s.a_line > s.b_line {
-        return SelSpan { lo_line: s.b_line, lo_col: s.b_col, hi_line: s.a_line, hi_col: s.a_col }
+        return SelSpan(lo_line: s.b_line, lo_col: s.b_col, hi_line: s.a_line, hi_col: s.a_col)
     }
-    let lo = s.a_col
-    let hi = s.b_col
+    var lo = s.a_col
+    var hi = s.b_col
     if lo > hi {
         lo = s.b_col
         hi = s.a_col
     }
-    return SelSpan { lo_line: s.a_line, lo_col: lo, hi_line: s.a_line, hi_col: hi }
+    return SelSpan(lo_line: s.a_line, lo_col: lo, hi_line: s.a_line, hi_col: hi)
 }
 
 // Whether the selection covers no cells (nothing to copy or highlight).
-fun is_empty(s: Selection) -> Bool {
-    if !s.present && !s.active {
+fun is_empty(s: Selection) -> bool {
+    if not s.present and not s.active {
         return true
     }
-    return s.a_line == s.b_line && s.a_col == s.b_col
+    return s.a_line == s.b_line and s.a_col == s.b_col
 }
 
 // Whether cell column `col` on absolute line `line` is inside the selection.
 // Used to paint the highlight, one row at a time.
-fun contains(sp: SelSpan, line: Int, col: Int) -> Bool {
-    if line < sp.lo_line || line > sp.hi_line {
+fun contains(sp: SelSpan, line: int, col: int) -> bool {
+    if line < sp.lo_line or line > sp.hi_line {
         return false
     }
     if sp.lo_line == sp.hi_line {
-        return col >= sp.lo_col && col < sp.hi_col
+        return col >= sp.lo_col and col < sp.hi_col
     }
     if line == sp.lo_line {
         return col >= sp.lo_col
@@ -78,7 +78,7 @@ fun contains(sp: SelSpan, line: Int, col: Int) -> Bool {
 // The selected text, pulled from the transcript's plain-text lines. Middle and
 // boundary full-line ends are right-trimmed so trailing padding is not copied;
 // a single-line selection is taken verbatim between the two columns.
-fun extract(texts: List<String>, sp: SelSpan) -> String {
+fun extract(texts: list[str], sp: SelSpan) -> str {
     if texts.len() == 0 {
         return ""
     }
@@ -87,8 +87,8 @@ fun extract(texts: List<String>, sp: SelSpan) -> String {
     if lo_l == hi_l {
         return _slice(texts[lo_l], sp.lo_col, sp.hi_col)
     }
-    let out = _rtrim(_slice(texts[lo_l], sp.lo_col, texts[lo_l].length()))
-    let i = lo_l + 1
+    var out = _rtrim(_slice(texts[lo_l], sp.lo_col, texts[lo_l].length()))
+    var i = lo_l + 1
     while i < hi_l {
         out = out.concat("\n").concat(_rtrim(texts[i]))
         i = i + 1
@@ -101,7 +101,7 @@ fun extract(texts: List<String>, sp: SelSpan) -> String {
 // terminal (mouse cells), so they are mapped to byte offsets first: slicing on
 // the raw column would cut mid-character and copy shifted text on any line with
 // a marker glyph or other non-ASCII content.
-fun _slice(s: String, start: Int, end: Int) -> String {
+fun _slice(s: str, start: int, end: int) -> str {
     let a = _col_to_byte(s, start)
     let b = _col_to_byte(s, end)
     if a >= b {
@@ -113,11 +113,11 @@ fun _slice(s: String, start: Int, end: Int) -> String {
 // The byte offset of display-cell column `col` in `s`, walking whole UTF-8
 // characters and summing their terminal widths. A column at or past the end
 // maps to the end of the string.
-fun _col_to_byte(s: String, col: Int) -> Int {
-    let byte = 0
-    let cells = 0
+fun _col_to_byte(s: str, col: int) -> int {
+    var byte = 0
+    var cells = 0
     let n = s.length()
-    while byte < n && cells < col {
+    while byte < n and cells < col {
         let c = decode(s, byte)
         if c.size == 0 {
             byte = n
@@ -129,15 +129,15 @@ fun _col_to_byte(s: String, col: Int) -> Int {
     return byte
 }
 
-fun _rtrim(s: String) -> String {
-    let n = s.length()
-    while n > 0 && s.substring(n - 1, n) == " " {
+fun _rtrim(s: str) -> str {
+    var n = s.length()
+    while n > 0 and s.substring(n - 1, n) == " " {
         n = n - 1
     }
     return s.substring(0, n)
 }
 
-fun _clamp(v: Int, lo: Int, hi: Int) -> Int {
+fun _clamp(v: int, lo: int, hi: int) -> int {
     if v < lo {
         return lo
     }

@@ -5,25 +5,25 @@
 // result: a notice is shown as transcript text; a prompt starts a turn once it
 // arrives. Same shape as the hook-notice and save-error queues.
 
-import std/string
-import std/sync { Mutex, mutex }
+import std.string
+from std.sync import Mutex, mutex
 
-struct CmdQueue {
-    lock: Mutex,
-    notices: List<String>,
-    prompts: List<String>,
+class CmdQueue {
+    lock: Mutex
+    notices: list[str]
+    prompts: list[str]
 }
 
 let CMD_QUEUE: CmdQueue = _new_cmd_queue()
 
 fun _new_cmd_queue() -> CmdQueue {
-    let notices: List<String> = []
-    let prompts: List<String> = []
-    return CmdQueue { lock: mutex(), notices, prompts }
+    let notices: list[str] = []
+    let prompts: list[str] = []
+    return CmdQueue(lock: mutex(), notices: notices, prompts: prompts)
 }
 
 // Record a finished command's output as a notice. Safe to call from a goroutine.
-fun push_cmd_notice(text: String) {
+fun push_cmd_notice(text: str) {
     CMD_QUEUE.lock.lock()
     CMD_QUEUE.notices.push(text)
     CMD_QUEUE.lock.unlock()
@@ -31,10 +31,10 @@ fun push_cmd_notice(text: String) {
 }
 
 // Take and clear the queued notices. Called on the main loop each tick.
-fun drain_cmd_notices() -> List<String> {
+fun drain_cmd_notices() -> list[str] {
     CMD_QUEUE.lock.lock()
     let out = CMD_QUEUE.notices
-    let empty: List<String> = []
+    let empty: list[str] = []
     CMD_QUEUE.notices = empty
     CMD_QUEUE.lock.unlock()
     return out
@@ -42,7 +42,7 @@ fun drain_cmd_notices() -> List<String> {
 
 // Record a prompt to run as a turn once the main loop picks it up. Safe to call
 // from a goroutine.
-fun push_cmd_prompt(prompt: String) {
+fun push_cmd_prompt(prompt: str) {
     CMD_QUEUE.lock.lock()
     CMD_QUEUE.prompts.push(prompt)
     CMD_QUEUE.lock.unlock()
@@ -50,10 +50,10 @@ fun push_cmd_prompt(prompt: String) {
 }
 
 // Take and clear the queued prompts. Called on the main loop each tick.
-fun drain_cmd_prompts() -> List<String> {
+fun drain_cmd_prompts() -> list[str] {
     CMD_QUEUE.lock.lock()
     let out = CMD_QUEUE.prompts
-    let empty: List<String> = []
+    let empty: list[str] = []
     CMD_QUEUE.prompts = empty
     CMD_QUEUE.lock.unlock()
     return out
@@ -63,15 +63,15 @@ fun drain_cmd_prompts() -> List<String> {
 // start at most one turn per tick, leaving the rest queued while a turn is
 // running, so a prompt queued mid-turn sends when the turn finishes instead
 // of being dropped.
-fun take_cmd_prompt() -> String {
+fun take_cmd_prompt() -> str {
     CMD_QUEUE.lock.lock()
     if CMD_QUEUE.prompts.len() == 0 {
         CMD_QUEUE.lock.unlock()
         return ""
     }
     let first = CMD_QUEUE.prompts[0]
-    let rest: List<String> = []
-    let i = 1
+    let rest: list[str] = []
+    var i = 1
     while i < CMD_QUEUE.prompts.len() {
         rest.push(CMD_QUEUE.prompts[i])
         i = i + 1
@@ -82,27 +82,27 @@ fun take_cmd_prompt() -> String {
 }
 
 // A ! shell command's completion: single slot, since one runs at a time.
-struct ShellDone {
-    lock: Mutex,
-    ready: Bool,
-    cmd: String,
-    output: String,
+class ShellDone {
+    lock: Mutex
+    ready: bool
+    cmd: str
+    output: str
 }
 
-struct ShellDoneReady {
-    ready: Bool,
-    cmd: String,
-    output: String,
+class ShellDoneReady {
+    ready: bool
+    cmd: str
+    output: str
 }
 
 let SHELL_DONE: ShellDone = _new_shell_done()
 
 fun _new_shell_done() -> ShellDone {
-    return ShellDone { lock: mutex(), ready: false, cmd: "", output: "" }
+    return ShellDone(lock: mutex(), ready: false, cmd: "", output: "")
 }
 
 // Record a finished ! command. Safe to call from a goroutine.
-fun push_shell_done(cmd: String, output: String) {
+fun push_shell_done(cmd: str, output: str) {
     SHELL_DONE.lock.lock()
     SHELL_DONE.cmd = cmd
     SHELL_DONE.output = output
@@ -121,27 +121,27 @@ fun take_shell_done() -> ShellDoneReady {
         SHELL_DONE.ready = false
     }
     SHELL_DONE.lock.unlock()
-    return ShellDoneReady { ready, cmd, output }
+    return ShellDoneReady(ready: ready, cmd: cmd, output: output)
 }
 
 // Outputs of ! commands run since the last send, capped, so the next prompt
 // carries what the user just did in the shell as context for the model.
-struct BangContext {
-    lock: Mutex,
-    blocks: List<String>,
-    total: Int,
+class BangContext {
+    lock: Mutex
+    blocks: list[str]
+    total: int
 }
 
 let BANG_CONTEXT: BangContext = _new_bang_context()
 
-const BANG_CONTEXT_CAP: Int = 24000
+let BANG_CONTEXT_CAP: int = 24000
 
 fun _new_bang_context() -> BangContext {
-    let blocks: List<String> = []
-    return BangContext { lock: mutex(), blocks, total: 0 }
+    let blocks: list[str] = []
+    return BangContext(lock: mutex(), blocks: blocks, total: 0)
 }
 
-fun push_bang_context(block: String) {
+fun push_bang_context(block: str) {
     BANG_CONTEXT.lock.lock()
     if BANG_CONTEXT.total + block.length() <= BANG_CONTEXT_CAP {
         BANG_CONTEXT.blocks.push(block)
@@ -152,10 +152,10 @@ fun push_bang_context(block: String) {
 }
 
 // The accumulated shell context, cleared as it is returned. "" when none.
-fun take_bang_context() -> String {
+fun take_bang_context() -> str {
     BANG_CONTEXT.lock.lock()
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < BANG_CONTEXT.blocks.len() {
         if i > 0 {
             out = "${out}\n\n"
@@ -163,7 +163,7 @@ fun take_bang_context() -> String {
         out = out.concat(BANG_CONTEXT.blocks[i])
         i = i + 1
     }
-    let empty: List<String> = []
+    let empty: list[str] = []
     BANG_CONTEXT.blocks = empty
     BANG_CONTEXT.total = 0
     BANG_CONTEXT.lock.unlock()

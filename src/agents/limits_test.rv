@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_true, assert_eq_str }
-import "./limits" { cap_text, clip_line }
+import std.string
+from std.test import assert_true, assert_eq_str
+from "./limits" import cap_text, clip_line
 
-fun _repeat(s: String, n: Int) -> String {
-    let out = ""
-    let i = 0
+fun _repeat(s: str, n: int) -> str {
+    var out = ""
+    var i = 0
     while i < n {
         out = out.concat(s)
         i = i + 1
@@ -32,7 +32,7 @@ fun test_clip_line_adds_an_ellipsis_when_long() {
     let out = clip_line(_repeat("b", 40), 5)
     assert_true(out.starts_with("bbbbb"))
     assert_true(out.contains("…"))
-    assert_true(!out.contains("bbbbbb"))
+    assert_true(not out.contains("bbbbbb"))
 }
 
 // The cut must land on a character boundary. "é" is two bytes (0xC3 0xA9), so
@@ -41,7 +41,7 @@ fun test_clip_line_adds_an_ellipsis_when_long() {
 fun test_cap_text_never_splits_a_multibyte_character() {
     let out = cap_text(_repeat("é", 100), 5, "skill body")
     assert_true(out.starts_with("éé"))
-    assert_true(!out.starts_with("ééé"))
+    assert_true(not out.starts_with("ééé"))
     // The byte right after the kept text is the newline before the marker, so
     // nothing dangles mid-character.
     assert_true(out.byte_at(4) == 10)

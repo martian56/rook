@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./todos" { Todo, set_todos, parse_todos, current_todos, clear_todos }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./todos" import Todo, set_todos, parse_todos, current_todos, clear_todos
 
 fun test_parse_reads_the_markers() {
     let items = parse_todos("[x] shipped\n[>] building\nplanned\n[ ] also planned\n\n")

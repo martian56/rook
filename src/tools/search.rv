@@ -4,71 +4,65 @@
 // engine's own `(?i)` inline flag, and an optional glob narrows which files
 // are searched by name.
 
-import std/string
-import std/regex { compile, Regex }
-import std/fs { list_dir, read, is_file, is_dir, is_symlink, basename }
-import "./paths" { resolve_path }
+import std.string
+from std.regex import compile, Regex
+from std.fs import list_dir, read, is_file, is_dir, is_symlink, basename
+from "./paths" import resolve_path
 
-const MAX_MATCHES: Int = 50
+let MAX_MATCHES: int = 50
 
-fun grep(pattern: String, path: String, glob: String) -> String {
+fun grep(pattern: str, path: str, glob: str) -> str {
     if pattern == "" {
         return "error: no pattern given"
     }
-    let root = path
+    var root = path
     if root == "" {
         root = "."
     }
     let resolved = resolve_path(root, ".")
-    if !resolved.ok {
+    if not resolved.ok {
         return resolved.error
     }
     return match compile(pattern) {
-        Ok(re) -> _grep_with_pattern(re, resolved.path, pattern, glob),
-        Err(e) -> "error: invalid pattern: ${e.message}",
+        case Ok(re) { _grep_with_pattern(re, resolved.path, pattern, glob) }
+        case Err(e) { "error: invalid pattern: ${e.message}" }
     }
 }
 
-fun _grep_with_pattern(re: Regex, root: String, pattern: String, glob: String) -> String {
+fun _grep_with_pattern(re: Regex, root: str, pattern: str, glob: str) -> str {
     let has_glob = glob != ""
     let result = match compile(_glob_to_regex(glob)) {
-        Ok(name_re) -> _grep_with_regexes(re, name_re, root, pattern, has_glob),
-        Err(e) -> "error: invalid glob: ${e.message}",
+        case Ok(name_re) { _grep_with_regexes(re, name_re, root, pattern, has_glob) }
+        case Err(e) { "error: invalid glob: ${e.message}" }
     }
     re.free()
     return result
 }
 
-fun _grep_with_regexes(
-    re: Regex,
-    name_re: Regex,
-    root: String,
-    pattern: String,
-    has_glob: Bool,
-) -> String {
-    let files: List<String> = []
+fun _grep_with_regexes(re: Regex, name_re: Regex, root: str, pattern: str, has_glob: bool) -> str {
+    let files: list[str] = []
     _collect_files(root, files, _has_ignored_segment(root))
 
-    let out = ""
-    let count = 0
-    let i = 0
-    while i < files.len() && count < MAX_MATCHES {
+    var out = ""
+    var count = 0
+    var i = 0
+    while i < files.len() and count < MAX_MATCHES {
         let f = files[i]
-        if !has_glob || name_re.is_match(basename(f)) {
-            let content = ""
-            let rok = true
+        if not has_glob or name_re.is_match(basename(f)) {
+            var content = ""
+            var rok = true
             match read(f) {
-                Ok(s) -> {
+                case Ok(s) {
                     content = s
-                },
-                Err(e) -> {
+                }
+                case Err(e) {
                     rok = false
-                },
+                }
             }
             if rok {
                 let lines = content.lines()
-                let ln = 0
-                while ln < lines.len() && count < MAX_MATCHES {
+                var ln = 0
+                while ln < lines.len() and count < MAX_MATCHES {
                     if re.is_match(lines[ln]) {
                         out = out.concat("${f}:${ln + 1}: ${lines[ln]}\n")
                         count = count + 1
@@ -86,7 +80,7 @@ fun _grep_with_regexes(
     return out
 }
 
-fun _collect_files(path: String, out: List<String>, include_ignored: Bool) {
+fun _collect_files(path: str, out: list[str], include_ignored: bool) {
     if is_symlink(path) {
         return
     }
@@ -94,25 +88,25 @@ fun _collect_files(path: String, out: List<String>, include_ignored: Bool) {
         out.push(path)
         return
     }
-    if !is_dir(path) {
+    if not is_dir(path) {
         return
     }
-    let names: List<String> = []
+    var names: list[str] = []
     match list_dir(path) {
-        Ok(ns) -> {
+        case Ok(ns) {
             names = ns
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return
-        },
+        }
     }
-    let i = 0
+    var i = 0
     while i < names.len() {
         let name = names[i]
         let full = "${path}/${name}"
-        if !is_symlink(full) {
+        if not is_symlink(full) {
             if is_dir(full) {
-                if include_ignored || !_ignored(name) {
+                if include_ignored or not _ignored(name) {
                     _collect_files(full, out, include_ignored)
                 }
             } else if is_file(full) {
@@ -124,9 +118,9 @@ fun _collect_files(path: String, out: List<String>, include_ignored: Bool) {
     return
 }
 
-fun _has_ignored_segment(path: String) -> Bool {
+fun _has_ignored_segment(path: str) -> bool {
     let parts = path.split("/")
-    let i = 0
+    var i = 0
     while i < parts.len() {
         if _ignored(parts[i]) {
             return true
@@ -136,12 +130,12 @@ fun _has_ignored_segment(path: String) -> Bool {
     return false
 }
 
-fun _ignored(name: String) -> Bool {
-    if name == "node_modules" || name == "target" || name == "dist" || name == "build" || name == "out" || name == "vendor" || name == "__pycache__" {
+fun _ignored(name: str) -> bool {
+    if name == "node_modules" or name == "target" or name == "dist" or name == "build" or name == "out" or name == "vendor" or name == "__pycache__" {
         return true
     }
     if name.starts_with(".") {
-        return name != ".agents" && name != ".github"
+        return name != ".agents" and name != ".github"
     }
     return false
 }
@@ -149,12 +143,12 @@ fun _ignored(name: String) -> Bool {
 // Translates a shell-style glob (`*` any run, `?` one char, everything else
 // literal) into an anchored regex. An empty glob (no filter requested)
 // becomes `.*` so it matches any name without ever being consulted.
-fun _glob_to_regex(glob: String) -> String {
+fun _glob_to_regex(glob: str) -> str {
     if glob == "" {
         return ".*"
     }
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < glob.length() {
         let c = glob.char_at(i)
         if c == "*" {
@@ -171,6 +165,6 @@ fun _glob_to_regex(glob: String) -> String {
     return "^${out}$"
 }
 
-fun _is_regex_meta(c: String) -> Bool {
-    return c == "." || c == "^" || c == "$" || c == "+" || c == "(" || c == ")" || c == "[" || c == "]" || c == "{" || c == "}" || c == "|" || c == "\\"
+fun _is_regex_meta(c: str) -> bool {
+    return c == "." or c == "^" or c == "$" or c == "+" or c == "(" or c == ")" or c == "[" or c == "]" or c == "{" or c == "}" or c == "|" or c == "\\"
 }

@@ -1,8 +1,8 @@
-import std/string
-import std/fs { write, remove_file }
-import std/process { run }
-import std/test { assert_true, assert_eq_str }
-import "./git" { git_status, git_diff, git_commit, git_commit_preview, commit_message_with_attribution }
+import std.string
+from std.fs import write, remove_file
+from std.process import run
+from std.test import assert_true, assert_eq_str
+from "./git" import git_status, git_diff, git_commit, git_commit_preview, commit_message_with_attribution
 
 // These run against the real repository the suite executes in, which is a
 // git checkout, so only the read-only tools are exercised for real; the
@@ -10,15 +10,15 @@ import "./git" { git_status, git_diff, git_commit, git_commit_preview, commit_me
 
 fun test_status_reports_a_branch() {
     let s = git_status()
-    assert_true(!s.starts_with("error:"))
+    assert_true(not s.starts_with("error:"))
     assert_true(s.contains("On branch "))
 }
 
 fun test_diff_runs_without_error() {
     let d = git_diff("", "")
-    assert_true(!d.starts_with("error:"))
+    assert_true(not d.starts_with("error:"))
     let staged = git_diff("true", "")
-    assert_true(!staged.starts_with("error:"))
+    assert_true(not staged.starts_with("error:"))
 }
 
 fun test_diff_rejects_a_path_outside_the_workspace() {
@@ -26,7 +26,7 @@ fun test_diff_rejects_a_path_outside_the_workspace() {
     // resolve_path rejects it with an "error: path ..." message before git runs.
     let out = git_diff("", "../outside.txt")
     assert_true(out.starts_with("error:"))
-    assert_true(out.contains("workspace") || out.contains("symlink"))
+    assert_true(out.contains("workspace") or out.contains("symlink"))
 }
 
 fun test_commit_rejects_an_empty_message() {
@@ -61,7 +61,7 @@ fun test_preview_reflects_staged_and_surfaces_untracked() {
 
     // The staged file is in the staged diff; the untracked one is not.
     assert_true(staged_diff.contains("zz_rook_staged_probe.txt"))
-    assert_true(!staged_diff.contains("zz_rook_untracked_probe.txt"))
+    assert_true(not staged_diff.contains("zz_rook_untracked_probe.txt"))
     // The preview shows the staged file and surfaces the untracked one as
     // something that will not be committed.
     assert_true(preview.contains("zz_rook_staged_probe.txt"))
@@ -69,10 +69,10 @@ fun test_preview_reflects_staged_and_surfaces_untracked() {
     assert_true(preview.contains("zz_rook_untracked_probe.txt"))
 }
 
-fun _run_git(args: List<String>) {
+fun _run_git(args: list[str]) {
     match run("git", args) {
-        Ok(o) -> {},
-        Err(e) -> {},
+        case Ok(o) {}
+        case Err(e) {}
     }
     return
 }

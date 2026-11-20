@@ -8,17 +8,17 @@
 // takes the roots as a parameter, so the loaders built on top (and the
 // tests) can work over any list of directories.
 
-import std/string
-import std/sync { Mutex, mutex }
-import std/env { get_env, has_env }
-import std/fs { exists, is_dir, list_dir }
-import "../plugins/model" { plugin_roots }
+import std.string
+from std.sync import Mutex, mutex
+from std.env import get_env, has_env
+from std.fs import exists, is_dir, list_dir
+from "../plugins/model" import plugin_roots
 
 // The discovered roots the loaders read, highest precedence first: the
 // project's .agents, then each installed plugin, then the global .agents.
 // So a project entry shadows a plugin's, which shadows the global one. Any
 // may be absent.
-fun roots() -> List<String> {
+fun roots() -> list[str] {
     return compose_roots(project_root(), _cached_plugin_roots(), global_root())
 }
 
@@ -29,22 +29,22 @@ fun roots() -> List<String> {
 // the working directory's .agents can appear mid-run (the behavior evals create
 // one). Invalidated when a plugin is installed, removed, or updated. Locked
 // because roots() is read from both the UI thread and the turn goroutine.
-struct PluginRootsCache {
-    lock: Mutex,
-    ready: Bool,
-    roots: List<String>,
+class PluginRootsCache {
+    lock: Mutex
+    ready: bool
+    roots: list[str]
 }
 
 let PLUGIN_ROOTS_CACHE: PluginRootsCache = _new_plugin_roots_cache()
 
 fun _new_plugin_roots_cache() -> PluginRootsCache {
-    let roots: List<String> = []
-    return PluginRootsCache { lock: mutex(), ready: false, roots }
+    let roots: list[str] = []
+    return PluginRootsCache(lock: mutex(), ready: false, roots: roots)
 }
 
-fun _cached_plugin_roots() -> List<String> {
+fun _cached_plugin_roots() -> list[str] {
     PLUGIN_ROOTS_CACHE.lock.lock()
-    if !PLUGIN_ROOTS_CACHE.ready {
+    if not PLUGIN_ROOTS_CACHE.ready {
         PLUGIN_ROOTS_CACHE.roots = plugin_roots()
         PLUGIN_ROOTS_CACHE.ready = true
     }
@@ -64,12 +64,12 @@ fun invalidate_roots() {
 
 // Assemble the root order from its three parts, skipping empties. Pure, so
 // the precedence is tested without touching the filesystem.
-fun compose_roots(project: String, plugins: List<String>, global: String) -> List<String> {
-    let out: List<String> = []
+fun compose_roots(project: str, plugins: list[str], global: str) -> list[str] {
+    let out: list[str] = []
     if project != "" {
         out.push(project)
     }
-    let i = 0
+    var i = 0
     while i < plugins.len() {
         if plugins[i] != "" {
             out.push(plugins[i])
@@ -83,7 +83,7 @@ fun compose_roots(project: String, plugins: List<String>, global: String) -> Lis
 }
 
 // The project's .agents folder, "" when the working directory has none.
-fun project_root() -> String {
+fun project_root() -> str {
     if is_dir(".agents") {
         return ".agents"
     }
@@ -91,9 +91,9 @@ fun project_root() -> String {
 }
 
 // The global ~/.agents folder, "" when absent.
-fun global_root() -> String {
+fun global_root() -> str {
     let h = _home()
-    if h != "" && is_dir("${h}/.agents") {
+    if h != "" and is_dir("${h}/.agents") {
         return "${h}/.agents"
     }
     return ""
@@ -101,14 +101,14 @@ fun global_root() -> String {
 
 // The entry names inside `sub` across the roots, in precedence order and
 // deduped: a project entry shadows a global entry with the same name.
-fun merged_names(rs: List<String>, sub: String) -> List<String> {
-    let out: List<String> = []
-    let r = 0
+fun merged_names(rs: list[str], sub: str) -> list[str] {
+    let out: list[str] = []
+    var r = 0
     while r < rs.len() {
         let names = _names(rs[r], sub)
-        let i = 0
+        var i = 0
         while i < names.len() {
-            if !_has(out, names[i]) {
+            if not _has(out, names[i]) {
                 out.push(names[i])
             }
             i = i + 1
@@ -120,8 +120,8 @@ fun merged_names(rs: List<String>, sub: String) -> List<String> {
 
 // The full path of `sub`/`name` under the first root that has it, "" when
 // no root does. The lookup half of merged_names.
-fun path_of(rs: List<String>, sub: String, name: String) -> String {
-    let r = 0
+fun path_of(rs: list[str], sub: str, name: str) -> str {
+    var r = 0
     while r < rs.len() {
         let p = "${rs[r]}/${sub}/${name}"
         if exists(p) {
@@ -134,8 +134,8 @@ fun path_of(rs: List<String>, sub: String, name: String) -> String {
 
 // The full path of `rel` under the first root that has it, "" when none
 // does. For single files like settings.json.
-fun first_file(rs: List<String>, rel: String) -> String {
-    let r = 0
+fun first_file(rs: list[str], rel: str) -> str {
+    var r = 0
     while r < rs.len() {
         let p = "${rs[r]}/${rel}"
         if exists(p) {
@@ -149,9 +149,9 @@ fun first_file(rs: List<String>, rel: String) -> String {
 // Every root's copy of `rel` that exists, in precedence order. For loaders
 // that merge (settings): iterate from the end so the project copy, first in
 // the list, is applied last and wins.
-fun existing(rs: List<String>, rel: String) -> List<String> {
-    let out: List<String> = []
-    let r = 0
+fun existing(rs: list[str], rel: str) -> list[str] {
+    let out: list[str] = []
+    var r = 0
     while r < rs.len() {
         let p = "${rs[r]}/${rel}"
         if exists(p) {
@@ -162,16 +162,16 @@ fun existing(rs: List<String>, rel: String) -> List<String> {
     return out
 }
 
-fun _names(root: String, sub: String) -> List<String> {
-    let empty: List<String> = []
+fun _names(root: str, sub: str) -> list[str] {
+    let empty: list[str] = []
     return match list_dir("${root}/${sub}") {
-        Ok(names) -> names,
-        Err(e) -> empty,
+        case Ok(names) { names }
+        case Err(e) { empty }
     }
 }
 
-fun _has(xs: List<String>, x: String) -> Bool {
-    let i = 0
+fun _has(xs: list[str], x: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == x {
             return true
@@ -181,7 +181,7 @@ fun _has(xs: List<String>, x: String) -> Bool {
     return false
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

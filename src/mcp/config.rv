@@ -5,54 +5,54 @@
 // of "KEY=value" strings. Parsing is pure and tested; configured_servers
 // walks the roots and de-duplicates by name (first root wins).
 
-import std/string
-import std/json { JsonValue }
-import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list }
-import "../agents/dir" { roots }
-import "../agents/settings" { setting_section }
-import "../agents/trust" { project_settings_trusted, settings_root_trusted_with_project }
+import std.string
+from std.json import JsonValue
+from "github.com/martian56/aviary/jsonutil" import field, as_str, as_list
+from "../agents/dir" import roots
+from "../agents/settings" import setting_section
+from "../agents/trust" import project_settings_trusted, settings_root_trusted_with_project
 
-struct ServerSpec {
-    name: String,
-    command: String,
-    args: List<String>,
-    env: List<String>,
+class ServerSpec {
+    name: str
+    command: str
+    args: list[str]
+    env: list[str]
 }
 
 // The configured servers across all roots, de-duplicated by name.
-fun configured_servers() -> List<ServerSpec> {
+fun configured_servers() -> list[ServerSpec] {
     return configured_servers_from_with_project_trust(roots(), project_settings_trusted())
 }
 
 // Test helper and pure core over a supplied root list. Project settings are
 // untrusted by default.
-fun configured_servers_from(rs: List<String>) -> List<ServerSpec> {
+fun configured_servers_from(rs: list[str]) -> list[ServerSpec] {
     return configured_servers_from_with_project_trust(rs, false)
 }
 
 // The configured servers across supplied roots, de-duplicated by name.
 fun configured_servers_from_with_project_trust(
-    rs: List<String>,
-    project_trusted: Bool,
-) -> List<ServerSpec> {
-    let out: List<ServerSpec> = []
-    let seen: List<String> = []
-    let r = 0
+    rs: list[str],
+    project_trusted: bool,
+) -> list[ServerSpec] {
+    let out: list[ServerSpec] = []
+    let seen: list[str] = []
+    var r = 0
     while r < rs.len() {
         if settings_root_trusted_with_project(rs[r], project_trusted) {
             match setting_section(rs[r], "mcp") {
-                Some(section) -> {
+                case Some(section) {
                     let specs = parse_servers(section)
-                    let i = 0
+                    var i = 0
                     while i < specs.len() {
-                        if !_contains(seen, specs[i].name) {
+                        if not _contains(seen, specs[i].name) {
                             seen.push(specs[i].name)
                             out.push(specs[i])
                         }
                         i = i + 1
                     }
-                },
-                None -> {},
+                }
+                case None {}
             }
         }
         r = r + 1
@@ -62,21 +62,21 @@ fun configured_servers_from_with_project_trust(
 
 // The server specs in one "mcp" section. An entry without a name or command
 // is skipped. Pure, so it is tested directly.
-fun parse_servers(section: JsonValue) -> List<ServerSpec> {
-    let out: List<ServerSpec> = []
+fun parse_servers(section: JsonValue) -> list[ServerSpec] {
+    let out: list[ServerSpec] = []
     let arr = as_list(field(section, "servers"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let name = as_str(field(arr[i], "name"))
         let command = as_str(field(arr[i], "command"))
-        if name != "" && command != "" {
+        if name != "" and command != "" {
             out.push(
-                ServerSpec {
-                    name,
-                    command,
+                ServerSpec(
+                    name: name,
+                    command: command,
                     args: _strings(field(arr[i], "args")),
                     env: _strings(field(arr[i], "env")),
-                },
+                ),
             )
         }
         i = i + 1
@@ -84,10 +84,10 @@ fun parse_servers(section: JsonValue) -> List<ServerSpec> {
     return out
 }
 
-fun _strings(j: JsonValue) -> List<String> {
-    let out: List<String> = []
+fun _strings(j: JsonValue) -> list[str] {
+    let out: list[str] = []
     let arr = as_list(j)
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let s = as_str(arr[i])
         if s != "" {
@@ -98,8 +98,8 @@ fun _strings(j: JsonValue) -> List<String> {
     return out
 }
 
-fun _contains(xs: List<String>, name: String) -> Bool {
-    let i = 0
+fun _contains(xs: list[str], name: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == name {
             return true

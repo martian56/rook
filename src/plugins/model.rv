@@ -7,24 +7,24 @@
 // registry of what is installed; fetching (install) and merging into the
 // session are separate features.
 
-import std/string
-import std/env { get_env, has_env }
-import std/fs { read, exists, is_dir, list_dir }
-import std/json { parse }
-import "github.com/martian56/aviary/jsonutil" { field, as_str }
+import std.string
+from std.env import get_env, has_env
+from std.fs import read, exists, is_dir, list_dir
+from std.json import parse
+from "github.com/martian56/aviary/jsonutil" import field, as_str
 
 // One installed plugin. `path` is its directory under the plugins dir.
-struct Plugin {
-    name: String,
-    version: String,
-    description: String,
-    path: String,
+class Plugin {
+    name: str
+    version: str
+    description: str
+    path: str
 }
 
-const MANIFEST: String = "plugin.json"
+let MANIFEST: str = "plugin.json"
 
 // Where plugins install: ~/.rook/plugins. "" when there is no home.
-fun plugins_dir() -> String {
+fun plugins_dir() -> str {
     let h = _home()
     if h == "" {
         return ""
@@ -33,7 +33,7 @@ fun plugins_dir() -> String {
 }
 
 // The directory of a plugin by name.
-fun plugin_path(name: String) -> String {
+fun plugin_path(name: str) -> str {
     let dir = plugins_dir()
     if dir == "" {
         return ""
@@ -43,22 +43,22 @@ fun plugin_path(name: String) -> String {
 
 // Every installed plugin: each subdirectory of the plugins dir with a
 // readable manifest, sorted by name for a stable order.
-fun installed_plugins() -> List<Plugin> {
-    let out: List<Plugin> = []
+fun installed_plugins() -> list[Plugin] {
+    let out: list[Plugin] = []
     let dir = plugins_dir()
-    if dir == "" || !is_dir(dir) {
+    if dir == "" or not is_dir(dir) {
         return out
     }
-    let names: List<String> = []
+    var names: list[str] = []
     match list_dir(dir) {
-        Ok(ns) -> {
+        case Ok(ns) {
             names = ns
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return out
-        },
+        }
     }
-    let i = 0
+    var i = 0
     while i < names.len() {
         let p = "${dir}/${names[i]}"
         if is_dir(p) {
@@ -74,10 +74,10 @@ fun installed_plugins() -> List<Plugin> {
 
 // The install directories of every valid plugin, for the loaders that read
 // the bundle subfolders (skills, subagents, commands, themes) as roots.
-fun plugin_roots() -> List<String> {
-    let out: List<String> = []
+fun plugin_roots() -> list[str] {
+    let out: list[str] = []
     let plugins = installed_plugins()
-    let i = 0
+    var i = 0
     while i < plugins.len() {
         out.push(plugins[i].path)
         i = i + 1
@@ -88,61 +88,61 @@ fun plugin_roots() -> List<String> {
 // Read the plugin at `path`. A missing or unreadable manifest yields a
 // Plugin whose name is "" (the skip signal); a manifest without a name
 // falls back to the directory name.
-fun read_plugin(path: String, dir_name: String) -> Plugin {
+fun read_plugin(path: str, dir_name: str) -> Plugin {
     let mf = "${path}/${MANIFEST}"
-    if !exists(mf) {
-        return Plugin { name: "", version: "", description: "", path }
+    if not exists(mf) {
+        return Plugin(name: "", version: "", description: "", path: path)
     }
     let text = match read(mf) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
     return parse_manifest(text, dir_name, path)
 }
 
 // Parse a plugin manifest. Bad JSON yields an empty-name Plugin; a valid
 // document without a name uses `fallback_name`.
-fun parse_manifest(text: String, fallback_name: String, path: String) -> Plugin {
+fun parse_manifest(text: str, fallback_name: str, path: str) -> Plugin {
     return match parse(text) {
-        Ok(j) -> {
-            let name = as_str(field(j, "name"))
+        case Ok(j) {
+            var name = as_str(field(j, "name"))
             if name == "" {
                 name = fallback_name
             }
-            let plugin = Plugin { name: "", version: "", description: "", path }
+            var plugin = Plugin(name: "", version: "", description: "", path: path)
             if valid_plugin_name(name) {
-                plugin = Plugin {
-                    name,
+                plugin = Plugin(
+                    name: name,
                     version: as_str(field(j, "version")),
                     description: as_str(field(j, "description")),
-                    path,
-                }
+                    path: path,
+                )
             }
             plugin
-        },
-        Err(e) -> Plugin { name: "", version: "", description: "", path },
+        }
+        case Err(e) { Plugin(name: "", version: "", description: "", path: path) }
     }
 }
 
 // Whether a plugin directory or manifest name is safe to use as one path
 // segment under the plugin root.
-fun valid_plugin_name(name: String) -> Bool {
+fun valid_plugin_name(name: str) -> bool {
     let n = name.trim()
     if n != name {
         return false
     }
-    if n == "" || n == "." || n == ".." {
+    if n == "" or n == "." or n == ".." {
         return false
     }
-    if n.ends_with(".") || n.ends_with(" ") {
+    if n.ends_with(".") or n.ends_with(" ") {
         return false
     }
     if _windows_reserved(n) {
         return false
     }
-    let i = 0
+    var i = 0
     while i < n.length() {
-        if !_plugin_name_byte(n.byte_at(i)) {
+        if not _plugin_name_byte(n.byte_at(i)) {
             return false
         }
         i = i + 1
@@ -152,48 +152,48 @@ fun valid_plugin_name(name: String) -> Bool {
 
 // The target directory for a safe plugin name. An invalid name returns ""
 // instead of a path, so callers never join untrusted path fragments directly.
-fun plugin_target_path(plugins_dir: String, name: String) -> String {
-    if !valid_plugin_name(name) {
+fun plugin_target_path(plugins_dir: str, name: str) -> str {
+    if not valid_plugin_name(name) {
         return ""
     }
     return "${plugins_dir}/${name}"
 }
 
-fun _plugin_name_byte(b: Int) -> Bool {
-    if b >= 48 && b <= 57 {
+fun _plugin_name_byte(b: int) -> bool {
+    if b >= 48 and b <= 57 {
         return true
     }
-    if b >= 65 && b <= 90 {
+    if b >= 65 and b <= 90 {
         return true
     }
-    if b >= 97 && b <= 122 {
+    if b >= 97 and b <= 122 {
         return true
     }
-    return b == 45 || b == 46 || b == 95
+    return b == 45 or b == 46 or b == 95
 }
 
-fun _windows_reserved(name: String) -> Bool {
-    let base = name.to_lower()
+fun _windows_reserved(name: str) -> bool {
+    var base = name.to_lower()
     let dot = base.index_of(".")
     if dot >= 0 {
         base = base.substring(0, dot)
     }
-    if base == "con" || base == "prn" || base == "aux" || base == "nul" {
+    if base == "con" or base == "prn" or base == "aux" or base == "nul" {
         return true
     }
-    if base.length() == 4 && (base.starts_with("com") || base.starts_with("lpt")) {
+    if base.length() == 4 and (base.starts_with("com") or base.starts_with("lpt")) {
         let d = base.byte_at(3)
-        return d >= 49 && d <= 57
+        return d >= 49 and d <= 57
     }
     return false
 }
 
-fun _sort_by_name(xs: List<Plugin>) -> List<Plugin> {
+fun _sort_by_name(xs: list[Plugin]) -> list[Plugin] {
     let out = xs
-    let i = 0
+    var i = 0
     while i < out.len() {
-        let best = i
-        let j = i + 1
+        var best = i
+        var j = i + 1
         while j < out.len() {
             if out[j].name < out[best].name {
                 best = j
@@ -210,7 +210,7 @@ fun _sort_by_name(xs: List<Plugin>) -> List<Plugin> {
     return out
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

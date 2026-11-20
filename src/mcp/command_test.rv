@@ -1,8 +1,8 @@
-import std/string
-import std/json { JsonValue, parse }
-import std/test { assert_eq_str, assert_true }
-import "./command" { McpInvoke, parse_invoke }
-import "github.com/martian56/aviary/jsonutil" { field, as_str, as_int_or, as_list, is_null }
+import std.string
+from std.json import JsonValue, parse
+from std.test import assert_eq_str, assert_true
+from "./command" import McpInvoke, parse_invoke
+from "github.com/martian56/aviary/jsonutil" import field, as_str, as_int_or, as_list, is_null
 
 fun test_parse_invoke_reads_server_name_and_args() {
     let inv = parse_invoke("filesystem review path=src/main.rv depth=2")
@@ -46,8 +46,8 @@ fun test_parse_invoke_preserves_typed_json_values() {
     assert_true(as_int_or(field(args, "limit"), 0) == 20)
     assert_true(
         match field(args, "include_archived") {
-            Bool(v) -> !v,
-            _ -> false,
+            case Bool(v) { not v }
+            case _ { false }
         },
     )
     let files = as_list(field(args, "files"))
@@ -63,8 +63,8 @@ fun test_parse_invoke_accepts_a_json_object() {
     assert_true(as_int_or(field(args, "limit"), 0) == 20)
     assert_true(
         match field(args, "include_archived") {
-            Bool(v) -> !v,
-            _ -> false,
+            case Bool(v) { not v }
+            case _ { false }
         },
     )
     assert_eq_str(inv.error, "")
@@ -78,9 +78,9 @@ fun test_parse_invoke_reports_malformed_arguments() {
     assert_true(parse_invoke("docs summarize --json '[1,2]'").error.contains("must be an object"))
 }
 
-fun _json(text: String) -> JsonValue {
+fun _json(text: str) -> JsonValue {
     return match parse(text) {
-        Ok(j) -> j,
-        Err(e) -> JsonValue.Null,
+        case Ok(j) { j }
+        case Err(e) { JsonValue.Null }
     }
 }

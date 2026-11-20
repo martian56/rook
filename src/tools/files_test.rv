@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { remove_file, create_dir_all, remove_dir, exists }
-import "./files" { read_file, write_file, edit_file, list_dir }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import remove_file, create_dir_all, remove_dir, exists
+from "./files" import read_file, write_file, edit_file, list_dir
 
 fun test_write_then_read_round_trips() {
     let p = "_rook_ft_a.txt"
@@ -58,7 +58,7 @@ fun test_file_tools_reject_workspace_escape() {
     assert_true(read_file("../README.md").contains("workspace"))
     assert_true(list_dir("..").contains("workspace"))
     assert_true(write_file("../_rook_escape.txt", "x").contains("workspace"))
-    assert_true(!exists("../_rook_escape.txt"))
+    assert_true(not exists("../_rook_escape.txt"))
 }
 
 fun test_write_accepts_mixed_separators_inside_workspace() {

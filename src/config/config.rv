@@ -11,29 +11,29 @@
 // ~/.rook/auth.json (written when you enter a key with /key). A model whose
 // provider has no key runs nothing until one is supplied.
 
-import std/string
-import std/env { get_env, has_env, args }
-import std/fs { read, write, exists, create_dir_all }
-import std/json { JsonValue, parse, stringify }
-import std/time { now_millis }
-import "github.com/martian56/aviary/jsonutil" { Obj, field, as_int_or }
-import "../agents/dir" { project_root, global_root }
-import "../agents/settings" { setting_str }
+import std.string
+from std.env import get_env, has_env, args
+from std.fs import read, write, exists, create_dir_all
+from std.json import JsonValue, parse, stringify
+from std.time import now_millis
+from "github.com/martian56/aviary/jsonutil" import Obj, field, as_int_or
+from "../agents/dir" import project_root, global_root
+from "../agents/settings" import setting_str
 
 // The model used when nothing else selects one. A "provider/model" string.
-const DEFAULT_MODEL: String = "openrouter/anthropic/claude-sonnet-5"
+let DEFAULT_MODEL: str = "openrouter/anthropic/claude-sonnet-5"
 
-struct AuthUpdate {
-    ok: Bool,
-    text: String,
-    error: String,
+class AuthUpdate {
+    ok: bool
+    text: str
+    error: str
 }
 
-fun resolve_model() -> String {
+fun resolve_model() -> str {
     let a = args()
-    let i = 0
+    var i = 0
     while i < a.len() {
-        if a[i] == "--model" && i + 1 < a.len() {
+        if a[i] == "--model" and i + 1 < a.len() {
             return a[i + 1]
         }
         i = i + 1
@@ -72,7 +72,7 @@ fun resolve_model() -> String {
 
 // A custom OpenAI-compatible endpoint, from ROOK_BASE_URL, rook.json, or the
 // .agents settings. Empty means use the provider's default endpoint.
-fun resolve_base() -> String {
+fun resolve_base() -> str {
     if has_env("ROOK_BASE_URL") {
         let v = get_env("ROOK_BASE_URL")
         if v != "" {
@@ -101,7 +101,7 @@ fun resolve_base() -> String {
 // .agents settings, a global ~/.config/rook/rook.json "theme", the global
 // .agents settings, the last theme picked in a previous session, else ""
 // (the caller falls back to the default palette).
-fun resolve_theme() -> String {
+fun resolve_theme() -> str {
     let proj = _json_str(_read_opt("rook.json"), "theme")
     if proj != "" {
         return proj
@@ -128,30 +128,30 @@ fun resolve_theme() -> String {
 }
 
 // Remember `name` as the theme for the next session.
-fun save_theme(name: String) -> String {
+fun save_theme(name: str) -> str {
     let h = _home()
     if h == "" {
         return "error: no home directory for ~/.rook/last-theme"
     }
     let dir = "${h}/.rook"
-    let mkdir_err = ""
+    var mkdir_err = ""
     match create_dir_all(dir) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             mkdir_err = "error: could not create ~/.rook: ${e.message}"
-        },
+        }
     }
     if mkdir_err != "" {
         return mkdir_err
     }
     return match write("${dir}/last-theme", name) {
-        Ok(ok) -> "",
-        Err(e) -> "error: could not write ~/.rook/last-theme: ${e.message}",
+        case Ok(ok) { "" }
+        case Err(e) { "error: could not write ~/.rook/last-theme: ${e.message}" }
     }
 }
 
 // The last model picked in a previous session, or "" when none was saved.
-fun last_used() -> String {
+fun last_used() -> str {
     let p = _state_path()
     if p == "" {
         return ""
@@ -160,34 +160,34 @@ fun last_used() -> String {
 }
 
 // Remember `model` as the last-used choice for the next session.
-fun save_model(model: String) -> String {
+fun save_model(model: str) -> str {
     let h = _home()
     if h == "" {
         return "error: no home directory for ~/.rook/last-model"
     }
     let dir = "${h}/.rook"
-    let mkdir_err = ""
+    var mkdir_err = ""
     match create_dir_all(dir) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             mkdir_err = "error: could not create ~/.rook: ${e.message}"
-        },
+        }
     }
     if mkdir_err != "" {
         return mkdir_err
     }
     return match write("${dir}/last-model", model) {
-        Ok(ok) -> "",
-        Err(e) -> "error: could not write ~/.rook/last-model: ${e.message}",
+        case Ok(ok) { "" }
+        case Err(e) { "error: could not write ~/.rook/last-model: ${e.message}" }
     }
 }
 
 // The API key for a model's provider: its environment variable if set, else
 // the stored key from ~/.rook/auth.json, else "".
-fun resolve_key(model: String) -> String {
+fun resolve_key(model: str) -> str {
     let p = provider_of(model)
     let env = key_env(p)
-    if env != "" && has_env(env) {
+    if env != "" and has_env(env) {
         let v = get_env(env)
         if v != "" {
             return v
@@ -196,7 +196,7 @@ fun resolve_key(model: String) -> String {
     return stored_key(p)
 }
 
-fun stored_key(provider: String) -> String {
+fun stored_key(provider: str) -> str {
     if provider == "" {
         return ""
     }
@@ -205,18 +205,18 @@ fun stored_key(provider: String) -> String {
 
 // Store `key` for `provider` in ~/.rook/auth.json, merging with any keys
 // already saved for other providers.
-fun save_key(provider: String, key: String) -> String {
+fun save_key(provider: str, key: str) -> str {
     let h = _home()
     if h == "" {
         return "error: no home directory for ~/.rook/auth.json"
     }
     let dir = "${h}/.rook"
-    let mkdir_err = ""
+    var mkdir_err = ""
     match create_dir_all(dir) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             mkdir_err = "error: could not create ~/.rook: ${e.message}"
-        },
+        }
     }
     if mkdir_err != "" {
         return mkdir_err
@@ -226,7 +226,7 @@ fun save_key(provider: String, key: String) -> String {
 
 // Whether a model can run: its provider has a key, or accepts a keyless
 // connection such as Ollama and a custom OpenAI-compatible endpoint.
-fun key_present(model: String) -> Bool {
+fun key_present(model: str) -> bool {
     if _key_optional(provider_of(model)) {
         return true
     }
@@ -234,7 +234,7 @@ fun key_present(model: String) -> Bool {
 }
 
 // Whether a model is missing the key it needs.
-fun key_needed(model: String) -> Bool {
+fun key_needed(model: str) -> bool {
     if _key_optional(provider_of(model)) {
         return false
     }
@@ -243,7 +243,7 @@ fun key_needed(model: String) -> Bool {
 
 // key_needed using an already-resolved key, so the send path checks the model's
 // loaded key (m.api_key) instead of re-reading auth.json on every message.
-fun key_needed_with(model: String, key: String) -> Bool {
+fun key_needed_with(model: str, key: str) -> bool {
     if _key_optional(provider_of(model)) {
         return false
     }
@@ -251,7 +251,7 @@ fun key_needed_with(model: String, key: String) -> Bool {
 }
 
 // The provider part of a "provider/model" string, or "" when malformed.
-fun provider_of(model: String) -> String {
+fun provider_of(model: str) -> str {
     let slash = model.index_of("/")
     if slash < 0 {
         return ""
@@ -261,14 +261,14 @@ fun provider_of(model: String) -> String {
 
 // The environment variable holding a provider's API key, or "" when the
 // provider needs none (Ollama) or is unknown.
-fun key_env(provider: String) -> String {
+fun key_env(provider: str) -> str {
     if provider == "openai" {
         return "OPENAI_API_KEY"
     }
-    if provider == "anthropic" || provider == "claude" {
+    if provider == "anthropic" or provider == "claude" {
         return "ANTHROPIC_API_KEY"
     }
-    if provider == "gemini" || provider == "google" {
+    if provider == "gemini" or provider == "google" {
         return "GEMINI_API_KEY"
     }
     if provider == "groq" {
@@ -286,7 +286,7 @@ fun key_env(provider: String) -> String {
     if provider == "cohere" {
         return "COHERE_API_KEY"
     }
-    if provider == "xai" || provider == "grok" {
+    if provider == "xai" or provider == "grok" {
         return "XAI_API_KEY"
     }
     if provider == "together" {
@@ -319,18 +319,18 @@ fun key_env(provider: String) -> String {
     return ""
 }
 
-fun _key_optional(provider: String) -> Bool {
-    return provider == "ollama" || provider == "custom"
+fun _key_optional(provider: str) -> bool {
+    return provider == "ollama" or provider == "custom"
 }
 
 // Whether `provider` runs without an API key (a local Ollama or a custom
 // endpoint). Public and pure, so the UI can decide whether to nag about a
 // missing key without re-reading auth.json.
-fun key_optional(provider: String) -> Bool {
+fun key_optional(provider: str) -> bool {
     return _key_optional(provider)
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {
@@ -343,7 +343,7 @@ fun _home() -> String {
     return ""
 }
 
-fun _state_path() -> String {
+fun _state_path() -> str {
     let h = _home()
     if h == "" {
         return ""
@@ -351,7 +351,7 @@ fun _state_path() -> String {
     return "${h}/.rook/last-model"
 }
 
-fun _auth_path() -> String {
+fun _auth_path() -> str {
     let h = _home()
     if h == "" {
         return ""
@@ -360,86 +360,86 @@ fun _auth_path() -> String {
 }
 
 // Read a file, returning "" when it is missing or unreadable.
-fun _read_opt(path: String) -> String {
+fun _read_opt(path: str) -> str {
     if path == "" {
         return ""
     }
-    if !exists(path) {
+    if not exists(path) {
         return ""
     }
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
 }
 
-fun save_key_to_path(path: String, provider: String, key: String) -> String {
-    let existing = ""
+fun save_key_to_path(path: str, provider: str, key: str) -> str {
+    var existing = ""
     if exists(path) {
-        let read_err = ""
+        var read_err = ""
         match read(path) {
-            Ok(s) -> {
+            case Ok(s) {
                 existing = s
-            },
-            Err(e) -> {
+            }
+            case Err(e) {
                 read_err = "error: could not read ${path}: ${e.message}"
-            },
+            }
         }
         if read_err != "" {
             return read_err
         }
     }
     let updated = auth_with_key(existing, provider, key)
-    if !updated.ok {
+    if not updated.ok {
         return updated.error
     }
     return match write(path, updated.text) {
-        Ok(ok) -> "",
-        Err(e) -> "error: could not write ${path}: ${e.message}",
+        case Ok(ok) { "" }
+        case Err(e) { "error: could not write ${path}: ${e.message}" }
     }
 }
 
 // Rebuild the auth JSON object with `provider` set to `key`, preserving any
 // other providers already present. Malformed existing JSON is an error so a
 // save cannot silently replace the whole auth file.
-fun auth_with_key(existing: String, provider: String, key: String) -> AuthUpdate {
+fun auth_with_key(existing: str, provider: str, key: str) -> AuthUpdate {
     if provider == "" {
-        return AuthUpdate { ok: false, text: "", error: "error: no provider selected" }
+        return AuthUpdate(ok: false, text: "", error: "error: no provider selected")
     }
-    let obj = Obj.new()
-    let parse_err = ""
+    var obj = Obj.new()
+    var parse_err = ""
     if existing.trim() != "" {
         match parse(existing) {
-            Ok(j) -> {
+            case Ok(j) {
                 let ks = j.keys()
-                let i = 0
+                var i = 0
                 while i < ks.len() {
                     if ks[i] != provider {
                         obj = obj.str(ks[i], _field_str(j, ks[i]))
                     }
                     i = i + 1
                 }
-            },
-            Err(e) -> {
+            }
+            case Err(e) {
                 parse_err = "error: ~/.rook/auth.json is not valid JSON; key not saved"
-            },
+            }
         }
     }
     if parse_err != "" {
-        return AuthUpdate { ok: false, text: "", error: parse_err }
+        return AuthUpdate(ok: false, text: "", error: parse_err)
     }
     obj = obj.str(provider, key)
-    return AuthUpdate { ok: true, text: stringify(obj.build()), error: "" }
+    return AuthUpdate(ok: true, text: stringify(obj.build()), error: "")
 }
 
 // A string field from a JSON config document, or "" when absent.
-fun _json_str(text: String, key: String) -> String {
+fun _json_str(text: str, key: str) -> str {
     if text.trim() == "" {
         return ""
     }
     return match parse(text) {
-        Ok(j) -> _field_str(j, key),
-        Err(e) -> "",
+        case Ok(j) { _field_str(j, key) }
+        case Err(e) { "" }
     }
 }
 
@@ -447,8 +447,8 @@ fun _json_str(text: String, key: String) -> String {
 // does not silently fall back to defaults the way it did before (settings.json
 // errors already surface this way). Checks the project ./rook.json and the
 // global ~/.config/rook/rook.json.
-fun rook_json_errors() -> List<String> {
-    let out: List<String> = []
+fun rook_json_errors() -> list[str] {
+    let out: list[str] = []
     _check_rook_json("rook.json", out)
     let h = _home()
     if h != "" {
@@ -457,46 +457,44 @@ fun rook_json_errors() -> List<String> {
     return out
 }
 
-fun _check_rook_json(path: String, out: List<String>) {
+fun _check_rook_json(path: str, out: list[str]) {
     let text = _read_opt(path)
     if text.trim() == "" {
         return
     }
     match parse(text) {
-        Ok(j) -> {},
-        Err(e) -> {
-            out.push("config error: invalid JSON in ${path}, ignored: ${e.message}")
-        },
+        case Ok(j) {}
+        case Err(e) { out.push("config error: invalid JSON in ${path}, ignored: ${e.message}") }
     }
     return
 }
 
-fun _field_str(j: JsonValue, key: String) -> String {
+fun _field_str(j: JsonValue, key: str) -> str {
     return match j.get(key) {
-        Some(v) -> _as_str(v),
-        None -> "",
+        case Some(v) { _as_str(v) }
+        case None { "" }
     }
 }
 
-fun _as_str(v: JsonValue) -> String {
+fun _as_str(v: JsonValue) -> str {
     return match v.as_string() {
-        Some(s) -> s,
-        None -> "",
+        case Some(s) { s }
+        case None { "" }
     }
 }
 
 // Where the resolved model came from, mirroring resolve_model's chain, so
 // /status can say which layer won.
-fun model_source() -> String {
+fun model_source() -> str {
     let a = args()
-    let i = 0
+    var i = 0
     while i < a.len() {
-        if a[i] == "--model" && i + 1 < a.len() {
+        if a[i] == "--model" and i + 1 < a.len() {
             return "the --model flag"
         }
         i = i + 1
     }
-    if has_env("ROOK_MODEL") && get_env("ROOK_MODEL") != "" {
+    if has_env("ROOK_MODEL") and get_env("ROOK_MODEL") != "" {
         return "ROOK_MODEL"
     }
     if _json_str(_read_opt("rook.json"), "model") != "" {
@@ -506,7 +504,7 @@ fun model_source() -> String {
         return "the project .agents settings"
     }
     let h = _home()
-    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "model") != "" {
+    if h != "" and _json_str(_read_opt("${h}/.config/rook/rook.json"), "model") != "" {
         return "~/.config/rook/rook.json"
     }
     if setting_str(global_root(), "model") != "" {
@@ -519,8 +517,8 @@ fun model_source() -> String {
 }
 
 // Where the endpoint override came from, "" meaning the provider default.
-fun base_source() -> String {
-    if has_env("ROOK_BASE_URL") && get_env("ROOK_BASE_URL") != "" {
+fun base_source() -> str {
+    if has_env("ROOK_BASE_URL") and get_env("ROOK_BASE_URL") != "" {
         return "ROOK_BASE_URL"
     }
     if _json_str(_read_opt("rook.json"), "base_url") != "" {
@@ -530,7 +528,7 @@ fun base_source() -> String {
         return "the project .agents settings"
     }
     let h = _home()
-    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "base_url") != "" {
+    if h != "" and _json_str(_read_opt("${h}/.config/rook/rook.json"), "base_url") != "" {
         return "~/.config/rook/rook.json"
     }
     if setting_str(global_root(), "base_url") != "" {
@@ -540,7 +538,7 @@ fun base_source() -> String {
 }
 
 // Where the theme came from, mirroring resolve_theme.
-fun theme_source() -> String {
+fun theme_source() -> str {
     if _json_str(_read_opt("rook.json"), "theme") != "" {
         return "./rook.json"
     }
@@ -548,13 +546,13 @@ fun theme_source() -> String {
         return "the project .agents settings"
     }
     let h = _home()
-    if h != "" && _json_str(_read_opt("${h}/.config/rook/rook.json"), "theme") != "" {
+    if h != "" and _json_str(_read_opt("${h}/.config/rook/rook.json"), "theme") != "" {
         return "~/.config/rook/rook.json"
     }
     if setting_str(global_root(), "theme") != "" {
         return "the global .agents settings"
     }
-    if h != "" && _read_opt("${h}/.rook/last-theme").trim() != "" {
+    if h != "" and _read_opt("${h}/.rook/last-theme").trim() != "" {
         return "the last session's pick"
     }
     return "the default palette"
@@ -562,13 +560,13 @@ fun theme_source() -> String {
 
 // Where the model's API key comes from: its environment variable, the stored
 // auth file, or nowhere.
-fun key_source(model: String) -> String {
+fun key_source(model: str) -> str {
     let provider = provider_of(model)
     if _key_optional(provider) {
         return "not required for ${provider}"
     }
     let env = key_env(provider)
-    if env != "" && has_env(env) && get_env(env) != "" {
+    if env != "" and has_env(env) and get_env(env) != "" {
         return "the ${env} environment variable"
     }
     if stored_key(provider) != "" {
@@ -579,7 +577,7 @@ fun key_source(model: String) -> String {
 
 // The session spend ceiling in whole dollars, 0 when none is configured.
 // From "budget_usd" in ./rook.json, then the global rook.json.
-fun resolve_budget_usd() -> Int {
+fun resolve_budget_usd() -> int {
     let proj = _budget_of(_read_opt("rook.json"))
     if proj > 0 {
         return proj
@@ -591,20 +589,20 @@ fun resolve_budget_usd() -> Int {
     return _budget_of(_read_opt("${h}/.config/rook/rook.json"))
 }
 
-fun _budget_of(text: String) -> Int {
+fun _budget_of(text: str) -> int {
     if text == "" {
         return 0
     }
     return match parse(text) {
-        Ok(j) -> as_int_or(field(j, "budget_usd"), 0),
-        Err(e) -> 0,
+        case Ok(j) { as_int_or(field(j, "budget_usd"), 0) }
+        case Err(e) { 0 }
     }
 }
 
 // Append a line to ~/.rook/debug.log when ROOK_DEBUG is set, for provider
 // failures where the friendly message is not enough. Best effort.
-fun debug_log(line: String) {
-    if !has_env("ROOK_DEBUG") {
+fun debug_log(line: str) {
+    if not has_env("ROOK_DEBUG") {
         return
     }
     let h = _home()
@@ -615,8 +613,8 @@ fun debug_log(line: String) {
     let path = "${h}/.rook/debug.log"
     let existing = _read_opt(path)
     match write(path, "${existing}[${now_millis()}] ${line}\n") {
-        Ok(ok) -> {},
-        Err(e) -> {},
+        case Ok(ok) {}
+        case Err(e) {}
     }
     return
 }
@@ -625,7 +623,7 @@ fun debug_log(line: String) {
 // and a generated-by line on pull requests it opens. On by default;
 // "attribution": false in ./rook.json (or the global rook.json) turns it
 // off for repositories whose conventions forbid it.
-fun attribution_enabled() -> Bool {
+fun attribution_enabled() -> bool {
     let proj = _attribution_of(_read_opt("rook.json"))
     if proj != 0 {
         return proj == 1
@@ -642,20 +640,22 @@ fun attribution_enabled() -> Bool {
 
 // 0 unset, 1 enabled, 2 disabled. Split out and importable so the parsing
 // is testable without touching real config files.
-fun _attribution_of(text: String) -> Int {
+fun _attribution_of(text: str) -> int {
     if text == "" {
         return 0
     }
     return match parse(text) {
-        Ok(j) -> match field(j, "attribution").as_bool() {
-            Some(b) -> _flag_of(b),
-            None -> 0,
-        },
-        Err(e) -> 0,
+        case Ok(j) {
+            match field(j, "attribution").as_bool() {
+                case Some(b) { _flag_of(b) }
+                case None { 0 }
+            }
+        }
+        case Err(e) { 0 }
     }
 }
 
-fun _flag_of(b: Bool) -> Int {
+fun _flag_of(b: bool) -> int {
     if b {
         return 1
     }

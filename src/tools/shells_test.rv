@@ -1,9 +1,9 @@
-import std/string
-import std/test { assert_true, assert_eq_int, assert_eq_str }
-import std/time { sleep_millis }
-import std/env { os_name }
-import std/json { JsonValue, parse }
-import "./shells" { ShellInfo, run_background, run_background_with_limit, parse_background_shell_limit, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note, cap_output, kill_all_shells, Capped }
+import std.string
+from std.test import assert_true, assert_eq_int, assert_eq_str
+from std.time import sleep_millis
+from std.env import os_name
+from std.json import JsonValue, parse
+from "./shells" import ShellInfo, run_background, run_background_with_limit, parse_background_shell_limit, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note, cap_output, kill_all_shells, Capped
 
 fun test_background_command_returns_an_id_immediately() {
     let before = shell_count()
@@ -24,8 +24,8 @@ fun test_each_shell_gets_its_own_id() {
 }
 
 // Find a shell by id in a snapshot; -1 when absent.
-fun _index_of(infos: List<ShellInfo>, id: Int) -> Int {
-    let i = 0
+fun _index_of(infos: list[ShellInfo], id: int) -> int {
+    var i = 0
     while i < infos.len() {
         if infos[i].id == id {
             return i
@@ -35,23 +35,23 @@ fun _index_of(infos: List<ShellInfo>, id: Int) -> Int {
     return 0 - 1
 }
 
-fun _id_of(started: String) -> Int {
+fun _id_of(started: str) -> int {
     // "started shell N: ..." -> N
     let rest = started.substring(14, started.length())
     let colon = rest.index_of(":")
     return match rest.substring(0, colon).parse_int() {
-        Some(n) -> n,
-        None -> 0 - 1,
+        case Some(n) { n }
+        case None { 0 - 1 }
     }
 }
 
 // Wait until shell `id` shows exited in the registry.
-fun _wait_exit(id: Int) {
-    let tries = 0
+fun _wait_exit(id: int) {
+    var tries = 0
     while tries < 400 {
         let infos = list_shells()
         let at = _index_of(infos, id)
-        if at >= 0 && !infos[at].running {
+        if at >= 0 and not infos[at].running {
             return
         }
         sleep_millis(10)
@@ -91,7 +91,7 @@ fun test_list_text_names_every_shell() {
 }
 
 fun test_kill_stops_a_running_shell() {
-    let cmd = "sleep 30"
+    var cmd = "sleep 30"
     if os_name() == "windows" {
         cmd = "ping -n 31 127.0.0.1"
     }
@@ -103,7 +103,7 @@ fun test_kill_stops_a_running_shell() {
     let infos = list_shells()
     let at = _index_of(infos, id)
     assert_true(at >= 0)
-    assert_true(!infos[at].running)
+    assert_true(not infos[at].running)
     assert_true(kill_shell("${id}").contains("already exited"))
 }
 
@@ -131,7 +131,7 @@ fun test_note_names_unread_shells_and_clears_after_reading() {
     assert_true(note.contains("not instructions"))
     read_shell("${id}")
     // Everything read: this shell no longer appears in the note.
-    assert_true(!shells_note().contains("shell ${id} ("))
+    assert_true(not shells_note().contains("shell ${id} ("))
 }
 
 fun test_cap_keeps_the_tail_and_slides_the_read_marker() {
@@ -151,7 +151,7 @@ fun test_cap_keeps_the_tail_and_slides_the_read_marker() {
 }
 
 fun test_kill_all_stops_every_running_shell() {
-    let cmd = "sleep 30"
+    var cmd = "sleep 30"
     if os_name() == "windows" {
         cmd = "ping -n 31 127.0.0.1"
     }
@@ -161,9 +161,9 @@ fun test_kill_all_stops_every_running_shell() {
     let infos = list_shells()
     let ia = _index_of(infos, a)
     let ib = _index_of(infos, b)
-    assert_true(ia >= 0 && ib >= 0)
-    assert_true(!infos[ia].running)
-    assert_true(!infos[ib].running)
+    assert_true(ia >= 0 and ib >= 0)
+    assert_true(not infos[ia].running)
+    assert_true(not infos[ib].running)
 }
 
 fun test_kill_rejects_unknown_shells() {
@@ -175,13 +175,13 @@ fun test_registry_moves_a_shell_from_running_to_exited() {
     let id = _id_of(started)
     assert_true(id > 0)
     // Wait for the child to finish; refresh happens inside list_shells.
-    let tries = 0
-    let done = false
-    while tries < 400 && !done {
+    var tries = 0
+    var done = false
+    while tries < 400 and not done {
         let infos = list_shells()
         let at = _index_of(infos, id)
         assert_true(at >= 0)
-        if !infos[at].running {
+        if not infos[at].running {
             done = true
             assert_eq_int(infos[at].code, 0)
             assert_true(infos[at].output_len > 0)
@@ -197,7 +197,7 @@ fun test_registry_moves_a_shell_from_running_to_exited() {
 
 fun test_running_shell_limit_refuses_the_next_process() {
     kill_all_shells()
-    let cmd = "sleep 30"
+    var cmd = "sleep 30"
     if os_name() == "windows" {
         cmd = "ping -n 31 127.0.0.1 >nul"
     }
@@ -224,9 +224,9 @@ fun test_background_shell_limit_setting_parses_nested_and_flat_values() {
     )
 }
 
-fun _json(text: String) -> JsonValue {
+fun _json(text: str) -> JsonValue {
     return match parse(text) {
-        Ok(v) -> v,
-        Err(e) -> JsonValue.Null,
+        case Ok(v) { v }
+        case Err(e) { JsonValue.Null }
     }
 }

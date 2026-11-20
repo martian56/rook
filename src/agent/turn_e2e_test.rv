@@ -3,23 +3,23 @@
 // provider: stream, tool call, execution, feed-back, final answer, and the
 // approval handshake, using the base_url override to reach the local server.
 
-import std/string
-import std/http { Server, Request, Response }
-import std/sync { sleep_millis }
-import std/fs { write as fs_write, remove_file, remove_dir, create_dir_all, exists }
-import std/test { assert_true, assert_eq_str, assert_eq_int }
-import "./state" { AgentState, DisplayEvent, Snapshot }
-import "./turn" { run_turn }
+import std.string
+from std.http import Server, Request, Response
+from std.sync import sleep_millis
+from std.fs import write as fs_write, remove_file, remove_dir, create_dir_all, exists
+from std.test import assert_true, assert_eq_str, assert_eq_int
+from "./state" import AgentState, DisplayEvent, Snapshot
+from "./turn" import run_turn
 
-let read_hits = 0
-let write_hits = 0
-let dispatch_hits = 0
-let fanout_hits = 0
-let ask_hits = 0
-let perm_hits = 0
-let plan_hits = 0
-let batch_hits = 0
-let fanout_stop_hits = 0
+var read_hits = 0
+var write_hits = 0
+var dispatch_hits = 0
+var fanout_hits = 0
+var ask_hits = 0
+var perm_hits = 0
+var plan_hits = 0
+var batch_hits = 0
+var fanout_stop_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun read_handler(req: Request) -> Response {
@@ -224,41 +224,41 @@ fun serve_write() {
     app.listen("127.0.0.1:8462")
 }
 
-fun e2e_replay(events: List<DisplayEvent>) -> String {
-    let out = ""
-    let i = 0
+fun e2e_replay(events: list[DisplayEvent]) -> str {
+    var out = ""
+    var i = 0
     while i < events.len() {
         match events[i] {
-            Started -> {
+            case Started {
                 out = out.concat("")
-            },
-            Chunk(d) -> {
+            }
+            case Chunk(d) {
                 out = out.concat(d)
-            },
-            ToolRan(name, result) -> {
+            }
+            case ToolRan(name, result) {
                 out = out.concat("[${name} => ${result}]")
-            },
-            Info(t) -> {
+            }
+            case Info(t) {
                 out = out.concat("[info ${t}]")
-            },
-            AgentStarted(id, name) -> {
+            }
+            case AgentStarted(id, name) {
                 out = out.concat("[agent ${name} started]")
-            },
-            AgentTool(id, agent, name, result) -> {
+            }
+            case AgentTool(id, agent, name, result) {
                 out = out.concat("[${agent} › ${name} => ${result}]")
-            },
-            AgentFinished(id, name, used) -> {
+            }
+            case AgentFinished(id, name, used) {
                 out = out.concat("[agent ${name} done ${used}]")
-            },
+            }
         }
         i = i + 1
     }
     return out
 }
 
-fun e2e_drain(st: AgentState) -> String {
-    let acc = ""
-    let tries = 0
+fun e2e_drain(st: AgentState) -> str {
+    var acc = ""
+    var tries = 0
     while tries < 400 {
         let snap = st.drain()
         acc = acc.concat(e2e_replay(snap.events))
@@ -273,16 +273,16 @@ fun e2e_drain(st: AgentState) -> String {
 
 fun test_full_read_tool_turn() {
     fs_write("_rook_e2e.txt", "hello")
-    spawn(fun() -> Unit {
+    spawn {
         serve_read()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("what does the file say?")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8461/v1")
-    })
+    }
     let got = e2e_drain(st)
     // The read tool ran (auto, no approval) and the final answer streamed.
     assert_true(got.contains("read_file(_rook_e2e.txt)"))
@@ -295,16 +295,16 @@ fun test_full_read_tool_turn() {
 }
 
 fun test_write_tool_turn_goes_through_approval() {
-    spawn(fun() -> Unit {
+    spawn {
         serve_write()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("please write the file")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8462/v1")
-    })
+    }
     // Play the user: wait for the approval prompt, then allow it.
     _approve_when_pending(st)
     let got = e2e_drain(st)
@@ -321,16 +321,16 @@ fun test_dispatch_runs_a_subagent_and_feeds_its_answer_back() {
         ".agents/subagents/echoer.md",
         "---\ndescription: echoes things\n---\nYou are the echo agent.",
     )
-    spawn(fun() -> Unit {
+    spawn {
         serve_dispatch()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("delegate this")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8465/v1")
-    })
+    }
     let got = e2e_drain(st)
     // The dispatch ran the subagent, its answer came back as the tool
     // result, and the parent finished with its own reply.
@@ -357,16 +357,16 @@ fun test_two_dispatches_fan_out_and_both_results_return() {
         ".agents/subagents/shouter.md",
         "---\ndescription: shouts things\n---\nYou are the shout agent.",
     )
-    spawn(fun() -> Unit {
+    spawn {
         serve_fanout()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("ask both agents")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8466/v1")
-    })
+    }
     let got = e2e_drain(st)
     assert_true(got.contains("[info running 2 agents in parallel…]"))
     assert_true(got.contains("[agent echoer started]"))
@@ -391,21 +391,21 @@ fun test_two_dispatches_fan_out_and_both_results_return() {
 }
 
 fun test_ask_user_round_trips_the_pick() {
-    spawn(fun() -> Unit {
+    spawn {
         serve_ask()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("decide for me")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8467/v1")
-    })
+    }
     // Play the user: wait for the question, pick the second option.
-    spawn(fun() -> Unit {
-        let tries = 0
-        let answered = false
-        while tries < 400 && !answered {
+    spawn {
+        var tries = 0
+        var answered = false
+        while tries < 400 and not answered {
             if st.question_now() != "" {
                 st.decide(1)
                 answered = true
@@ -413,7 +413,7 @@ fun test_ask_user_round_trips_the_pick() {
             sleep_millis(10)
             tries = tries + 1
         }
-    })
+    }
     let got = e2e_drain(st)
     assert_true(got.contains("[info you chose: src, tests, and examples]"))
     assert_true(got.contains("[ask_user(Which path?) => The user chose: src, tests, and examples]"))
@@ -431,68 +431,68 @@ fun test_a_project_deny_rule_blocks_without_approval() {
         ".agents/settings.json",
         "{\"permissions\": {\"deny\": [\"write_file(_rook_e2e_perm*)\"]}}",
     )
-    spawn(fun() -> Unit {
+    spawn {
         serve_perm()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("please write the file")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8468/v1")
-    })
+    }
     let got = e2e_drain(st)
     assert_true(got.contains("blocked by the permission rule"))
     assert_true(got.contains("The permission rule blocked the write."))
-    assert_true(!exists("_rook_e2e_perm.txt"))
+    assert_true(not exists("_rook_e2e_perm.txt"))
     remove_file(".agents/settings.json")
     remove_dir(".agents")
     return
 }
 
 fun test_plan_mode_blocks_a_write() {
-    spawn(fun() -> Unit {
+    spawn {
         serve_plan()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("change the file")
     st.set_plan(true)
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8469/v1")
-    })
+    }
     let got = e2e_drain(st)
     // The write was refused, the model got the plan-mode message, and it
     // closed with its plan instead. No file was created.
     assert_true(got.contains("Plan mode is on"))
     assert_true(got.contains("Here is my plan instead."))
-    assert_true(!exists("_rook_e2e_plan.txt"))
+    assert_true(not exists("_rook_e2e_plan.txt"))
     return
 }
 
 // Esc at the approval prompt for the first of two writes in one batch must
 // stop the whole batch: the second write neither runs nor re-prompts.
 fun test_esc_at_an_approval_stops_the_rest_of_the_batch() {
-    spawn(fun() -> Unit {
+    spawn {
         serve_batch()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("write both files")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8470/v1")
-    })
+    }
     // Play the user pressing Esc at the prompt: deny, then interrupt.
     _interrupt_when_pending(st)
     let got = e2e_drain(st)
     assert_true(got.contains("[info Interrupted]"))
     // Neither file exists: the first was denied, the second never ran.
-    assert_true(!exists("_rook_e2e_batch_a.txt"))
-    assert_true(!exists("_rook_e2e_batch_b.txt"))
+    assert_true(not exists("_rook_e2e_batch_a.txt"))
+    assert_true(not exists("_rook_e2e_batch_b.txt"))
     // The second call was never even offered for approval.
-    assert_true(!got.contains("write_file(_rook_e2e_batch_b.txt)"))
+    assert_true(not got.contains("write_file(_rook_e2e_batch_b.txt)"))
     // Every call still carries a tool result, so the history stays balanced
     // for a resume: user, assistant(two tool_calls), two tool_results.
     let msgs = st.messages()
@@ -518,16 +518,16 @@ fun test_esc_mid_fanout_waits_only_for_started_agents() {
         ".agents/subagents/shouter.md",
         "---\ndescription: shouts things\n---\nYou are the shout agent.",
     )
-    spawn(fun() -> Unit {
+    spawn {
         serve_fanout_stop()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     st.push_user("run all three")
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", "http://127.0.0.1:8471/v1")
-    })
+    }
     _interrupt_when_pending(st)
     // Reaching the end of the drain at all is the point: a stopped fan-out
     // that waited on the unstarted dispatch's slot would block here forever.
@@ -536,8 +536,8 @@ fun test_esc_mid_fanout_waits_only_for_started_agents() {
     // The first agent was already running when Esc landed; the second was
     // never started, and the denied write never happened.
     assert_true(got.contains("[agent echoer started]"))
-    assert_true(!got.contains("[agent shouter started]"))
-    assert_true(!exists("_rook_e2e_fanstop.txt"))
+    assert_true(not got.contains("[agent shouter started]"))
+    assert_true(not exists("_rook_e2e_fanstop.txt"))
     // All three calls carry a result, in call order: the started agent's (its
     // own answer or an interrupted one, depending on where the cancel landed),
     // the denied write, then the placeholder for the dispatch that never ran.
@@ -557,10 +557,10 @@ fun test_esc_mid_fanout_waits_only_for_started_agents() {
 // Poll for a pending approval and answer it the way Esc does: deny the call
 // and ask the turn to stop.
 fun _interrupt_when_pending(st: AgentState) {
-    spawn(fun() -> Unit {
-        let tries = 0
-        let answered = false
-        while tries < 400 && !answered {
+    spawn {
+        var tries = 0
+        var answered = false
+        while tries < 400 and not answered {
             if st.pending_now() != "" {
                 // Same order the UI uses: raise the flag, then release the
                 // goroutine, so it cannot slip past the stop.
@@ -571,17 +571,17 @@ fun _interrupt_when_pending(st: AgentState) {
             sleep_millis(10)
             tries = tries + 1
         }
-    })
+    }
     return
 }
 
 // Poll for a pending approval and allow it once, the way the UI would. Uses
 // pending_now so it never drains display events out from under e2e_drain.
 fun _approve_when_pending(st: AgentState) {
-    spawn(fun() -> Unit {
-        let tries = 0
-        let answered = false
-        while tries < 400 && !answered {
+    spawn {
+        var tries = 0
+        var answered = false
+        while tries < 400 and not answered {
             if st.pending_now() != "" {
                 st.decide(1)
                 answered = true
@@ -589,6 +589,6 @@ fun _approve_when_pending(st: AgentState) {
             sleep_millis(10)
             tries = tries + 1
         }
-    })
+    }
     return
 }

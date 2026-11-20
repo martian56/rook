@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str }
-import "./args" { arg }
+import std.string
+from std.test import assert_eq_str
+from "./args" import arg
 
 // The schemas declare these arguments as strings, but a model may send a bare
 // JSON number or boolean; arg must coerce them so the tool still works.

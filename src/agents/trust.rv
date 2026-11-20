@@ -3,26 +3,26 @@
 // can arrive with a cloned repository. Project settings therefore cannot
 // grant approvals or launch commands unless the user opts in globally.
 
-import std/string
-import std/json { JsonValue }
-import "github.com/martian56/aviary/jsonutil" { field, as_str }
-import "./dir" { global_root }
-import "./settings" { setting_section }
+import std.string
+from std.json import JsonValue
+from "github.com/martian56/aviary/jsonutil" import field, as_str
+from "./dir" import global_root
+from "./settings" import setting_section
 
-const PROJECT_ROOT: String = ".agents"
+let PROJECT_ROOT: str = ".agents"
 
 // True when `root` is the current project's .agents directory.
-fun is_project_root(root: String) -> Bool {
+fun is_project_root(root: str) -> bool {
     return root == PROJECT_ROOT
 }
 
 // Whether this root may grant approval bypasses or run configured commands.
-fun settings_root_trusted(root: String) -> Bool {
+fun settings_root_trusted(root: str) -> bool {
     return settings_root_trusted_with_project(root, project_settings_trusted())
 }
 
 // Pure half for tests and callers that already know the project trust flag.
-fun settings_root_trusted_with_project(root: String, project_trusted: Bool) -> Bool {
+fun settings_root_trusted_with_project(root: str, project_trusted: bool) -> bool {
     if is_project_root(root) {
         return project_trusted
     }
@@ -33,21 +33,21 @@ fun settings_root_trusted_with_project(root: String, project_trusted: Bool) -> B
 // settings for every project:
 //
 // { "trust": { "project_settings": true } }
-fun project_settings_trusted() -> Bool {
+fun project_settings_trusted() -> bool {
     let root = global_root()
     if root == "" {
         return false
     }
     return match setting_section(root, "trust") {
-        Some(section) -> trust_flag(field(section, "project_settings")),
-        None -> false,
+        case Some(section) { trust_flag(field(section, "project_settings")) }
+        case None { false }
     }
 }
 
 // Accept a real JSON boolean, or "true" for hand-written config files.
-fun trust_flag(j: JsonValue) -> Bool {
+fun trust_flag(j: JsonValue) -> bool {
     return match j {
-        Bool(b) -> b,
-        _ -> as_str(j).to_lower() == "true",
+        case Bool(b) { b }
+        case _ { as_str(j).to_lower() == "true" }
     }
 }

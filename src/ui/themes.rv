@@ -4,31 +4,31 @@
 // the accent (and the assistant bullet, modals, and spinner), the comment
 // color is the chrome, and green, yellow, and red keep their usual jobs.
 
-import std/string
-import std/env { get_env, has_env }
-import "github.com/martian56/plumage/style" { Style, Color }
-import "./theme" { Theme, default_theme, from_colors }
-import "../agents/dir" { roots }
-import "../agents/palettes" { load_custom_themes }
+import std.string
+from std.env import get_env, has_env
+from "github.com/martian56/plumage/style" import Style, Color
+from "./theme" import Theme, default_theme, from_colors
+from "../agents/dir" import roots
+from "../agents/palettes" import load_custom_themes
 
 // Every theme the picker offers: the built-ins (the two defaults first),
 // then any user-defined palettes from .agents/themes. Built once and cached:
 // the picker reads this on every frame and keystroke, and it walks the roots
 // and reads/parses each custom palette from disk. Callers only read the list.
-struct ThemeCache {
-    ready: Bool,
-    themes: List<Theme>,
+class ThemeCache {
+    ready: bool
+    themes: list[Theme]
 }
 
 let THEME_CACHE: ThemeCache = _new_theme_cache()
 
 fun _new_theme_cache() -> ThemeCache {
-    let themes: List<Theme> = []
-    return ThemeCache { ready: false, themes }
+    let themes: list[Theme] = []
+    return ThemeCache(ready: false, themes: themes)
 }
 
-fun all_themes() -> List<Theme> {
-    if !THEME_CACHE.ready {
+fun all_themes() -> list[Theme] {
+    if not THEME_CACHE.ready {
         THEME_CACHE.themes = merge_custom(builtin_themes(), load_custom_themes(roots()))
         THEME_CACHE.ready = true
     }
@@ -36,7 +36,7 @@ fun all_themes() -> List<Theme> {
 }
 
 // The curated built-ins. The order here is the picker's order.
-fun builtin_themes() -> List<Theme> {
+fun builtin_themes() -> list[Theme] {
     return [
         default_theme(),
         rook_light(),
@@ -54,10 +54,10 @@ fun builtin_themes() -> List<Theme> {
 
 // Append the custom palettes, skipping any whose name collides with an
 // existing theme (built-ins keep their names).
-fun merge_custom(base: List<Theme>, customs: List<Theme>) -> List<Theme> {
-    let i = 0
+fun merge_custom(base: list[Theme], customs: list[Theme]) -> list[Theme] {
+    var i = 0
     while i < customs.len() {
-        if !_has_name(base, customs[i].name) {
+        if not _has_name(base, customs[i].name) {
             base.push(customs[i])
         }
         i = i + 1
@@ -65,9 +65,9 @@ fun merge_custom(base: List<Theme>, customs: List<Theme>) -> List<Theme> {
     return base
 }
 
-fun _has_name(themes: List<Theme>, name: String) -> Bool {
+fun _has_name(themes: list[Theme], name: str) -> bool {
     let want = name.to_lower()
-    let i = 0
+    var i = 0
     while i < themes.len() {
         if themes[i].name.to_lower() == want {
             return true
@@ -79,7 +79,7 @@ fun _has_name(themes: List<Theme>, name: String) -> Bool {
 
 // The theme to start with: the remembered choice when it names a built-in,
 // else the dark or light default matching the terminal background.
-fun startup_theme(saved: String) -> Theme {
+fun startup_theme(saved: str) -> Theme {
     let idx = theme_index(saved)
     if idx >= 0 {
         return all_themes()[idx]
@@ -94,8 +94,8 @@ fun startup_theme(saved: String) -> Theme {
 // several terminals, ends in the background color index; 7 (white) or 15
 // (bright white) means light. Absent or unparsable means dark, the common
 // case.
-fun background_is_light() -> Bool {
-    if !has_env("COLORFGBG") {
+fun background_is_light() -> bool {
+    if not has_env("COLORFGBG") {
         return false
     }
     return light_from_colorfgbg(get_env("COLORFGBG"))
@@ -103,19 +103,19 @@ fun background_is_light() -> Bool {
 
 // The pure half of the detection, split out for tests: parse a COLORFGBG
 // value like "15;0" or "0;default;15" and judge its background field.
-fun light_from_colorfgbg(v: String) -> Bool {
+fun light_from_colorfgbg(v: str) -> bool {
     let parts = v.split(";")
     if parts.len() < 2 {
         return false
     }
     return match parts[parts.len() - 1].trim().parse_int() {
-        Some(bg) -> bg == 7 || bg == 15,
-        None -> false,
+        case Some(bg) { bg == 7 or bg == 15 }
+        case None { false }
     }
 }
 
 // Look a theme up by name; unknown names fall back to the default.
-fun theme_by_name(name: String) -> Theme {
+fun theme_by_name(name: str) -> Theme {
     let idx = theme_index(name)
     if idx < 0 {
         return default_theme()
@@ -125,10 +125,10 @@ fun theme_by_name(name: String) -> Theme {
 
 // The position of a theme in all_themes, matched without regard to case so
 // "/theme dracula" finds Dracula. -1 when no built-in has that name.
-fun theme_index(name: String) -> Int {
+fun theme_index(name: str) -> int {
     let want = name.to_lower()
     let themes = all_themes()
-    let i = 0
+    var i = 0
     while i < themes.len() {
         if themes[i].name.to_lower() == want {
             return i

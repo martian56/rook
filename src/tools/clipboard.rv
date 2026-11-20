@@ -3,11 +3,11 @@
 // never disturbs the alternate screen), and falls back to OSC 52 for remote
 // sessions where those commands are absent but the terminal supports it.
 
-import std/string
-import std/env { os_name }
-import std/io { print }
-import std/encoding { base64_encode }
-import std/process { run_with_input, Output }
+import std.string
+from std.env import os_name
+from std.io import print
+from std.encoding import base64_encode
+from std.process import run_with_input, Output
 
 // How a copy went. Copied is a confirmed local clipboard write; Sent means
 // the text was handed to the terminal over OSC 52, which has no acknowledgement
@@ -20,7 +20,7 @@ enum ClipResult {
 }
 
 // Copy `text` to the clipboard.
-fun copy_to_clipboard(text: String) -> ClipResult {
+fun copy_to_clipboard(text: str) -> ClipResult {
     if text == "" {
         return ClipResult.Failed
     }
@@ -33,8 +33,8 @@ fun copy_to_clipboard(text: String) -> ClipResult {
     return ClipResult.Failed
 }
 
-fun _platform_copy(text: String) -> Bool {
-    let none: List<String> = []
+fun _platform_copy(text: str) -> bool {
+    let none: list[str] = []
     let os = os_name()
     if os == "windows" {
         return _try("clip", none, text)
@@ -52,10 +52,10 @@ fun _platform_copy(text: String) -> Bool {
     return _try("xsel", ["--clipboard", "--input"], text)
 }
 
-fun _try(program: String, args: List<String>, text: String) -> Bool {
+fun _try(program: str, args: list[str], text: str) -> bool {
     return match run_with_input(program, args, text) {
-        Ok(out) -> out.code == 0,
-        Err(e) -> false,
+        case Ok(out) { out.code == 0 }
+        case Err(e) { false }
     }
 }
 
@@ -63,7 +63,7 @@ fun _try(program: String, args: List<String>, text: String) -> Bool {
 // clipboard over SSH where no local command exists, on terminals that allow
 // it. Written straight to stdout; it sets no cells, so it does not disturb the
 // rendered frame.
-fun _osc52_copy(text: String) -> Bool {
+fun _osc52_copy(text: str) -> bool {
     print("\u{1b}]52;c;${base64_encode(text)}\u{7}")
     return true
 }

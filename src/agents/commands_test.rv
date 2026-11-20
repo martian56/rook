@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./commands" { CustomCommand, load_commands, parse_command_file, find_expansion, expand, command_infos }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./commands" import CustomCommand, load_commands, parse_command_file, find_expansion, expand, command_infos
 
 fun test_parse_reads_description_and_template() {
     let c = parse_command_file(
@@ -29,7 +29,7 @@ fun test_expand_fills_or_appends_arguments() {
 }
 
 fun test_find_expansion_matches_by_name() {
-    let cmds = [CustomCommand { name: "release", description: "", template: "Bump to $ARGUMENTS." }]
+    let cmds = [CustomCommand(name: "release", description: "", template: "Bump to $ARGUMENTS.")]
     assert_eq_str(find_expansion(cmds, "/release 1.2"), "Bump to 1.2.")
     assert_eq_str(find_expansion(cmds, "/Release 1.2"), "Bump to 1.2.")
     assert_eq_str(find_expansion(cmds, "/release"), "Bump to .")
@@ -63,8 +63,8 @@ fun test_load_commands_shadows_and_skips_non_md() {
 
 fun test_command_infos_map_with_a_fallback_description() {
     let cmds = [
-        CustomCommand { name: "release", description: "cut a release", template: "t" },
-        CustomCommand { name: "bare", description: "", template: "t" },
+        CustomCommand(name: "release", description: "cut a release", template: "t"),
+        CustomCommand(name: "bare", description: "", template: "t"),
     ]
     let infos = command_infos(cmds)
     assert_eq_str(infos[0].name, "release")
@@ -72,13 +72,13 @@ fun test_command_infos_map_with_a_fallback_description() {
     assert_eq_str(infos[1].desc, "custom command")
 }
 
-fun _find(cmds: List<CustomCommand>, name: String) -> CustomCommand {
-    let i = 0
+fun _find(cmds: list[CustomCommand], name: str) -> CustomCommand {
+    var i = 0
     while i < cmds.len() {
         if cmds[i].name == name {
             return cmds[i]
         }
         i = i + 1
     }
-    return CustomCommand { name: "", description: "", template: "" }
+    return CustomCommand(name: "", description: "", template: "")
 }

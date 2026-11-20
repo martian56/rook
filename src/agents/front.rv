@@ -3,22 +3,22 @@
 // body. A file without frontmatter is all body. Values may be quoted; the
 // quotes are stripped.
 
-import std/string
+import std.string
 
-struct Front {
-    keys: List<String>,
-    values: List<String>,
-    body: String,
+class Front {
+    keys: list[str]
+    values: list[str]
+    body: str
 }
 
-fun parse_front(text: String) -> Front {
-    let keys: List<String> = []
-    let values: List<String> = []
-    let body = text
+fun parse_front(text: str) -> Front {
+    let keys: list[str] = []
+    let values: list[str] = []
+    var body = text
     let lines = text.lines()
-    if lines.len() > 0 && lines[0].trim() == "---" {
-        let i = 1
-        let closed = 0 - 1
+    if lines.len() > 0 and lines[0].trim() == "---" {
+        var i = 1
+        var closed = 0 - 1
         while i < lines.len() {
             let t = lines[i].trim()
             if t == "---" {
@@ -36,12 +36,12 @@ fun parse_front(text: String) -> Front {
             body = _join_from(lines, closed + 1)
         }
     }
-    return Front { keys, values, body: body.trim() }
+    return Front(keys: keys, values: values, body: body.trim())
 }
 
 // The value of `key`, "" when the frontmatter does not carry it.
-fun front_get(f: Front, key: String) -> String {
-    let i = 0
+fun front_get(f: Front, key: str) -> str {
+    var i = 0
     while i < f.keys.len() {
         if f.keys[i] == key {
             return f.values[i]
@@ -51,16 +51,16 @@ fun front_get(f: Front, key: String) -> String {
     return ""
 }
 
-fun _unquote(v: String) -> String {
-    if v.length() >= 2 && v.starts_with("\"") && v.ends_with("\"") {
+fun _unquote(v: str) -> str {
+    if v.length() >= 2 and v.starts_with("\"") and v.ends_with("\"") {
         return v.substring(1, v.length() - 1)
     }
     return v
 }
 
-fun _join_from(lines: List<String>, start: Int) -> String {
-    let out = ""
-    let i = start
+fun _join_from(lines: list[str], start: int) -> str {
+    var out = ""
+    var i = start
     while i < lines.len() {
         if i > start {
             out = out.concat("\n")

@@ -2,44 +2,44 @@
 // at the prompt goes through here first: a leading slash is a command,
 // anything else is a message for the model. Kept pure so it is easy to test.
 
-import std/string
+import std.string
 
 // One command as the slash menu and /help present it.
-struct CmdInfo {
-    name: String,
-    desc: String,
+class CmdInfo {
+    name: str
+    desc: str
 }
 
 // The built-in commands, in menu order.
-fun builtin_commands() -> List<CmdInfo> {
+fun builtin_commands() -> list[CmdInfo] {
     return [
-        CmdInfo { name: "help", desc: "show every command" },
-        CmdInfo { name: "model", desc: "switch model; /model <provider/model> sets one directly" },
-        CmdInfo { name: "theme", desc: "switch the color theme" },
-        CmdInfo { name: "plan", desc: "toggle plan mode (research and propose, no changes)" },
-        CmdInfo { name: "permissions", desc: "grant common tool permissions" },
-        CmdInfo { name: "shells", desc: "list background shells" },
-        CmdInfo { name: "sessions", desc: "resume a past conversation" },
-        CmdInfo { name: "plugins", desc: "manage plugins (list, browse, add, remove, update)" },
-        CmdInfo { name: "mcp", desc: "MCP servers: status, connect, and run a prompt" },
-        CmdInfo { name: "key", desc: "set the current provider's API key" },
-        CmdInfo { name: "compact", desc: "summarize older turns to free context" },
-        CmdInfo { name: "status", desc: "show the resolved settings and where each came from" },
-        CmdInfo { name: "copy", desc: "copy the last reply to the clipboard" },
-        CmdInfo { name: "export", desc: "write the transcript to a file; /export <path> names it" },
-        CmdInfo { name: "init", desc: "explore the project and write AGENTS.md" },
-        CmdInfo { name: "rewind", desc: "undo the last turn's file changes" },
-        CmdInfo { name: "clear", desc: "wipe the conversation" },
-        CmdInfo { name: "quit", desc: "exit rook" },
+        CmdInfo(name: "help", desc: "show every command"),
+        CmdInfo(name: "model", desc: "switch model; /model <provider/model> sets one directly"),
+        CmdInfo(name: "theme", desc: "switch the color theme"),
+        CmdInfo(name: "plan", desc: "toggle plan mode (research and propose, no changes)"),
+        CmdInfo(name: "permissions", desc: "grant common tool permissions"),
+        CmdInfo(name: "shells", desc: "list background shells"),
+        CmdInfo(name: "sessions", desc: "resume a past conversation"),
+        CmdInfo(name: "plugins", desc: "manage plugins (list, browse, add, remove, update)"),
+        CmdInfo(name: "mcp", desc: "MCP servers: status, connect, and run a prompt"),
+        CmdInfo(name: "key", desc: "set the current provider's API key"),
+        CmdInfo(name: "compact", desc: "summarize older turns to free context"),
+        CmdInfo(name: "status", desc: "show the resolved settings and where each came from"),
+        CmdInfo(name: "copy", desc: "copy the last reply to the clipboard"),
+        CmdInfo(name: "export", desc: "write the transcript to a file; /export <path> names it"),
+        CmdInfo(name: "init", desc: "explore the project and write AGENTS.md"),
+        CmdInfo(name: "rewind", desc: "undo the last turn's file changes"),
+        CmdInfo(name: "clear", desc: "wipe the conversation"),
+        CmdInfo(name: "quit", desc: "exit rook"),
     ]
 }
 
 // Append `extra` (custom commands) to `base`, skipping names the base
 // already has, so a custom command can never shadow a built-in in the menu.
-fun merge_infos(base: List<CmdInfo>, extra: List<CmdInfo>) -> List<CmdInfo> {
-    let i = 0
+fun merge_infos(base: list[CmdInfo], extra: list[CmdInfo]) -> list[CmdInfo] {
+    var i = 0
     while i < extra.len() {
-        if !_has_info(base, extra[i].name) {
+        if not _has_info(base, extra[i].name) {
             base.push(extra[i])
         }
         i = i + 1
@@ -51,9 +51,9 @@ fun merge_infos(base: List<CmdInfo>, extra: List<CmdInfo>) -> List<CmdInfo> {
 // command whose name starts with what was typed after "/". Empty when the
 // input is not a bare slash command (no leading "/", or arguments already
 // typed), which is also the menu's closed state.
-fun menu_matches(cmds: List<CmdInfo>, input: String) -> List<CmdInfo> {
-    let out: List<CmdInfo> = []
-    if !input.starts_with("/") {
+fun menu_matches(cmds: list[CmdInfo], input: str) -> list[CmdInfo] {
+    let out: list[CmdInfo] = []
+    if not input.starts_with("/") {
         return out
     }
     let rest = input.substring(1, input.length())
@@ -61,7 +61,7 @@ fun menu_matches(cmds: List<CmdInfo>, input: String) -> List<CmdInfo> {
         return out
     }
     let want = rest.to_lower()
-    let i = 0
+    var i = 0
     while i < cmds.len() {
         if cmds[i].name.to_lower().starts_with(want) {
             out.push(cmds[i])
@@ -71,9 +71,9 @@ fun menu_matches(cmds: List<CmdInfo>, input: String) -> List<CmdInfo> {
     return out
 }
 
-fun _has_info(cmds: List<CmdInfo>, name: String) -> Bool {
+fun _has_info(cmds: list[CmdInfo], name: str) -> bool {
     let want = name.to_lower()
-    let i = 0
+    var i = 0
     while i < cmds.len() {
         if cmds[i].name.to_lower() == want {
             return true
@@ -84,14 +84,14 @@ fun _has_info(cmds: List<CmdInfo>, name: String) -> Bool {
 }
 
 enum Command {
-    Send(String),
+    Send(str),
     Help,
     Clear,
     Quit,
     ModelPicker,
-    ModelSet(String),
+    ModelSet(str),
     ThemePicker,
-    ThemeSet(String),
+    ThemeSet(str),
     Shells,
     Permissions,
     Plan,
@@ -99,20 +99,20 @@ enum Command {
     Compact,
     Status,
     Copy,
-    Export(String),
+    Export(str),
     Init,
     Rewind,
-    Plugins(String),
-    Mcp(String),
+    Plugins(str),
+    Mcp(str),
     Login,
-    Unknown(String),
+    Unknown(str),
 }
 
-fun parse_command(text: String) -> Command {
-    if !text.starts_with("/") {
+fun parse_command(text: str) -> Command {
+    if not text.starts_with("/") {
         return Command.Send(text)
     }
-    if text == "/quit" || text == "/exit" {
+    if text == "/quit" or text == "/exit" {
         return Command.Quit
     }
     if text == "/clear" {
@@ -121,7 +121,7 @@ fun parse_command(text: String) -> Command {
     if text == "/help" {
         return Command.Help
     }
-    if text == "/key" || text == "/login" {
+    if text == "/key" or text == "/login" {
         return Command.Login
     }
     if text == "/model" {
@@ -194,13 +194,13 @@ fun parse_command(text: String) -> Command {
 
 // The /help rows matching a typed filter, name or description, any case.
 // An empty filter keeps everything.
-fun help_filtered(infos: List<CmdInfo>, q: String) -> List<CmdInfo> {
+fun help_filtered(infos: list[CmdInfo], q: str) -> list[CmdInfo] {
     if q == "" {
         return infos
     }
     let needle = q.to_lower()
-    let out: List<CmdInfo> = []
-    let i = 0
+    let out: list[CmdInfo] = []
+    var i = 0
     while i < infos.len() {
         let hay = "${infos[i].name} ${infos[i].desc}".to_lower()
         if hay.contains(needle) {

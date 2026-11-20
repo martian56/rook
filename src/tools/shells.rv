@@ -8,72 +8,72 @@
 // through it, under a mutex since tool calls run on the turn goroutine
 // while the UI reads from the main loop.
 
-import std/string
-import std/sync { Mutex, mutex, sleep_millis }
-import std/env { os_name }
-import std/json { JsonValue }
-import std/time { now_millis }
-import std/process { Child, start }
-import "../agents/dir" { roots }
-import "../agents/settings" { setting_section }
+import std.string
+from std.sync import Mutex, mutex, sleep_millis
+from std.env import os_name
+from std.json import JsonValue
+from std.time import now_millis
+from std.process import Child, start
+from "../agents/dir" import roots
+from "../agents/settings" import setting_section
 
 // One background shell. `done` says the child exited and `code` is its
 // exit code; while running, `code` is meaningless. `output` accumulates
 // everything drained so far (stdout and stderr interleaved in arrival
 // order); `read_pos` marks how much of it the agent has already been
 // shown, for the incremental read tool.
-struct BgShell {
-    id: Int,
-    command: String,
-    child: Child,
-    started_ms: Int,
-    done: Bool,
-    code: Int,
-    output: String,
-    read_pos: Int,
+class BgShell {
+    id: int
+    command: str
+    child: Child
+    started_ms: int
+    done: bool
+    code: int
+    output: str
+    read_pos: int
 }
 
 // A lock-free snapshot of one shell for display and tools.
-struct ShellInfo {
-    id: Int,
-    command: String,
-    running: Bool,
-    code: Int,
+class ShellInfo {
+    id: int
+    command: str
+    running: bool
+    code: int
     // Milliseconds since the shell started (up to now while running).
-    runtime_ms: Int,
-    output_len: Int,
+    runtime_ms: int
+    output_len: int
 }
 
-struct ShellStore {
-    lock: Mutex,
-    shells: List<BgShell>,
-    next: Int,
+class ShellStore {
+    lock: Mutex
+    shells: list[BgShell]
+    next: int
 }
 
 fun _new_store() -> ShellStore {
-    let shells: List<BgShell> = []
-    return ShellStore { lock: mutex(), shells, next: 1 }
+    let shells: list[BgShell] = []
+    return ShellStore(lock: mutex(), shells: shells, next: 1)
 }
 
 let STORE: ShellStore = _new_store()
 
 // Start `command` through the platform shell without waiting. Returns a
 // line naming the new shell id, or an error string.
-fun run_background(command: String) -> String {
+fun run_background(command: str) -> str {
     return run_background_with_limit(command, background_shell_limit())
 }
 
-fun run_background_with_limit(command: String, limit: Int) -> String {
+fun run_background_with_limit(command: str, limit: int) -> str {
     if command.trim() == "" {
         return "error: no command given"
     }
     refresh()
-    let max_running = limit
+    var max_running = limit
     if max_running <= 0 {
         max_running = DEFAULT_RUNNING_LIMIT
     }
-    let shell = "sh"
-    let flag = "-c"
+    var shell = "sh"
+    var flag = "-c"
     if os_name() == "windows" {
         shell = "cmd"
         flag = "/c"
@@ -85,45 +85,45 @@ fun run_background_with_limit(command: String, limit: Int) -> String {
         return "error: background shell limit reached (${running}/${max_running} running); use list_shells to inspect them and kill_shell to stop one before starting another"
     }
     return match start(shell, [flag, command]) {
-        Ok(child) -> {
+        case Ok(child) {
             let id = _add_locked(command, child)
             STORE.lock.unlock()
             "started shell ${id}: ${command}"
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             STORE.lock.unlock()
             "error: ${e.message}"
-        },
+        }
     }
 }
 
-fun background_shell_limit() -> Int {
+fun background_shell_limit() -> int {
     let rs = roots()
-    let i = 0
+    var i = 0
     while i < rs.len() {
         match setting_section(rs[i], "tools") {
-            Some(section) -> {
+            case Some(section) {
                 let n = parse_background_shell_limit(section)
                 if n > 0 {
                     return n
                 }
-            },
-            None -> {},
+            }
+            case None {}
         }
         i = i + 1
     }
     return DEFAULT_RUNNING_LIMIT
 }
 
-fun parse_background_shell_limit(section: JsonValue) -> Int {
+fun parse_background_shell_limit(section: JsonValue) -> int {
     match section.get("run_background") {
-        Some(tool) -> {
+        case Some(tool) {
             let n = _json_int_field(tool, "max_running")
             if n > 0 {
                 return n
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
     return _json_int_field(section, "max_background_shells")
 }
@@ -133,24 +133,24 @@ fun parse_background_shell_limit(section: JsonValue) -> Int {
 // handle after the final drain).
 fun refresh() {
     STORE.lock.lock()
-    let i = 0
+    var i = 0
     while i < STORE.shells.len() {
         let s = STORE.shells[i]
-        if !s.done {
+        if not s.done {
             s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
             let capped = cap_output(s.output, s.read_pos, MAX_STORE_OUTPUT)
             s.output = capped.output
             s.read_pos = capped.read_pos
             match s.child.poll() {
-                Some(code) -> {
+                case Some(code) {
                     // One more drain catches what arrived between the read
                     // above and the exit.
                     s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
                     s.child.free()
                     s.done = true
                     s.code = code
-                },
-                None -> {},
+                }
+                case None {}
             }
         }
         i = i + 1
@@ -163,9 +163,9 @@ fun refresh() {
 // Drop the oldest exited shells past `keep`, fully-read ones first, so the
 // registry cannot grow without bound over a long session. Runs under the
 // store lock.
-fun _prune(keep: Int) {
-    let done = 0
-    let i = 0
+fun _prune(keep: int) {
+    var done = 0
+    var i = 0
     while i < STORE.shells.len() {
         if STORE.shells[i].done {
             done = done + 1
@@ -173,11 +173,11 @@ fun _prune(keep: Int) {
         i = i + 1
     }
     // First pass drops fully-read exited shells, oldest first.
-    let out: List<BgShell> = []
+    let out: list[BgShell] = []
     i = 0
     while i < STORE.shells.len() {
         let s = STORE.shells[i]
-        if done > keep && s.done && s.read_pos >= s.output.length() {
+        if done > keep and s.done and s.read_pos >= s.output.length() {
             done = done - 1
         } else {
             out.push(s)
@@ -185,11 +185,11 @@ fun _prune(keep: Int) {
         i = i + 1
     }
     // Second pass drops any exited shell while still over.
-    let final_list: List<BgShell> = []
+    let final_list: list[BgShell] = []
     i = 0
     while i < out.len() {
         let s = out[i]
-        if done > keep && s.done {
+        if done > keep and s.done {
             done = done - 1
         } else {
             final_list.push(s)
@@ -205,10 +205,10 @@ fun _prune(keep: Int) {
 fun kill_all_shells() {
     refresh()
     STORE.lock.lock()
-    let i = 0
+    var i = 0
     while i < STORE.shells.len() {
         let s = STORE.shells[i]
-        if !s.done {
+        if not s.done {
             s.child.kill()
             let code = s.child.wait()
             s.output = s.output.concat(s.child.read_stdout()).concat(s.child.read_stderr())
@@ -223,7 +223,7 @@ fun kill_all_shells() {
 }
 
 // A snapshot of every shell, oldest first, after a refresh.
-fun list_shells() -> List<ShellInfo> {
+fun list_shells() -> list[ShellInfo] {
     refresh()
     return shells_snapshot()
 }
@@ -231,22 +231,22 @@ fun list_shells() -> List<ShellInfo> {
 // A snapshot of every shell without draining, for the per-frame view. The
 // panel relies on _tick to refresh at a lower cadence, so rendering does not
 // drain pipes and re-cap output on every frame.
-fun shells_snapshot() -> List<ShellInfo> {
-    let out: List<ShellInfo> = []
+fun shells_snapshot() -> list[ShellInfo] {
+    let out: list[ShellInfo] = []
     let now = now_millis()
     STORE.lock.lock()
-    let i = 0
+    var i = 0
     while i < STORE.shells.len() {
         let s = STORE.shells[i]
         out.push(
-            ShellInfo {
+            ShellInfo(
                 id: s.id,
                 command: s.command,
-                running: !s.done,
+                running: not s.done,
                 code: s.code,
                 runtime_ms: now - s.started_ms,
                 output_len: s.output.length(),
-            },
+            ),
         )
         i = i + 1
     }
@@ -259,14 +259,14 @@ fun shells_snapshot() -> List<ShellInfo> {
 // usually not printed by the time the agent reads right after run_background,
 // so without this the first read returns "(no new output)" and the agent is
 // left to guess.
-const FIRST_READ_WAIT_MS: Int = 2500
-const FIRST_READ_POLL_MS: Int = 100
+let FIRST_READ_WAIT_MS: int = 2500
+let FIRST_READ_POLL_MS: int = 100
 
 // Wait briefly for a shell's first output, but only while it has produced
 // nothing, been read nothing, and is still running. An established or exited
 // shell returns at once, so a routine incremental read never stalls.
-fun _await_first_output(id: Int) {
-    let waited = 0
+fun _await_first_output(id: int) {
+    var waited = 0
     while waited < FIRST_READ_WAIT_MS {
         refresh()
         STORE.lock.lock()
@@ -276,9 +276,9 @@ fun _await_first_output(id: Int) {
             return
         }
         let s = STORE.shells[at]
-        let quiet_fresh = s.read_pos == 0 && s.output.length() == 0 && !s.done
+        let quiet_fresh = s.read_pos == 0 and s.output.length() == 0 and not s.done
         STORE.lock.unlock()
-        if !quiet_fresh {
+        if not quiet_fresh {
             return
         }
         sleep_millis(FIRST_READ_POLL_MS)
@@ -290,7 +290,7 @@ fun _await_first_output(id: Int) {
 // The read tool: whatever shell `id` wrote since the last read, behind a
 // status header. Reading advances the shell's read position; a quiet shell
 // answers "(no new output)".
-fun read_shell(id_text: String) -> String {
+fun read_shell(id_text: str) -> str {
     let id = _parse_id(id_text)
     if id < 0 {
         return "error: read_shell needs a shell id number"
@@ -304,7 +304,7 @@ fun read_shell(id_text: String) -> String {
         return "error: no shell ${id}; list_shells shows what exists"
     }
     let s = STORE.shells[at]
-    let fresh = s.output.substring(s.read_pos, s.output.length())
+    var fresh = s.output.substring(s.read_pos, s.output.length())
     s.read_pos = s.output.length()
     let head = _status_line(s)
     STORE.lock.unlock()
@@ -318,16 +318,16 @@ fun read_shell(id_text: String) -> String {
 }
 
 // The list tool: one status line per shell.
-fun shells_list_text() -> String {
+fun shells_list_text() -> str {
     let infos = list_shells()
     if infos.len() == 0 {
         return "(no background shells)"
     }
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < infos.len() {
         let s = infos[i]
-        let state = "exited ${s.code}"
+        var state = "exited ${s.code}"
         if s.running {
             state = "running ${s.runtime_ms / 1000}s"
         }
@@ -342,7 +342,7 @@ fun shells_list_text() -> String {
 
 // The kill tool: stop a running shell and report its exit. Waits for the
 // exit so the registry entry is final when the result comes back.
-fun kill_shell(id_text: String) -> String {
+fun kill_shell(id_text: str) -> str {
     let id = _parse_id(id_text)
     if id < 0 {
         return "error: kill_shell needs a shell id number"
@@ -371,47 +371,47 @@ fun kill_shell(id_text: String) -> String {
 }
 
 // Keep a read from burying the transcript; the newest output wins.
-const MAX_READ: Int = 4000
+let MAX_READ: int = 4000
 
 // Cap on each shell's stored output; the runtime buffers are already
 // bounded, and this bounds what the store accumulates across drains. The
 // newest bytes win.
-const MAX_STORE_OUTPUT: Int = 262144
+let MAX_STORE_OUTPUT: int = 262144
 
 // How many exited shells the registry keeps before pruning the oldest.
-const KEEP_DONE: Int = 20
+let KEEP_DONE: int = 20
 
 // Conservative default for simultaneously running child processes.
-const DEFAULT_RUNNING_LIMIT: Int = 5
+let DEFAULT_RUNNING_LIMIT: int = 5
 
 // The store-side cap, pure for tests: trim `output` to `max` keeping the
 // tail, and slide `read_pos` down with the trimmed prefix.
-struct Capped {
-    output: String,
-    read_pos: Int,
+class Capped {
+    output: str
+    read_pos: int
 }
 
-fun cap_output(output: String, read_pos: Int, max: Int) -> Capped {
+fun cap_output(output: str, read_pos: int, max: int) -> Capped {
     if output.length() <= max {
-        return Capped { output, read_pos }
+        return Capped(output: output, read_pos: read_pos)
     }
     let cut = output.length() - max
-    let pos = read_pos - cut
+    var pos = read_pos - cut
     if pos < 0 {
         pos = 0
     }
-    return Capped { output: output.substring(cut, output.length()), read_pos: pos }
+    return Capped(output: output.substring(cut, output.length()), read_pos: pos)
 }
 
-fun _status_line(s: BgShell) -> String {
+fun _status_line(s: BgShell) -> str {
     if s.done {
         return "shell ${s.id} (exited ${s.code}): ${s.command}"
     }
     return "shell ${s.id} (running): ${s.command}"
 }
 
-fun _index_of(id: Int) -> Int {
-    let i = 0
+fun _index_of(id: int) -> int {
+    var i = 0
     while i < STORE.shells.len() {
         if STORE.shells[i].id == id {
             return i
@@ -421,10 +421,10 @@ fun _index_of(id: Int) -> Int {
     return 0 - 1
 }
 
-fun _parse_id(text: String) -> Int {
+fun _parse_id(text: str) -> int {
     return match text.trim().parse_int() {
-        Some(n) -> n,
-        None -> 0 - 1,
+        case Some(n) { n }
+        case None { 0 - 1 }
     }
 }
 
@@ -432,20 +432,20 @@ fun _parse_id(text: String) -> Int {
 // read_shell this does not advance the agent's read position: the pane is
 // the user's view and the tool marker belongs to the model. "" for an
 // unknown id.
-fun shell_tail(id: Int, max_chars: Int) -> String {
+fun shell_tail(id: int, max_chars: int) -> str {
     refresh()
     return shell_tail_at(id, max_chars)
 }
 
 // The last `max_chars` of a shell's output without draining, for the view.
-fun shell_tail_at(id: Int, max_chars: Int) -> String {
+fun shell_tail_at(id: int, max_chars: int) -> str {
     STORE.lock.lock()
     let at = _index_of(id)
     if at < 0 {
         STORE.lock.unlock()
         return ""
     }
-    let out = STORE.shells[at].output
+    var out = STORE.shells[at].output
     if out.length() > max_chars {
         out = out.substring(out.length() - max_chars, out.length())
     }
@@ -456,17 +456,17 @@ fun shell_tail_at(id: Int, max_chars: Int) -> String {
 // A note for the system prompt when background shells hold output the
 // model has not read: names each shell with its unread size, so the model
 // knows to call read_shell without polling. "" when nothing is waiting.
-fun shells_note() -> String {
+fun shells_note() -> str {
     refresh()
     STORE.lock.lock()
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < STORE.shells.len() {
         let s = STORE.shells[i]
         let unread = s.output.length() - s.read_pos
         if unread > 0 {
-            let state = "exited ${s.code}"
-            if !s.done {
+            var state = "exited ${s.code}"
+            if not s.done {
                 state = "running"
             }
             if out != "" {
@@ -484,18 +484,18 @@ fun shells_note() -> String {
 }
 
 // How many background shells the store holds.
-fun shell_count() -> Int {
+fun shell_count() -> int {
     STORE.lock.lock()
     let n = STORE.shells.len()
     STORE.lock.unlock()
     return n
 }
 
-fun _running_count_locked() -> Int {
-    let running = 0
-    let i = 0
+fun _running_count_locked() -> int {
+    var running = 0
+    var i = 0
     while i < STORE.shells.len() {
-        if !STORE.shells[i].done {
+        if not STORE.shells[i].done {
             running = running + 1
         }
         i = i + 1
@@ -503,46 +503,46 @@ fun _running_count_locked() -> Int {
     return running
 }
 
-fun _add_locked(command: String, child: Child) -> Int {
+fun _add_locked(command: str, child: Child) -> int {
     let id = STORE.next
     STORE.next = STORE.next + 1
     STORE.shells.push(
-        BgShell {
-            id,
-            command,
-            child,
+        BgShell(
+            id: id,
+            command: command,
+            child: child,
             started_ms: now_millis(),
             done: false,
             code: 0,
             output: "",
             read_pos: 0,
-        },
+        ),
     )
     return id
 }
 
-fun _json_int_field(j: JsonValue, key: String) -> Int {
+fun _json_int_field(j: JsonValue, key: str) -> int {
     return match j.get(key) {
-        Some(v) -> _json_int(v),
-        None -> 0,
+        case Some(v) { _json_int(v) }
+        case None { 0 }
     }
 }
 
-fun _json_int(v: JsonValue) -> Int {
+fun _json_int(v: JsonValue) -> int {
     match v.as_int() {
-        Some(n) -> {
+        case Some(n) {
             return n
-        },
-        None -> {},
+        }
+        case None {}
     }
     match v.as_string() {
-        Some(s) -> {
+        case Some(s) {
             return match s.trim().parse_int() {
-                Some(n) -> n,
-                None -> 0,
+                case Some(n) { n }
+                case None { 0 }
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
     return 0
 }

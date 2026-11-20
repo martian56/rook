@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_int, assert_true }
-import "./session" { base_system_prompt, request_timeout_ms }
+import std.string
+from std.test import assert_eq_int, assert_true
+from "./session" import base_system_prompt, request_timeout_ms
 
 // The base prompt should encode the default coding workflow, so a prompt
 // change that drops one of these rules is caught here.
