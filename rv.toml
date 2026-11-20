@@ -1,7 +1,7 @@
 [package]
 name = "rook"
 version = "0.3.59"
-edition = "v2"
+edition = "v3"
 
 [dependencies]
 "github.com/martian56/plumage" = "v0.3.1"
