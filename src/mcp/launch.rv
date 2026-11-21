@@ -1,6 +1,6 @@
 // Build the process launch used for one MCP server. Unix uses the `env`
 // executable so the server starts directly without shell quoting. Windows
-// uses a fixed PowerShell helper because Raven 2.26 has no child-environment
+// uses a fixed PowerShell helper because std.process has no child-environment
 // API. The helper reads validated entries from a short-lived per-user file,
 // deletes it, sets the variables only in its own process, then launches the
 // server.
