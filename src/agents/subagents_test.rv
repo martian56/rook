@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./subagents" { Subagent, load_subagents, parse_subagent, split_tools, resolve_tools, read_only_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents }
-import "./front" { parse_front, front_get }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./subagents" import Subagent, load_subagents, parse_subagent, split_tools, resolve_tools, read_only_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents
+from "./front" import parse_front, front_get
 
-const DOC: String = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."
+let DOC: str = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."
 
 fun test_parse_reads_the_full_frontmatter() {
     let a = parse_subagent(DOC, "file-stem")
@@ -24,11 +24,11 @@ fun test_parse_defaults_to_read_only_tools() {
     assert_true(a.tools.len() > 0)
     assert_true(_has(a.tools, "read_file"))
     assert_true(_has(a.tools, "grep"))
-    assert_true(!_has(a.tools, "write_file"))
-    assert_true(!_has(a.tools, "edit_file"))
-    assert_true(!_has(a.tools, "run_command"))
-    assert_true(!_has(a.tools, "git_commit"))
-    assert_true(!_has(a.tools, "web_fetch"))
+    assert_true(not _has(a.tools, "write_file"))
+    assert_true(not _has(a.tools, "edit_file"))
+    assert_true(not _has(a.tools, "run_command"))
+    assert_true(not _has(a.tools, "git_commit"))
+    assert_true(not _has(a.tools, "web_fetch"))
     assert_eq_str(a.model, "")
     assert_eq_str(a.prompt, "Just a prompt.")
 }
@@ -67,9 +67,9 @@ fun test_parse_caps_an_oversized_prompt() {
     assert_true(a.prompt.contains("[truncated: subagent prompt]"))
 }
 
-fun _repeat_char(s: String, n: Int) -> String {
-    let out = ""
-    let i = 0
+fun _repeat_char(s: str, n: int) -> str {
+    var out = ""
+    var i = 0
     while i < n {
         out = out.concat(s)
         i = i + 1
@@ -77,8 +77,8 @@ fun _repeat_char(s: String, n: Int) -> String {
     return out
 }
 
-fun _has(xs: List<String>, name: String) -> Bool {
-    let i = 0
+fun _has(xs: list[str], name: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == name {
             return true
@@ -125,7 +125,7 @@ fun test_load_shadows_project_over_global() {
 }
 
 fun test_prompt_lists_agents_for_dispatch() {
-    let none: List<Subagent> = []
+    let none: list[Subagent] = []
     assert_eq_str(subagents_prompt(none), "")
     let one = [parse_subagent(DOC, "x")]
     let p = subagents_prompt(one)
@@ -139,7 +139,7 @@ fun test_prompt_lists_agents_for_dispatch() {
     // "all tools".
     let ro = subagents_prompt([parse_subagent("---\ndescription: d\n---\nBody.", "scout")])
     assert_true(ro.contains("tools: read_file"))
-    assert_true(!ro.contains("all tools"))
+    assert_true(not ro.contains("all tools"))
     // An explicit full-access agent shows "all tools".
     let full = subagents_prompt(
         [parse_subagent("---\ndescription: d\ntools: all\n---\nBody.", "power")],
@@ -153,10 +153,10 @@ fun test_builtins_are_three_read_only_agents() {
     assert_true(subagent_index(bs, "explorer") >= 0)
     assert_true(subagent_index(bs, "reviewer") >= 0)
     assert_true(subagent_index(bs, "planner") >= 0)
-    let i = 0
+    var i = 0
     while i < bs.len() {
         assert_true(bs[i].tools.len() > 0)
-        let t = 0
+        var t = 0
         while t < bs[i].tools.len() {
             assert_true(bs[i].tools[t] != "write_file")
             assert_true(bs[i].tools[t] != "edit_file")
@@ -191,7 +191,7 @@ fun test_all_subagents_lets_a_definition_override_a_builtin() {
 }
 
 fun test_all_subagents_without_definitions_is_the_builtins() {
-    let none: List<String> = []
+    let none: list[str] = []
     assert_true(all_subagents(none).len() == 3)
 }
 

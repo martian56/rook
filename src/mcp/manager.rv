@@ -9,46 +9,46 @@
 // take a client list, so they are tested without a live server; only the
 // connect and the tool call touch a subprocess.
 
-import std/string
-import std/sync { Mutex, mutex }
-import std/json { JsonValue, parse }
-import "github.com/martian56/aviary/message" { ToolDef }
-import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list, is_null }
-import "./config" { ServerSpec, configured_servers }
-import "./client" { McpClient, McpTool, McpResource, McpPrompt, connect_with_env_file, failed_client }
-import "./launch" { launch_for, env_error }
-import "./transport" { enc_str }
-import "../agents/limits" { cap_text }
+import std.string
+from std.sync import Mutex, mutex
+from std.json import JsonValue, parse
+from "github.com/martian56/aviary/message" import ToolDef
+from "github.com/martian56/aviary/jsonutil" import Obj, field, as_str, as_list, is_null
+from "./config" import ServerSpec, configured_servers
+from "./client" import McpClient, McpTool, McpResource, McpPrompt, connect_with_env_file, failed_client
+from "./launch" import launch_for, env_error
+from "./transport" import enc_str
+from "../agents/limits" import cap_text
 
 // An external server's resource and tool text is untrusted and unbounded; cap
 // it before it enters a tool result or the model's context.
-const MAX_MCP_CHARS: Int = 8000
+let MAX_MCP_CHARS: int = 8000
 
-const CALL_TIMEOUT: Int = 120000
+let CALL_TIMEOUT: int = 120000
 
-struct McpManager {
-    lock: Mutex,
-    clients: List<McpClient>,
-    started: Bool,
+class McpManager {
+    lock: Mutex
+    clients: list[McpClient]
+    started: bool
 }
 
 fun _new_manager() -> McpManager {
-    let clients: List<McpClient> = []
-    return McpManager { lock: mutex(), clients, started: false }
+    let clients: list[McpClient] = []
+    return McpManager(lock: mutex(), clients: clients, started: false)
 }
 
 let MANAGER: McpManager = _new_manager()
 
 // Where a namespaced tool name routes: which server, and its bare tool name.
-struct Route {
-    server: String,
-    tool: String,
+class Route {
+    server: str
+    tool: str
 }
 
-struct ResourceRoute {
-    ok: Bool,
-    server: String,
-    error: String,
+class ResourceRoute {
+    ok: bool
+    server: str
+    error: str
 }
 
 // Connect to every configured server once. Safe to call repeatedly; only the
@@ -56,7 +56,7 @@ struct ResourceRoute {
 fun ensure_started() {
     MANAGER.lock.lock()
     let already = MANAGER.started
-    if !already {
+    if not already {
         MANAGER.started = true
     }
     MANAGER.lock.unlock()
@@ -67,8 +67,8 @@ fun ensure_started() {
     // concurrent reader sees either no clients or the complete set, never a
     // half-filled list mid-connect.
     let specs = configured_servers()
-    let built: List<McpClient> = []
-    let i = 0
+    let built: list[McpClient] = []
+    var i = 0
     while i < specs.len() {
         built.push(_connect_spec(specs[i]))
         i = i + 1
@@ -90,29 +90,29 @@ fun _connect_spec(spec: ServerSpec) -> McpClient {
 }
 
 // The MCP tools across the connected servers, as ToolDefs for the model.
-fun mcp_tools() -> List<ToolDef> {
+fun mcp_tools() -> list[ToolDef] {
     ensure_started()
     return tools_from(_clients())
 }
 
 // Whether a tool name belongs to an MCP server.
-fun is_mcp_tool(name: String) -> Bool {
+fun is_mcp_tool(name: str) -> bool {
     return name.starts_with("mcp__")
 }
 
 // Invoke an MCP tool by its namespaced name, returning the text result (or an
 // error string). Routes to the owning server's tools/call.
-fun call_mcp_tool(name: String, arguments: String) -> String {
+fun call_mcp_tool(name: str, arguments: str) -> str {
     ensure_started()
     let clients = _clients()
     return match route_in(clients, name) {
-        Some(r) -> {
+        case Some(r) {
             match _find(clients, r.server) {
-                Some(c) -> _do_call(c, r.tool, arguments),
-                None -> "error: MCP server '${r.server}' is not connected",
+                case Some(c) { _do_call(c, r.tool, arguments) }
+                case None { "error: MCP server '${r.server}' is not connected" }
             }
-        },
-        None -> "error: no connected MCP tool named '${name}'",
+        }
+        case None { "error: no connected MCP tool named '${name}'" }
     }
 }
 
@@ -120,12 +120,12 @@ fun call_mcp_tool(name: String, arguments: String) -> String {
 // rook does not leave orphaned server subprocesses. Safe when none connected.
 fun close_all_servers() {
     MANAGER.lock.lock()
-    let i = 0
+    var i = 0
     while i < MANAGER.clients.len() {
         MANAGER.clients[i].close()
         i = i + 1
     }
-    let empty: List<McpClient> = []
+    let empty: list[McpClient] = []
     MANAGER.clients = empty
     MANAGER.started = false
     MANAGER.lock.unlock()
@@ -133,7 +133,7 @@ fun close_all_servers() {
 }
 
 // A snapshot of the connected clients, for the /mcp command.
-fun connected_clients() -> List<McpClient> {
+fun connected_clients() -> list[McpClient] {
     ensure_started()
     return _clients()
 }
@@ -147,30 +147,30 @@ fun begin_connect() {
     if already {
         return
     }
-    spawn(fun() -> Unit {
+    spawn {
         ensure_started()
-    })
+    }
     return
 }
 
 // The number of configured servers, for a "connecting to N" message.
-fun configured_count() -> Int {
+fun configured_count() -> int {
     return configured_servers().len()
 }
 
 // The /mcp status view: each configured server, whether it connected, and
 // what it provides. Reads the current snapshot without forcing a connect.
-fun mcp_status_text() -> String {
+fun mcp_status_text() -> str {
     return status_from(configured_servers(), _clients())
 }
 
 // Pure core of the status view over given specs and live clients.
-fun status_from(specs: List<ServerSpec>, clients: List<McpClient>) -> String {
+fun status_from(specs: list[ServerSpec], clients: list[McpClient]) -> str {
     if specs.len() == 0 {
         return "no MCP servers configured. Add an \"mcp\" section to a settings.json (see the README)."
     }
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < specs.len() {
         if i > 0 {
             out = out.concat("\n")
@@ -185,29 +185,23 @@ fun status_from(specs: List<ServerSpec>, clients: List<McpClient>) -> String {
     return out
 }
 
-fun _server_status(spec: ServerSpec, clients: List<McpClient>) -> String {
+fun _server_status(spec: ServerSpec, clients: list[McpClient]) -> str {
     let config_error = env_error(spec.env)
     if config_error != "" {
         return "${spec.name}: invalid configuration\n  ${config_error}"
     }
     return match _find(clients, spec.name) {
-        Some(c) -> {
-            if c.ok {
-                _connected_status(spec.name, c)
-            } else {
-                "${spec.name}: failed to connect\n  ${c.error}"
-            }
-        },
-        None -> "${spec.name}: configured, not connected yet (send a message, or /mcp connect)",
+        case Some(c) { _connected_status(spec.name, c) if c.ok else "${spec.name}: failed to connect\n  ${c.error}" }
+        case None { "${spec.name}: configured, not connected yet (send a message, or /mcp connect)" }
     }
 }
 
-fun _connected_status(name: String, c: McpClient) -> String {
-    let head = "${name}: connected"
+fun _connected_status(name: str, c: McpClient) -> str {
+    var head = "${name}: connected"
     if c.server_name != "" {
         head = "${head} (${c.server_name} ${c.server_version})"
     }
-    let detail = ""
+    var detail = ""
     if c.tools.len() > 0 {
         detail = detail.concat("\n  tools: ${_tool_names(c.tools)}")
     }
@@ -223,9 +217,9 @@ fun _connected_status(name: String, c: McpClient) -> String {
     return head.concat(detail)
 }
 
-fun _tool_names(tools: List<McpTool>) -> String {
-    let out = ""
-    let i = 0
+fun _tool_names(tools: list[McpTool]) -> str {
+    var out = ""
+    var i = 0
     while i < tools.len() {
         if i > 0 {
             out = out.concat(", ")
@@ -236,9 +230,9 @@ fun _tool_names(tools: List<McpTool>) -> String {
     return out
 }
 
-fun _prompt_names(prompts: List<McpPrompt>) -> String {
-    let out = ""
-    let i = 0
+fun _prompt_names(prompts: list[McpPrompt]) -> str {
+    var out = ""
+    var i = 0
     while i < prompts.len() {
         if i > 0 {
             out = out.concat(", ")
@@ -251,9 +245,9 @@ fun _prompt_names(prompts: List<McpPrompt>) -> String {
 
 // The read-resource tool, offered only when a connected server exposes at
 // least one resource so the model does not see a dead tool.
-fun resource_tools() -> List<ToolDef> {
+fun resource_tools() -> list[ToolDef] {
     ensure_started()
-    let out: List<ToolDef> = []
+    let out: list[ToolDef] = []
     if _any_resources(_clients()) {
         out.push(
             ToolDef.new(
@@ -266,56 +260,52 @@ fun resource_tools() -> List<ToolDef> {
     return out
 }
 
-fun is_resource_tool(name: String) -> Bool {
+fun is_resource_tool(name: str) -> bool {
     return name == "mcp_read_resource"
 }
 
 // Read a resource by uri, from `server` when given, else from whichever
 // connected server lists it. Returns its text (or an error string).
-fun read_resource(server: String, uri: String) -> String {
+fun read_resource(server: str, uri: str) -> str {
     if uri.trim() == "" {
         return "error: a resource uri is required"
     }
     ensure_started()
     let clients = _clients()
     let route = resource_route(clients, server, uri)
-    if !route.ok {
+    if not route.ok {
         return route.error
     }
     return match _find(clients, route.server) {
-        Some(c) -> _read_resource_from(c, uri),
-        None -> "error: MCP server '${route.server}' is not connected",
+        case Some(c) { _read_resource_from(c, uri) }
+        case None { "error: MCP server '${route.server}' is not connected" }
     }
 }
 
 // Invoke a prompt template: expand `name` on `server` with `args_json` into a
 // text prompt. Used by the /mcp command.
-fun get_prompt(server: String, name: String, args_json: String) -> String {
+fun get_prompt(server: str, name: str, args_json: str) -> str {
     ensure_started()
     let clients = _clients()
     return match _find(clients, server) {
-        Some(c) -> {
-            let args = args_json
+        case Some(c) {
+            var args = args_json
             if args.trim() == "" {
                 args = "{}"
             }
             let params = "{\"name\":${enc_str(name)},\"arguments\":${args}}"
             let resp = c.call("prompts/get", params, CALL_TIMEOUT)
-            if resp.ok {
-                format_prompt(resp.result)
-            } else {
-                "error: ${resp.error}"
-            }
-        },
-        None -> "error: MCP server '${server}' is not connected",
+            format_prompt(resp.result) if resp.ok else "error: ${resp.error}"
+        }
+        case None { "error: MCP server '${server}' is not connected" }
     }
 }
 
 // The text of a resources/read result: its text contents joined. Pure.
-fun format_resource(result: JsonValue) -> String {
+fun format_resource(result: JsonValue) -> str {
     let contents = as_list(field(result, "contents"))
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < contents.len() {
         let t = as_str(field(contents[i], "text"))
         if t != "" {
@@ -334,10 +324,10 @@ fun format_resource(result: JsonValue) -> String {
 
 // The text of a prompts/get result: each message's text, blank-line joined.
 // A message's content is an object with a text field, or a bare string. Pure.
-fun format_prompt(result: JsonValue) -> String {
+fun format_prompt(result: JsonValue) -> str {
     let msgs = as_list(field(result, "messages"))
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < msgs.len() {
         let text = _msg_text(msgs[i])
         if text != "" {
@@ -354,7 +344,7 @@ fun format_prompt(result: JsonValue) -> String {
     return cap_text(out, MAX_MCP_CHARS, "MCP prompt")
 }
 
-fun _msg_text(m: JsonValue) -> String {
+fun _msg_text(m: JsonValue) -> str {
     let content = field(m, "content")
     let t = as_str(field(content, "text"))
     if t != "" {
@@ -363,49 +353,47 @@ fun _msg_text(m: JsonValue) -> String {
     return as_str(content)
 }
 
-fun resource_route(clients: List<McpClient>, server: String, uri: String) -> ResourceRoute {
+fun resource_route(clients: list[McpClient], server: str, uri: str) -> ResourceRoute {
     if uri.trim() == "" {
-        return ResourceRoute { ok: false, server: "", error: "error: a resource uri is required" }
+        return ResourceRoute(ok: false, server: "", error: "error: a resource uri is required")
     }
     if server != "" {
         return match _find(clients, server) {
-            Some(c) -> {
-                if _has_resource(c, uri) {
-                    ResourceRoute { ok: true, server: c.name, error: "" }
-                } else {
-                    ResourceRoute {
-                        ok: false,
-                        server: "",
-                        error: "error: MCP server '${server}' does not expose the resource '${uri}'",
-                    }
-                }
-            },
-            None -> ResourceRoute {
-                ok: false,
-                server: "",
-                error: "error: MCP server '${server}' is not connected",
-            },
+            case Some(c) {
+                ResourceRoute(ok: true, server: c.name, error: "") if _has_resource(c, uri) else ResourceRoute(
+                    ok: false,
+                    server: "",
+                    error: "error: MCP server '${server}' does not expose the resource '${uri}'",
+                )
+            }
+            case None {
+                ResourceRoute(
+                    ok: false,
+                    server: "",
+                    error: "error: MCP server '${server}' is not connected",
+                )
+            }
         }
     }
     let owners = _resource_owners(clients, uri)
     if owners.len() == 1 {
-        return ResourceRoute { ok: true, server: owners[0].name, error: "" }
+        return ResourceRoute(ok: true, server: owners[0].name, error: "")
     }
     if owners.len() > 1 {
-        return ResourceRoute {
+        return ResourceRoute(
             ok: false,
             server: "",
             error: "error: MCP resource '${uri}' is ambiguous across servers ${_client_names(owners)}; retry with the server argument",
-        }
+        )
     }
-    return ResourceRoute {
+    return ResourceRoute(
         ok: false,
         server: "",
         error: "error: no connected MCP server exposes the resource '${uri}'",
-    }
+    )
 }
 
-fun _read_resource_from(c: McpClient, uri: String) -> String {
+fun _read_resource_from(c: McpClient, uri: str) -> str {
     let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT)
     if resp.ok {
         return format_resource(resp.result)
@@ -413,12 +401,12 @@ fun _read_resource_from(c: McpClient, uri: String) -> String {
     return "error: ${resp.error}"
 }
 
-fun _resource_owners(clients: List<McpClient>, uri: String) -> List<McpClient> {
-    let out: List<McpClient> = []
-    let i = 0
+fun _resource_owners(clients: list[McpClient], uri: str) -> list[McpClient] {
+    let out: list[McpClient] = []
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
-        if c.ok && _has_resource(c, uri) {
+        if c.ok and _has_resource(c, uri) {
             out.push(c)
         }
         i = i + 1
@@ -426,8 +414,8 @@ fun _resource_owners(clients: List<McpClient>, uri: String) -> List<McpClient> {
     return out
 }
 
-fun _has_resource(c: McpClient, uri: String) -> Bool {
-    let j = 0
+fun _has_resource(c: McpClient, uri: str) -> bool {
+    var j = 0
     while j < c.resources.len() {
         if c.resources[j].uri == uri {
             return true
@@ -437,9 +425,9 @@ fun _has_resource(c: McpClient, uri: String) -> Bool {
     return false
 }
 
-fun _client_names(clients: List<McpClient>) -> String {
-    let out = ""
-    let i = 0
+fun _client_names(clients: list[McpClient]) -> str {
+    var out = ""
+    var i = 0
     while i < clients.len() {
         if i > 0 {
             out = out.concat(", ")
@@ -450,8 +438,8 @@ fun _client_names(clients: List<McpClient>) -> String {
     return out
 }
 
-fun _any_resources(clients: List<McpClient>) -> Bool {
-    let i = 0
+fun _any_resources(clients: list[McpClient]) -> bool {
+    var i = 0
     while i < clients.len() {
         if clients[i].resources.len() > 0 {
             return true
@@ -468,38 +456,38 @@ fun _resource_schema() -> JsonValue {
         "the MCP server name; optional when the uri is unique",
     ).build()
     let props = Obj.new().set("uri", uri).set("server", server).build()
-    let required: List<JsonValue> = [JsonValue.Str("uri")]
+    let required: list[JsonValue] = [JsonValue.Str("uri")]
     return Obj.new().str("type", "object").set("properties", props).set(
         "required",
         JsonValue.Array(required),
     ).build()
 }
 
-fun _do_call(c: McpClient, tool: String, arguments: String) -> String {
-    let args = arguments
+fun _do_call(c: McpClient, tool: str, arguments: str) -> str {
+    var args = arguments
     if args.trim() == "" {
         args = "{}"
     }
     let params = "{\"name\":${enc_str(tool)},\"arguments\":${args}}"
     let resp = c.call("tools/call", params, CALL_TIMEOUT)
-    if !resp.ok {
+    if not resp.ok {
         return "error: ${resp.error}"
     }
     return format_tool_result(resp.result)
 }
 
 // Build ToolDefs from a client list. Pure.
-fun tools_from(clients: List<McpClient>) -> List<ToolDef> {
-    let out: List<ToolDef> = []
-    let i = 0
+fun tools_from(clients: list[McpClient]) -> list[ToolDef] {
+    let out: list[ToolDef] = []
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
         if c.ok {
-            let j = 0
+            var j = 0
             while j < c.tools.len() {
                 let t = c.tools[j]
                 let name = exposed_name(c.name, t.name)
-                if !_tool_name_collides(clients, name) {
+                if not _tool_name_collides(clients, name) {
                     out.push(ToolDef.new(name, _desc(c.name, t), _params(t)))
                 }
                 j = j + 1
@@ -511,18 +499,18 @@ fun tools_from(clients: List<McpClient>) -> List<ToolDef> {
 }
 
 // Find which server and tool a namespaced name routes to. Pure.
-fun route_in(clients: List<McpClient>, name: String) -> Option<Route> {
+fun route_in(clients: list[McpClient], name: str) -> Option[Route] {
     if _tool_name_collides(clients, name) {
         return None
     }
-    let i = 0
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
         if c.ok {
-            let j = 0
+            var j = 0
             while j < c.tools.len() {
                 if exposed_name(c.name, c.tools[j].name) == name {
-                    return Some(Route { server: c.name, tool: c.tools[j].name })
+                    return Some(Route(server: c.name, tool: c.tools[j].name))
                 }
                 j = j + 1
             }
@@ -532,17 +520,17 @@ fun route_in(clients: List<McpClient>, name: String) -> Option<Route> {
     return None
 }
 
-fun _tool_collision_warnings(clients: List<McpClient>) -> String {
-    let seen: List<String> = []
-    let out = ""
-    let i = 0
+fun _tool_collision_warnings(clients: list[McpClient]) -> str {
+    let seen: list[str] = []
+    var out = ""
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
         if c.ok {
-            let j = 0
+            var j = 0
             while j < c.tools.len() {
                 let name = exposed_name(c.name, c.tools[j].name)
-                if !_contains_string(seen, name) && _tool_name_collides(clients, name) {
+                if not _contains_string(seen, name) and _tool_name_collides(clients, name) {
                     if out != "" {
                         out = out.concat("\n")
                     }
@@ -559,17 +547,17 @@ fun _tool_collision_warnings(clients: List<McpClient>) -> String {
     return out
 }
 
-fun _tool_name_collides(clients: List<McpClient>, name: String) -> Bool {
+fun _tool_name_collides(clients: list[McpClient], name: str) -> bool {
     return _tool_name_count(clients, name) > 1
 }
 
-fun _tool_name_count(clients: List<McpClient>, name: String) -> Int {
-    let count = 0
-    let i = 0
+fun _tool_name_count(clients: list[McpClient], name: str) -> int {
+    var count = 0
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
         if c.ok {
-            let j = 0
+            var j = 0
             while j < c.tools.len() {
                 if exposed_name(c.name, c.tools[j].name) == name {
                     count = count + 1
@@ -582,13 +570,13 @@ fun _tool_name_count(clients: List<McpClient>, name: String) -> Int {
     return count
 }
 
-fun _tool_routes(clients: List<McpClient>, name: String) -> String {
-    let out = ""
-    let i = 0
+fun _tool_routes(clients: list[McpClient], name: str) -> str {
+    var out = ""
+    var i = 0
     while i < clients.len() {
         let c = clients[i]
         if c.ok {
-            let j = 0
+            var j = 0
             while j < c.tools.len() {
                 if exposed_name(c.name, c.tools[j].name) == name {
                     if out != "" {
@@ -606,10 +594,10 @@ fun _tool_routes(clients: List<McpClient>, name: String) -> String {
 
 // The text of an MCP tools/call result: its text content parts joined, with
 // an error prefix when the server flagged isError. Pure.
-fun format_tool_result(result: JsonValue) -> String {
+fun format_tool_result(result: JsonValue) -> str {
     let content = as_list(field(result, "content"))
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < content.len() {
         if as_str(field(content[i], "type")) == "text" {
             let t = as_str(field(content[i], "text"))
@@ -630,14 +618,14 @@ fun format_tool_result(result: JsonValue) -> String {
     return out
 }
 
-// The provider-facing tool name for a server's tool: mcp__<server>__<tool>,
+// The provider-facing tool name for a server's tool: mcp__[server]__[tool],
 // with any character outside [A-Za-z0-9_-] replaced so the name is valid.
-fun exposed_name(server: String, tool: String) -> String {
+fun exposed_name(server: str, tool: str) -> str {
     return _sanitize("mcp__${server}__${tool}")
 }
 
-fun _desc(server: String, t: McpTool) -> String {
-    let d = t.description
+fun _desc(server: str, t: McpTool) -> str {
+    var d = t.description
     if d == "" {
         d = "the ${t.name} tool"
     }
@@ -646,14 +634,8 @@ fun _desc(server: String, t: McpTool) -> String {
 
 fun _params(t: McpTool) -> JsonValue {
     return match parse(t.schema) {
-        Ok(j) -> {
-            if is_null(j) {
-                _empty_schema()
-            } else {
-                j
-            }
-        },
-        Err(e) -> _empty_schema(),
+        case Ok(j) { _empty_schema() if is_null(j) else j }
+        case Err(e) { _empty_schema() }
     }
 }
 
@@ -661,10 +643,10 @@ fun _empty_schema() -> JsonValue {
     return Obj.new().str("type", "object").build()
 }
 
-fun _sanitize(s: String) -> String {
+fun _sanitize(s: str) -> str {
     let ok = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < s.length() {
         let ch = s.substring(i, i + 1)
         if ok.contains(ch) {
@@ -677,15 +659,15 @@ fun _sanitize(s: String) -> String {
     return out
 }
 
-fun _as_bool(j: JsonValue) -> Bool {
+fun _as_bool(j: JsonValue) -> bool {
     return match j {
-        Bool(b) -> b,
-        _ -> false,
+        case Bool(b) { b }
+        case _ { false }
     }
 }
 
-fun _find(clients: List<McpClient>, server: String) -> Option<McpClient> {
-    let i = 0
+fun _find(clients: list[McpClient], server: str) -> Option[McpClient] {
+    var i = 0
     while i < clients.len() {
         if clients[i].name == server {
             return Some(clients[i])
@@ -695,8 +677,8 @@ fun _find(clients: List<McpClient>, server: String) -> Option<McpClient> {
     return None
 }
 
-fun _contains_string(xs: List<String>, name: String) -> Bool {
-    let i = 0
+fun _contains_string(xs: list[str], name: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == name {
             return true
@@ -708,10 +690,10 @@ fun _contains_string(xs: List<String>, name: String) -> Bool {
 
 // A snapshot copy of the connected clients, so a caller iterates a stable list
 // even if a background connect swaps MANAGER.clients while it reads.
-fun _clients() -> List<McpClient> {
+fun _clients() -> list[McpClient] {
     MANAGER.lock.lock()
-    let out: List<McpClient> = []
-    let i = 0
+    let out: list[McpClient] = []
+    var i = 0
     while i < MANAGER.clients.len() {
         out.push(MANAGER.clients[i])
         i = i + 1

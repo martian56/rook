@@ -2,53 +2,53 @@
 // model orients in an unfamiliar repo without a chain of list_dir calls.
 // Depth-limited, noise directories skipped, entry count capped.
 
-import std/string
-import std/fs { list_dir, is_dir, is_symlink }
-import "./paths" { resolve_path }
+import std.string
+from std.fs import list_dir, is_dir, is_symlink
+from "./paths" import resolve_path
 
 // Directories that are dependency or build noise, never part of the shape
 // a reader needs.
-fun _ignored(name: String) -> Bool {
-    if name == "node_modules" || name == "target" || name == "dist" || name == "__pycache__" {
+fun _ignored(name: str) -> bool {
+    if name == "node_modules" or name == "target" or name == "dist" or name == "__pycache__" {
         return true
     }
     // Hidden entries stay hidden, except the two that describe the project.
     if name.starts_with(".") {
-        return name != ".agents" && name != ".github"
+        return name != ".agents" and name != ".github"
     }
     return false
 }
 
-const MAX_ENTRIES: Int = 200
-const DEFAULT_DEPTH: Int = 3
+let MAX_ENTRIES: int = 200
+let DEFAULT_DEPTH: int = 3
 
 // Render the tree under `path` (default "."), `depth_text` levels deep
 // (default 3). Directories end with "/".
-fun file_tree(path: String, depth_text: String) -> String {
+fun file_tree(path: str, depth_text: str) -> str {
     let resolved = resolve_path(path, ".")
-    if !resolved.ok {
+    if not resolved.ok {
         return resolved.error
     }
     let root = resolved.path
-    let depth = DEFAULT_DEPTH
+    var depth = DEFAULT_DEPTH
     match depth_text.trim().parse_int() {
-        Some(n) -> {
+        case Some(n) {
             if n > 0 {
                 depth = n
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
-    if !is_dir(root) || is_symlink(root) {
+    if not is_dir(root) or is_symlink(root) {
         return "error: ${root} is not a directory"
     }
-    let out: List<String> = []
+    let out: list[str] = []
     _walk(root, "", depth, out)
     if out.len() == 0 {
         return "(empty)"
     }
-    let text = ""
-    let i = 0
+    var text = ""
+    var i = 0
     while i < out.len() {
         if i > 0 {
             text = text.concat("\n")
@@ -62,25 +62,25 @@ fun file_tree(path: String, depth_text: String) -> String {
     return text
 }
 
-fun _walk(dir: String, indent: String, depth: Int, out: List<String>) {
-    if depth <= 0 || out.len() >= MAX_ENTRIES {
+fun _walk(dir: str, indent: str, depth: int, out: list[str]) {
+    if depth <= 0 or out.len() >= MAX_ENTRIES {
         return
     }
-    let names: List<String> = []
+    var names: list[str] = []
     match list_dir(dir) {
-        Ok(ns) -> {
+        case Ok(ns) {
             names = ns
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return
-        },
+        }
     }
-    let i = 0
-    while i < names.len() && out.len() < MAX_ENTRIES {
+    var i = 0
+    while i < names.len() and out.len() < MAX_ENTRIES {
         let name = names[i]
-        if !_ignored(name) {
+        if not _ignored(name) {
             let full = "${dir}/${name}"
-            if !is_symlink(full) {
+            if not is_symlink(full) {
                 if is_dir(full) {
                     out.push("${indent}${name}/")
                     _walk(full, "${indent}  ", depth - 1, out)

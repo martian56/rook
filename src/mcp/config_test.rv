@@ -1,10 +1,10 @@
-import std/string
-import std/json { parse, JsonValue }
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./config" { ServerSpec, parse_servers, configured_servers_from_with_project_trust }
+import std.string
+from std.json import parse, JsonValue
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./config" import ServerSpec, parse_servers, configured_servers_from_with_project_trust
 
-const SECTION: String = "{\"servers\": [{\"name\": \"fs\", \"command\": \"npx\", \"args\": [\"-y\", \"server-fs\", \".\"], \"env\": [\"K=v\"]}, {\"name\": \"nocmd\"}, {\"command\": \"noname\"}, {\"name\": \"git\", \"command\": \"mcp-git\"}]}"
+let SECTION: str = "{\"servers\": [{\"name\": \"fs\", \"command\": \"npx\", \"args\": [\"-y\", \"server-fs\", \".\"], \"env\": [\"K=v\"]}, {\"name\": \"nocmd\"}, {\"command\": \"noname\"}, {\"name\": \"git\", \"command\": \"mcp-git\"}]}"
 
 fun test_parse_servers_reads_valid_entries() {
     let specs = parse_servers(_json(SECTION))
@@ -40,9 +40,9 @@ fun test_project_mcp_servers_are_ignored_until_trusted() {
     return
 }
 
-fun _json(text: String) -> JsonValue {
+fun _json(text: str) -> JsonValue {
     return match parse(text) {
-        Ok(j) -> j,
-        Err(e) -> JsonValue.Null,
+        case Ok(j) { j }
+        case Err(e) { JsonValue.Null }
     }
 }

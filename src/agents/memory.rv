@@ -4,23 +4,23 @@
 // the user's own standing notes. Both are included, global first, so the
 // project file can refine what the global one says.
 
-import std/string
-import std/env { get_env, has_env }
-import std/fs { read, exists }
-import "./limits" { safe_cut }
+import std.string
+from std.env import get_env, has_env
+from std.fs import read, exists
+from "./limits" import safe_cut
 
 // A single memory file may not crowd out the conversation.
-const MAX_MEMORY_CHARS: Int = 8000
+let MAX_MEMORY_CHARS: int = 8000
 
 // The memory section of the system prompt, "" when no AGENTS.md exists.
-fun memory_prompt() -> String {
+fun memory_prompt() -> str {
     return memory_from(read_memory(memory_paths()))
 }
 
 // Where memory lives, least specific first: the global file, then the
 // project's.
-fun memory_paths() -> List<String> {
-    let out: List<String> = []
+fun memory_paths() -> list[str] {
+    let out: list[str] = []
     let h = _home()
     if h != "" {
         out.push("${h}/.agents/AGENTS.md")
@@ -30,19 +30,19 @@ fun memory_paths() -> List<String> {
 }
 
 // The contents of every path that exists, in order, each capped.
-fun read_memory(paths: List<String>) -> List<String> {
-    let out: List<String> = []
-    let i = 0
+fun read_memory(paths: list[str]) -> list[str] {
+    let out: list[str] = []
+    var i = 0
     while i < paths.len() {
         if exists(paths[i]) {
             match read(paths[i]) {
-                Ok(text) -> {
+                case Ok(text) {
                     let t = text.trim()
                     if t != "" {
                         out.push(_cap(t))
                     }
-                },
-                Err(e) -> {},
+                }
+                case Err(e) {}
             }
         }
         i = i + 1
@@ -52,12 +52,12 @@ fun read_memory(paths: List<String>) -> List<String> {
 
 // Assemble the prompt section from the loaded texts. Pure, so it is easy to
 // test without touching the filesystem.
-fun memory_from(texts: List<String>) -> String {
+fun memory_from(texts: list[str]) -> str {
     if texts.len() == 0 {
         return ""
     }
-    let out = "\n\n[AGENTS.md guidance]\nStanding instructions from AGENTS.md. Follow them when they do not conflict with higher-priority instructions:"
-    let i = 0
+    var out = "\n\n[AGENTS.md guidance]\nStanding instructions from AGENTS.md. Follow them when they do not conflict with higher-priority instructions:"
+    var i = 0
     while i < texts.len() {
         out = "${out}\n\n[source ${i + 1}: AGENTS.md]\n${texts[i]}"
         i = i + 1
@@ -65,14 +65,14 @@ fun memory_from(texts: List<String>) -> String {
     return out
 }
 
-fun _cap(t: String) -> String {
+fun _cap(t: str) -> str {
     if t.length() <= MAX_MEMORY_CHARS {
         return t
     }
     return "${t.substring(0, safe_cut(t, MAX_MEMORY_CHARS))}\n[truncated]"
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

@@ -3,50 +3,50 @@
 // permission, approval, and plan-mode decision. Each scenario checks the
 // complete tool trace and the shape of the final answer.
 
-import std/string
-import std/json { JsonValue, stringify }
-import std/http { Server, Request, Response }
-import std/io { println }
-import std/sync { sleep_millis }
-import std/fs { write, read, exists, remove_file, remove_dir, create_dir_all }
-import std/process { run }
-import std/test { assert_true, assert_eq_str }
-import "github.com/martian56/aviary/message" { Message }
-import "../../src/agent/state" { AgentState }
-import "../../src/agent/turn" { run_turn }
+import std.string
+from std.json import JsonValue, stringify
+from std.http import Server, Request, Response
+from std.io import println
+from std.sync import sleep_millis
+from std.fs import write, read, exists, remove_file, remove_dir, create_dir_all
+from std.process import run
+from std.test import assert_true, assert_eq_str
+from "github.com/martian56/aviary/message" import Message
+from "../../src/agent/state" import AgentState
+from "../../src/agent/turn" import run_turn
 
-const EVAL_URL: String = "http://127.0.0.1:8470/v1"
+let EVAL_URL: str = "http://127.0.0.1:8470/v1"
 
-let inspect_round = 0
-let plan_round = 0
-let permission_round = 0
-let conflict_round = 0
-let no_commit_round = 0
-let verification_round = 0
-let inspect_saw_policy = false
-let plan_exposed_mutation = false
-let plan_saw_policy = false
-let permission_saw_denial = false
-let conflict_saw_project_rule = false
-let conflict_saw_hierarchy = false
-let no_commit_saw_policy = false
-let verification_saw_policy = false
+var inspect_round = 0
+var plan_round = 0
+var permission_round = 0
+var conflict_round = 0
+var no_commit_round = 0
+var verification_round = 0
+var inspect_saw_policy = false
+var plan_exposed_mutation = false
+var plan_saw_policy = false
+var permission_saw_denial = false
+var conflict_saw_project_rule = false
+var conflict_saw_hierarchy = false
+var no_commit_saw_policy = false
+var verification_saw_policy = false
 
-struct EvalResult {
-    trace: String,
-    answer: String,
-    results: String,
+class EvalResult {
+    trace: str
+    answer: str
+    results: str
 }
 
-struct SavedFile {
-    existed: Bool,
-    content: String,
+class SavedFile {
+    existed: bool
+    content: str
 }
 
 fun main() {
-    spawn(fun() -> Unit {
+    spawn {
         _serve()
-    })
+    }
     sleep_millis(200)
 
     println("behavior eval: inspect before edit")
@@ -81,7 +81,7 @@ fun _model(req: Request) -> Response {
     if req.body.contains("[eval:inspect-before-edit]") {
         inspect_round = inspect_round + 1
         if inspect_round == 1 {
-            inspect_saw_policy = req.body.contains("before you change anything") && req.body.contains(
+            inspect_saw_policy = req.body.contains("before you change anything") and req.body.contains(
                 "check git_status before edits",
             )
             return _tool("inspect-status", "git_status", "{}")
@@ -105,9 +105,9 @@ fun _model(req: Request) -> Response {
         plan_round = plan_round + 1
         if plan_round == 1 {
             plan_saw_policy = req.body.contains("You are in PLAN MODE")
-            plan_exposed_mutation = req.body.contains("\"name\":\"write_file\"") || req.body.contains(
+            plan_exposed_mutation = req.body.contains("\"name\":\"write_file\"") or req.body.contains(
                 "\"name\":\"edit_file\"",
-            ) || req.body.contains("\"name\":\"run_command\"") || req.body.contains("\"name\":\"git_commit\"")
+            ) or req.body.contains("\"name\":\"run_command\"") or req.body.contains("\"name\":\"git_commit\"")
             return _tool("plan-read", "read_file", "{\"path\":\"_rook_eval_plan.txt\"}")
         }
         return _final(
@@ -195,7 +195,7 @@ fun _model(req: Request) -> Response {
     return _final("Unknown behavior eval scenario.")
 }
 
-fun _tool(id: String, name: String, arguments: String) -> Response {
+fun _tool(id: str, name: str, arguments: str) -> Response {
     let call_id = stringify(JsonValue.Str(id))
     let call_name = stringify(JsonValue.Str(name))
     let call_args = stringify(JsonValue.Str(arguments))
@@ -204,43 +204,43 @@ fun _tool(id: String, name: String, arguments: String) -> Response {
     )
 }
 
-fun _final(text: String) -> Response {
+fun _final(text: str) -> Response {
     let content = stringify(JsonValue.Str(text))
     return Response.text(
         "data: {\"choices\":[{\"delta\":{\"content\":${content}}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
     )
 }
 
-fun _run_eval(user: String, plan: Bool, approvals: Int) -> EvalResult {
+fun _run_eval(user: str, plan: bool, approvals: int) -> EvalResult {
     let st = AgentState.new()
     st.push_user(user)
     st.set_plan(plan)
     st.begin()
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, "custom/local", "", EVAL_URL)
-    })
+    }
     if approvals > 0 {
         _approve(st, approvals)
     }
     _wait(st)
     let messages = st.messages()
-    let answer = ""
+    var answer = ""
     if messages.len() > 0 {
         answer = messages[messages.len() - 1].content
     }
-    return EvalResult { trace: _trace(messages), answer, results: _results(messages) }
+    return EvalResult(trace: _trace(messages), answer: answer, results: _results(messages))
 }
 
-fun _approve(st: AgentState, count: Int) {
-    spawn(fun() -> Unit {
-        let approved = 0
-        let tries = 0
-        while approved < count && tries < 3000 {
+fun _approve(st: AgentState, count: int) {
+    spawn {
+        var approved = 0
+        var tries = 0
+        while approved < count and tries < 3000 {
             let pending = st.pending_now()
             if pending != "" {
                 st.decide(1)
                 approved = approved + 1
-                while st.pending_now() == pending && tries < 3000 {
+                while st.pending_now() == pending and tries < 3000 {
                     sleep_millis(10)
                     tries = tries + 1
                 }
@@ -248,11 +248,11 @@ fun _approve(st: AgentState, count: Int) {
             sleep_millis(10)
             tries = tries + 1
         }
-    })
+    }
 }
 
 fun _wait(st: AgentState) {
-    let tries = 0
+    var tries = 0
     while tries < 3000 {
         let snap = st.drain()
         if snap.done {
@@ -264,11 +264,11 @@ fun _wait(st: AgentState) {
     assert_true(false)
 }
 
-fun _trace(messages: List<Message>) -> String {
-    let out = ""
-    let i = 0
+fun _trace(messages: list[Message]) -> str {
+    var out = ""
+    var i = 0
     while i < messages.len() {
-        let j = 0
+        var j = 0
         while j < messages[i].tool_calls.len() {
             if out != "" {
                 out = out.concat(" > ")
@@ -281,9 +281,9 @@ fun _trace(messages: List<Message>) -> String {
     return out
 }
 
-fun _results(messages: List<Message>) -> String {
-    let out = ""
-    let i = 0
+fun _results(messages: list[Message]) -> str {
+    var out = ""
+    var i = 0
     while i < messages.len() {
         if messages[i].name != "" {
             out = out.concat("[${messages[i].name}] ${messages[i].content}\n")
@@ -324,7 +324,7 @@ fun _eval_plan_mode_research_only() {
     _restore("_rook_eval_plan.txt", saved)
     assert_eq_str(result.trace, "read_file")
     assert_true(plan_saw_policy)
-    assert_true(!plan_exposed_mutation)
+    assert_true(not plan_exposed_mutation)
     assert_true(result.answer.starts_with("Plan:\n1."))
     assert_eq_str(content, "current")
 }
@@ -347,10 +347,10 @@ fun _eval_permission_denial_recovery() {
     let denied_content_after = _read("_rook_eval_denied.txt")
     _restore(".agents/settings.json", settings_saved)
     _restore("_rook_eval_denied.txt", denied_saved)
-    if !dir_existed {
+    if not dir_existed {
         match remove_dir(".agents") {
-            Ok(ok) -> {},
-            Err(e) -> {},
+            case Ok(ok) {}
+            case Err(e) {}
         }
     }
     assert_eq_str(result.trace, "write_file > read_file")
@@ -402,7 +402,7 @@ fun _eval_no_commit_without_request() {
     assert_true(before != "")
     assert_eq_str(result.trace, "read_file > edit_file")
     assert_true(no_commit_saw_policy)
-    assert_true(!result.trace.contains("git_commit"))
+    assert_true(not result.trace.contains("git_commit"))
     assert_true(result.answer.starts_with("Changed:"))
     assert_true(result.answer.contains("\nVerified:"))
     assert_eq_str(after, before)
@@ -429,36 +429,36 @@ fun _eval_test_after_change() {
     assert_true(content.contains("return 2"))
 }
 
-fun _read(path: String) -> String {
+fun _read(path: str) -> str {
     return match read(path) {
-        Ok(text) -> text,
-        Err(e) -> "",
+        case Ok(text) { text }
+        case Err(e) { "" }
     }
 }
 
-fun _head() -> String {
+fun _head() -> str {
     return match run("git", ["rev-parse", "HEAD"]) {
-        Ok(output) -> output.stdout.trim(),
-        Err(e) -> "",
+        case Ok(output) { output.stdout.trim() }
+        case Err(e) { "" }
     }
 }
 
-fun _save(path: String) -> SavedFile {
-    if !exists(path) {
-        return SavedFile { existed: false, content: "" }
+fun _save(path: str) -> SavedFile {
+    if not exists(path) {
+        return SavedFile(existed: false, content: "")
     }
-    return SavedFile { existed: true, content: _read(path) }
+    return SavedFile(existed: true, content: _read(path))
 }
 
-fun _restore(path: String, saved: SavedFile) {
+fun _restore(path: str, saved: SavedFile) {
     if saved.existed {
         write(path, saved.content)
         return
     }
     if exists(path) {
         match remove_file(path) {
-            Ok(ok) -> {},
-            Err(e) -> {},
+            case Ok(ok) {}
+            case Err(e) {}
         }
     }
 }

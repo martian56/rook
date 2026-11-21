@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import "./tree" { file_tree }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from "./tree" import file_tree
 
 fun setup() {
     create_dir_all("_rook_tree/src/app")
@@ -38,8 +38,8 @@ fun test_tree_shows_structure_and_skips_noise() {
     assert_true(t.contains("  app/"))
     assert_true(t.contains("    model.rv"))
     assert_true(t.contains("rv.toml"))
-    assert_true(!t.contains(".git"))
-    assert_true(!t.contains("node_modules"))
+    assert_true(not t.contains(".git"))
+    assert_true(not t.contains("node_modules"))
     teardown()
     return
 }
@@ -48,7 +48,7 @@ fun test_depth_limits_the_descent() {
     setup()
     let t = file_tree("_rook_tree", "1")
     assert_true(t.contains("src/"))
-    assert_true(!t.contains("main.rv"))
+    assert_true(not t.contains("main.rv"))
     teardown()
     return
 }

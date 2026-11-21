@@ -2,69 +2,69 @@
 // a turn on the agent goroutine; and replaying the goroutine's display events
 // into the transcript on every tick.
 
-import std/string
-import std/io { print }
-import std/fs { read, write }
-import "github.com/martian56/perch/keys" { Key }
-import "github.com/martian56/aviary/message" { Message, Role }
-import "github.com/martian56/plumage" { Event, Step, next, quit }
-import "github.com/martian56/plumage/widgets/input" { TextInput }
-import "./model" { Chat, set_model, apply_model, set_entry, replace_entries, ensure_cache_len }
-import "../agent/state" { DisplayEvent, Snapshot }
-import "../ui/transcript" { AgentBlock }
-import "../agent/turn" { run_turn }
-import "../agent/compact" { force_compact }
-import "../ui/spinner" { thinking_word }
-import "../ui/transcript" { Entry }
-import "../ui/transcript" { EntryLines, empty_entry_lines, transcript_texts }
-import "../ui/selection" { Selection, no_selection, normalize, extract, is_empty }
-import "../tools/clipboard" { ClipResult, copy_to_clipboard }
-import "../commands" { Command, parse_command, CmdInfo, menu_matches, help_filtered }
-import "../tools/mentions" { Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions }
-import "../config/sessions" { SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, session_cwd, Loaded }
-import "../config/catalog" { catalog, catalog_labels, catalog_lower, model_capability_warning }
-import "../config/config" { provider_of, key_needed_with, save_key, save_theme, model_source, base_source, theme_source, key_source, debug_log }
-import "../ui/themes" { all_themes, theme_by_name, theme_index }
-import "../ui/depth" { themed }
-import "../agents/dir" { roots }
-import "../agents/commands" { cached_commands, invalidate_commands, find_expansion }
-import "../tools/shells" { list_shells, kill_all_shells, kill_shell, refresh }
-import "../tools/todos" { clear_todos }
-import "../tools/permission_menu" { permission_grant_states, toggle_permission_grant }
-import "../plugins/manage" { run_plugins_command }
-import "../mcp/manager" { mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers }
-import "../mcp/command" { McpInvoke, parse_invoke }
-import "../hooks/hooks" { drain_hook_notices }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts, push_shell_done, take_shell_done, push_bang_context, take_bang_context }
-import "../tools/shell" { run_command }
-import "./history" { push_history, recall_prev, recall_next, recalling, reset_recall }
-import "../tools/pricing" { cost_micros_cached }
-import "../tools/checkpoints" { rewind_last_batch, checkpoint_batches }
-import "./panel_filter" { sessions_set_full, sessions_set_scope, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear }
+import std.string
+from std.io import print
+from std.fs import read, write
+from "github.com/martian56/perch/keys" import Key
+from "github.com/martian56/aviary/message" import Message, Role
+from "github.com/martian56/plumage" import Event, Step, next, quit
+from "github.com/martian56/plumage/widgets/input" import TextInput
+from "./model" import Chat, set_model, apply_model, set_entry, replace_entries, ensure_cache_len
+from "../agent/state" import DisplayEvent, Snapshot
+from "../ui/transcript" import AgentBlock
+from "../agent/turn" import run_turn
+from "../agent/compact" import force_compact
+from "../ui/spinner" import thinking_word
+from "../ui/transcript" import Entry
+from "../ui/transcript" import EntryLines, empty_entry_lines, transcript_texts
+from "../ui/selection" import Selection, no_selection, normalize, extract, is_empty
+from "../tools/clipboard" import ClipResult, copy_to_clipboard
+from "../commands" import Command, parse_command, CmdInfo, menu_matches, help_filtered
+from "../tools/mentions" import Mention, current_mention, fuzzy_match, cached_files, invalidate_files, warm_files, expand_mentions
+from "../config/sessions" import SessionMeta, new_session_id, save_session_async, drain_save_errors, begin_list_sessions, take_session_list, begin_load_session, take_loaded_session, delete_session, session_cwd, Loaded
+from "../config/catalog" import catalog, catalog_labels, catalog_lower, model_capability_warning
+from "../config/config" import provider_of, key_needed_with, save_key, save_theme, model_source, base_source, theme_source, key_source, debug_log
+from "../ui/themes" import all_themes, theme_by_name, theme_index
+from "../ui/depth" import themed
+from "../agents/dir" import roots
+from "../agents/commands" import cached_commands, invalidate_commands, find_expansion
+from "../tools/shells" import list_shells, kill_all_shells, kill_shell, refresh
+from "../tools/todos" import clear_todos
+from "../tools/permission_menu" import permission_grant_states, toggle_permission_grant
+from "../plugins/manage" import run_plugins_command
+from "../mcp/manager" import mcp_status_text, begin_connect, configured_count, get_prompt, close_all_servers
+from "../mcp/command" import McpInvoke, parse_invoke
+from "../hooks/hooks" import drain_hook_notices
+from "./cmdq" import push_cmd_notice, drain_cmd_notices, push_cmd_prompt, take_cmd_prompt, drain_cmd_prompts, push_shell_done, take_shell_done, push_bang_context, take_bang_context
+from "../tools/shell" import run_command
+from "./history" import push_history, recall_prev, recall_next, recalling, reset_recall
+from "../tools/pricing" import cost_micros_cached
+from "../tools/checkpoints" import rewind_last_batch, checkpoint_batches
+from "./panel_filter" import sessions_set_full, sessions_set_scope, sessions_query, sessions_type, sessions_backspace, sessions_clear, help_query, help_type, help_backspace, help_clear
 
 // The /init task: explore the repo and write (or improve) its AGENTS.md, the
 // memory file rook loads into every session here.
-const INIT_PROMPT: String = "Explore this repository (use file_tree first, then read the key files: the manifest, the entry points, any CI or scripts) and write an AGENTS.md file at the repository root. It should briefly cover: what the project is, how to build, test, and run it (exact commands), the layout (what lives where), and any conventions or gotchas a coding agent must follow when working here. Keep it under about 60 lines of plain markdown. If AGENTS.md already exists, read it and improve it rather than starting over."
+let INIT_PROMPT: str = "Explore this repository (use file_tree first, then read the key files: the manifest, the entry points, any CI or scripts) and write an AGENTS.md file at the repository root. It should briefly cover: what the project is, how to build, test, and run it (exact commands), the layout (what lives where), and any conventions or gotchas a coding agent must follow when working here. Keep it under about 60 lines of plain markdown. If AGENTS.md already exists, read it and improve it rather than starting over."
 
-fun chat_update(m: Chat, e: Event) -> Step<Chat> {
+fun chat_update(m: Chat, e: Event) -> Step[Chat] {
     match e {
-        Tick -> {
+        case Tick {
             return _tick(m)
-        },
-        KeyPress(k) -> {
+        }
+        case KeyPress(k) {
             return _key(m, k)
-        },
-        Mouse(ev) -> {
+        }
+        case Mouse(ev) {
             match ev.kind {
-                ScrollUp -> {
+                case ScrollUp {
                     // With a panel open the wheel moves its selection, not
                     // the transcript hidden behind it.
                     if _wheel_panel(m, 0 - 1) {
                         return next(m)
                     }
                     m.scroll_up = m.scroll_up + 3
-                },
-                ScrollDown -> {
+                }
+                case ScrollDown {
                     if _wheel_panel(m, 1) {
                         return next(m)
                     }
@@ -72,32 +72,32 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
                     if m.scroll_up < 0 {
                         m.scroll_up = 0
                     }
-                },
-                Down -> {
+                }
+                case Down {
                     if ev.button == 0 {
                         _sel_begin(m, ev.x, ev.y)
                     }
-                },
-                Drag -> {
+                }
+                case Drag {
                     if ev.button == 0 {
                         _sel_extend(m, ev.x, ev.y)
                     }
-                },
-                Up -> {
+                }
+                case Up {
                     if ev.button == 0 {
                         _sel_finish(m)
                     }
-                },
-                _ -> {},
+                }
+                case _ {}
             }
             return next(m)
-        },
-        Paste(s) -> {
+        }
+        case Paste(s) {
             return _paste(m, s)
-        },
-        Resize(w, h) -> {
+        }
+        case Resize(w, h) {
             return next(m)
-        },
+        }
     }
     return next(m)
 }
@@ -105,7 +105,7 @@ fun chat_update(m: Chat, e: Event) -> Step<Chat> {
 // Insert a bracketed paste into whichever input has focus. The text arrives
 // as one event with newlines normalized, so a pasted block lands literally
 // instead of replaying as keystrokes (where a newline would submit).
-fun _paste(m: Chat, s: String) -> Step<Chat> {
+fun _paste(m: Chat, s: str) -> Step[Chat] {
     if s == "" {
         return next(m)
     }
@@ -131,31 +131,31 @@ fun _paste(m: Chat, s: String) -> Step<Chat> {
 // Start a selection at a mouse-down inside the transcript, mapping the screen
 // cell to a content line and column. A click outside the transcript clears any
 // existing selection.
-fun _sel_begin(m: Chat, x: Int, y: Int) {
-    if !_in_transcript(m, x, y) {
+fun _sel_begin(m: Chat, x: int, y: int) {
+    if not _in_transcript(m, x, y) {
         m.sel = no_selection()
         return
     }
-    let col = x - m.tr_x
+    var col = x - m.tr_x
     if col < 0 {
         col = 0
     }
     let line = m.tr_top + (y - m.tr_y)
-    m.sel = Selection {
+    m.sel = Selection(
         active: true,
         present: true,
         a_line: line,
         a_col: col,
         b_line: line,
         b_col: col,
-    }
+    )
     return
 }
 
 // Extend the active selection to the current mouse cell. Dragging past the top
 // or bottom edge scrolls, so a selection can run beyond one screen.
-fun _sel_extend(m: Chat, x: Int, y: Int) {
-    if !m.sel.active {
+fun _sel_extend(m: Chat, x: int, y: int) {
+    if not m.sel.active {
         return
     }
     if y < m.tr_y {
@@ -168,14 +168,14 @@ fun _sel_extend(m: Chat, x: Int, y: Int) {
             }
         }
     }
-    let cy = y
+    var cy = y
     if cy < m.tr_y {
         cy = m.tr_y
     }
     if cy >= m.tr_y + m.tr_h {
         cy = m.tr_y + m.tr_h - 1
     }
-    let col = x - m.tr_x
+    var col = x - m.tr_x
     if col < 0 {
         col = 0
     }
@@ -198,53 +198,53 @@ fun _sel_finish(m: Chat) {
         return
     }
     let n = text.lines().len()
-    let unit = "lines"
+    var unit = "lines"
     if n == 1 {
         unit = "line"
     }
     // A local clipboard write is confirmed; OSC 52 is not (no ack), so word it
     // as "sent" rather than claiming it definitely copied.
     match copy_to_clipboard(text) {
-        Copied -> {
+        case Copied {
             m.flash = "copied ${n} ${unit} to the clipboard"
             m.flash_until = m.tick + 60
-        },
-        Sent -> {
+        }
+        case Sent {
             m.flash = "sent ${n} ${unit} to the terminal clipboard"
             m.flash_until = m.tick + 60
-        },
-        Failed -> {},
+        }
+        case Failed {}
     }
     return
 }
 
-fun _in_transcript(m: Chat, x: Int, y: Int) -> Bool {
-    if m.tr_w <= 0 || m.tr_h <= 0 {
+fun _in_transcript(m: Chat, x: int, y: int) -> bool {
+    if m.tr_w <= 0 or m.tr_h <= 0 {
         return false
     }
-    return x >= m.tr_x && x < m.tr_x + m.tr_w && y >= m.tr_y && y < m.tr_y + m.tr_h
+    return x >= m.tr_x and x < m.tr_x + m.tr_w and y >= m.tr_y and y < m.tr_y + m.tr_h
 }
 
 // Advance the spinner and replay any new display events from the goroutine.
-fun _tick(m: Chat) -> Step<Chat> {
+fun _tick(m: Chat) -> Step[Chat] {
     m.tick = m.tick + 1
     let hook_notices = drain_hook_notices()
-    let notice_i = 0
+    var notice_i = 0
     while notice_i < hook_notices.len() {
         m.entries.push(Entry.Notice(hook_notices[notice_i]))
         notice_i = notice_i + 1
     }
     let save_errs = drain_save_errors()
-    let se = 0
+    var se = 0
     while se < save_errs.len() {
         m.entries.push(Entry.Notice(save_errs[se]))
         se = se + 1
     }
     let cmd_notices = drain_cmd_notices()
-    let cn = 0
+    var cn = 0
     while cn < cmd_notices.len() {
         let cmd_lines = cmd_notices[cn].lines()
-        let cl = 0
+        var cl = 0
         while cl < cmd_lines.len() {
             m.entries.push(Entry.Notice(cmd_lines[cl]))
             cl = cl + 1
@@ -256,13 +256,13 @@ fun _tick(m: Chat) -> Step<Chat> {
     // idle, one per tick; the rest stay queued instead of being dropped
     // while a turn runs. Held while the key entry is open, so a keyless
     // prompt waits for the save instead of bouncing back every tick.
-    if !m.active && !m.resuming && !m.entering_key {
+    if not m.active and not m.resuming and not m.entering_key {
         let queued_prompt = take_cmd_prompt()
         if queued_prompt != "" {
             let _ = _begin_turn(m, queued_prompt)
         }
     }
-    if m.sessions_open && m.sessions_loading {
+    if m.sessions_open and m.sessions_loading {
         let scan = take_session_list()
         if scan.ready {
             m.sessions_list = sessions_set_full(scan.result.sessions)
@@ -293,7 +293,7 @@ fun _tick(m: Chat) -> Step<Chat> {
     // Drain background shells at a lower cadence while the panel is open,
     // instead of on every frame from the view, so the live tail costs one
     // refresh every few ticks rather than several per frame.
-    if m.shells_open && m.tick % 3 == 0 {
+    if m.shells_open and m.tick % 3 == 0 {
         refresh()
     }
     if m.active {
@@ -303,10 +303,10 @@ fun _tick(m: Chat) -> Step<Chat> {
         // Ring the terminal bell when attention is newly needed: an approval
         // prompt appearing, or a question. Terminals surface this as a sound
         // or a tab flash, so a long turn can run in a background window.
-        if m.pending == "" && snap.pending != "" {
+        if m.pending == "" and snap.pending != "" {
             print("\u{7}")
         }
-        if m.question == "" && snap.question != "" {
+        if m.question == "" and snap.question != "" {
             print("\u{7}")
         }
         m.pending = snap.pending
@@ -331,7 +331,7 @@ fun _tick(m: Chat) -> Step<Chat> {
             invalidate_commands()
             // One-time budget warning: rook is bring-your-own-key, so passing
             // the configured ceiling should be loud.
-            if m.budget_micros > 0 && !m.budget_warned {
+            if m.budget_micros > 0 and not m.budget_warned {
                 let spent = cost_micros_cached(
                     m.model,
                     m.sess_prompt,
@@ -377,45 +377,43 @@ fun _tick(m: Chat) -> Step<Chat> {
 // build nested blocks: a header when one starts, its tool rows inserted
 // under that header (so parallel agents keep their own groups), and a
 // collapse to just the header line when it finishes.
-fun apply_events(m: Chat, events: List<DisplayEvent>) {
+fun apply_events(m: Chat, events: list[DisplayEvent]) {
     // Streamed deltas are folded into the bubble once per batch, not once per
     // delta: `added` collects this batch's chunk text and is flushed (a single
     // concat plus one cache-invalidating set_entry) before any non-chunk event
     // and at the end. A reply arrives in many small deltas but only a handful
     // of ticks, so this turns the old per-delta O(n^2) rebuild into O(n) work.
-    let added = ""
-    let i = 0
+    var added = ""
+    var i = 0
     while i < events.len() {
         let ev = events[i]
         let is_chunk = match ev {
-            Chunk(d) -> true,
-            _ -> false,
+            case Chunk(d) { true }
+            case _ { false }
         }
-        if !is_chunk {
+        if not is_chunk {
             added = _flush_stream(m, added)
         }
         match ev {
-            Started -> {
+            case Started {
                 m.entries.push(Entry.BotMsg(""))
                 m.cur_bubble = m.entries.len() - 1
                 m.stream_text = ""
-            },
-            Chunk(d) -> {
+            }
+            case Chunk(d) {
                 added = added.concat(d)
-            },
-            ToolRan(name, result) -> {
+            }
+            case ToolRan(name, result) {
                 m.entries.push(Entry.ToolMsg(name, result))
                 m.cur_bubble = 0 - 1
-            },
-            Info(t) -> {
-                m.entries.push(Entry.Notice(t))
-            },
-            AgentStarted(id, name) -> {
+            }
+            case Info(t) { m.entries.push(Entry.Notice(t)) }
+            case AgentStarted(id, name) {
                 m.entries.push(Entry.AgentHeader(name, "working…"))
-                m.open_agents.push(AgentBlock { id, name, header: m.entries.len() - 1, tools: 0 })
+                m.open_agents.push(AgentBlock(id: id, name: name, header: m.entries.len() - 1, tools: 0))
                 m.cur_bubble = 0 - 1
-            },
-            AgentTool(id, agent, name, result) -> {
+            }
+            case AgentTool(id, agent, name, result) {
                 let b = _find_block(m, id)
                 if b < 0 {
                     m.entries.push(Entry.AgentTool(agent, name, result))
@@ -425,14 +423,14 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
                     m.open_agents[b].tools = m.open_agents[b].tools + 1
                     _shift_blocks(m, at, 1, b)
                 }
-            },
-            AgentFinished(id, name, used) -> {
+            }
+            case AgentFinished(id, name, used) {
                 let b = _find_block(m, id)
                 if b >= 0 {
                     let head = m.open_agents[b].header
                     let count = m.open_agents[b].tools
                     _remove_entries(m, head + 1, count)
-                    let word = "tools"
+                    var word = "tools"
                     if used == 1 {
                         word = "tool"
                     }
@@ -440,7 +438,7 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
                     _shift_blocks(m, head + 1, 0 - count, b)
                     _drop_block(m, b)
                 }
-            },
+            }
         }
         i = i + 1
     }
@@ -451,12 +449,12 @@ fun apply_events(m: Chat, events: List<DisplayEvent>) {
 // Fold this batch's streamed text into the live bubble in one pass: append it
 // to stream_text and refresh the bubble entry (invalidating its one cache
 // slot) a single time. Returns "" so the caller can reset its accumulator.
-fun _flush_stream(m: Chat, added: String) -> String {
+fun _flush_stream(m: Chat, added: str) -> str {
     if added == "" {
         return ""
     }
     m.stream_text = m.stream_text.concat(added)
-    if m.cur_bubble >= 0 && m.cur_bubble < m.entries.len() {
+    if m.cur_bubble >= 0 and m.cur_bubble < m.entries.len() {
         set_entry(m, m.cur_bubble, Entry.BotMsg(m.stream_text))
     }
     return ""
@@ -464,8 +462,8 @@ fun _flush_stream(m: Chat, added: String) -> String {
 
 // The open block for a dispatch id, or -1. Matched by id, not name, so two
 // dispatches of the same subagent name keep separate blocks.
-fun _find_block(m: Chat, id: String) -> Int {
-    let i = 0
+fun _find_block(m: Chat, id: str) -> int {
+    var i = 0
     while i < m.open_agents.len() {
         if m.open_agents[i].id == id {
             return i
@@ -478,7 +476,7 @@ fun _find_block(m: Chat, id: String) -> Int {
 // Insert an entry at `at`, shifting the rest down. The line cache moves with
 // the entries (an invalid slot for the new row) so unchanged rows keep their
 // cached lines.
-fun _insert_entry(m: Chat, at: Int, e: Entry) {
+fun _insert_entry(m: Chat, at: int, e: Entry) {
     ensure_cache_len(m)
     // The common case: the row lands at the end of the transcript (a single
     // running agent appends its tool rows there). A plain push, instead of
@@ -489,9 +487,9 @@ fun _insert_entry(m: Chat, at: Int, e: Entry) {
         m.line_cache.push(empty_entry_lines())
         return
     }
-    let out: List<Entry> = []
-    let cache: List<EntryLines> = []
-    let i = 0
+    let out: list[Entry] = []
+    let cache: list[EntryLines] = []
+    var i = 0
     while i < m.entries.len() {
         if i == at {
             out.push(e)
@@ -511,13 +509,13 @@ fun _insert_entry(m: Chat, at: Int, e: Entry) {
 }
 
 // Remove `count` entries starting at `from`, dropping their cache slots too.
-fun _remove_entries(m: Chat, from: Int, count: Int) {
+fun _remove_entries(m: Chat, from: int, count: int) {
     ensure_cache_len(m)
-    let out: List<Entry> = []
-    let cache: List<EntryLines> = []
-    let i = 0
+    let out: list[Entry] = []
+    let cache: list[EntryLines] = []
+    var i = 0
     while i < m.entries.len() {
-        if i < from || i >= from + count {
+        if i < from or i >= from + count {
             out.push(m.entries[i])
             cache.push(m.line_cache[i])
         }
@@ -530,10 +528,10 @@ fun _remove_entries(m: Chat, from: Int, count: Int) {
 
 // After inserting (or removing) rows at `at`, move every other block whose
 // header sits at or past it.
-fun _shift_blocks(m: Chat, at: Int, by: Int, except: Int) {
-    let i = 0
+fun _shift_blocks(m: Chat, at: int, by: int, except: int) {
+    var i = 0
     while i < m.open_agents.len() {
-        if i != except && m.open_agents[i].header >= at {
+        if i != except and m.open_agents[i].header >= at {
             m.open_agents[i].header = m.open_agents[i].header + by
         }
         i = i + 1
@@ -541,9 +539,9 @@ fun _shift_blocks(m: Chat, at: Int, by: Int, except: Int) {
     return
 }
 
-fun _drop_block(m: Chat, idx: Int) {
-    let out: List<AgentBlock> = []
-    let i = 0
+fun _drop_block(m: Chat, idx: int) {
+    let out: list[AgentBlock] = []
+    var i = 0
     while i < m.open_agents.len() {
         if i != idx {
             out.push(m.open_agents[i])
@@ -554,7 +552,7 @@ fun _drop_block(m: Chat, idx: Int) {
     return
 }
 
-fun _key(m: Chat, k: Key) -> Step<Chat> {
+fun _key(m: Chat, k: Key) -> Step[Chat] {
     // Any keypress clears a mouse selection, the way typing clears one in an
     // editor.
     if m.sel.present {
@@ -562,7 +560,7 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
     }
     // ctrl+c is always available, even over a modal.
     match k {
-        Ctrl(c) -> {
+        case Ctrl(c) {
             if c == "c" {
                 if m.armed {
                     kill_all_shells()
@@ -572,8 +570,8 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                 m.armed = true
                 return next(m)
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     m.armed = false
 
@@ -610,16 +608,16 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
 
     if m.active {
         match k {
-            Esc -> {
+            case Esc {
                 m.agent.request_interrupt()
                 return next(m)
-            },
-            Enter -> {
+            }
+            case Enter {
                 // Typing ahead during a turn: queue the message instead of
                 // silently ignoring the Enter. It echoes now and sends the
                 // moment the turn finishes (the _tick pickup).
                 let typed = m.entry.value.trim()
-                if typed.starts_with("!") && typed != "!" {
+                if typed.starts_with("!") and typed != "!" {
                     // A shell command runs fine alongside a streaming turn.
                     return _bang(m, typed)
                 }
@@ -639,19 +637,19 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                     m.scroll_up = 0
                 }
                 return next(m)
-            },
-            PageUp -> {
+            }
+            case PageUp {
                 m.scroll_up = m.scroll_up + _page(m)
                 return next(m)
-            },
-            PageDown -> {
+            }
+            case PageDown {
                 m.scroll_up = m.scroll_up - _page(m)
                 if m.scroll_up < 0 {
                     m.scroll_up = 0
                 }
                 return next(m)
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         m.entry.handle_key(k)
         return next(m)
@@ -659,89 +657,89 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
 
     // The @-file picker: while a trailing @token is being typed and files
     // match, the arrows move, tab or enter complete the path, esc dismisses.
-    if !m.mention_dismissed && m.mention_matches.len() > 0 {
+    if not m.mention_dismissed and m.mention_matches.len() > 0 {
         let mn = current_mention(m.entry.value)
         if mn.active {
             if m.mention_sel >= m.mention_matches.len() {
                 m.mention_sel = m.mention_matches.len() - 1
             }
             match k {
-                Up -> {
+                case Up {
                     if m.mention_sel > 0 {
                         m.mention_sel = m.mention_sel - 1
                     }
                     return next(m)
-                },
-                Down -> {
+                }
+                case Down {
                     if m.mention_sel < m.mention_matches.len() - 1 {
                         m.mention_sel = m.mention_sel + 1
                     }
                     return next(m)
-                },
-                Tab -> {
+                }
+                case Tab {
                     return _complete_mention(m, mn)
-                },
-                Enter -> {
+                }
+                case Enter {
                     return _complete_mention(m, mn)
-                },
-                Esc -> {
+                }
+                case Esc {
                     m.mention_dismissed = true
                     return next(m)
-                },
-                _ -> {},
+                }
+                case _ {}
             }
         }
     }
 
     // The slash menu: while the input is a bare "/name" prefix, the arrows
     // move the highlight, tab completes it, enter runs it, esc dismisses.
-    if !m.slash_dismissed {
+    if not m.slash_dismissed {
         let matches = menu_matches(m.cmd_infos, m.entry.value)
         if matches.len() > 0 {
             if m.slash_sel >= matches.len() {
                 m.slash_sel = matches.len() - 1
             }
             match k {
-                Up -> {
+                case Up {
                     if m.slash_sel > 0 {
                         m.slash_sel = m.slash_sel - 1
                     }
                     return next(m)
-                },
-                Down -> {
+                }
+                case Down {
                     if m.slash_sel < matches.len() - 1 {
                         m.slash_sel = m.slash_sel + 1
                     }
                     return next(m)
-                },
-                Tab -> {
+                }
+                case Tab {
                     m.entry = TextInput.with_value("/${matches[m.slash_sel].name} ")
                     m.slash_sel = 0
                     return next(m)
-                },
-                Enter -> {
+                }
+                case Enter {
                     let name = matches[m.slash_sel].name
                     m.entry = TextInput.new()
                     m.slash_sel = 0
                     return _run(m, "/${name}")
-                },
-                Esc -> {
+                }
+                case Esc {
                     m.slash_dismissed = true
                     return next(m)
-                },
-                _ -> {},
+                }
+                case _ {}
             }
         }
     }
 
     match k {
-        Enter -> {
+        case Enter {
             return _submit(m)
-        },
-        Esc -> {
+        }
+        case Esc {
             // Double Esc opens the edit-a-previous-message picker; a single
             // bare Esc hints at it.
-            if m.tick - m.last_esc <= 12 && _user_entry_indices(m).len() > 0 {
+            if m.tick - m.last_esc <= 12 and _user_entry_indices(m).len() > 0 {
                 m.rewind_open = true
                 m.rewind_sel = 0
                 m.last_esc = 0 - 100
@@ -753,44 +751,44 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
                 }
             }
             return next(m)
-        },
-        PageUp -> {
+        }
+        case PageUp {
             m.scroll_up = m.scroll_up + _page(m)
             return next(m)
-        },
-        PageDown -> {
+        }
+        case PageDown {
             m.scroll_up = m.scroll_up - _page(m)
             if m.scroll_up < 0 {
                 m.scroll_up = 0
             }
             return next(m)
-        },
-        End -> {
+        }
+        case End {
             // With nothing typed, End jumps back to the newest output; with
             // text in the input it keeps its cursor-to-end meaning.
-            if m.entry.value == "" && m.scroll_up > 0 {
+            if m.entry.value == "" and m.scroll_up > 0 {
                 m.scroll_up = 0
                 return next(m)
             }
-        },
-        Up -> {
+        }
+        case Up {
             // Shell-style history recall on an empty (or unedited recalled)
             // input. With text being typed, Up stays with the input.
-            if m.entry.value == "" || recalling() {
+            if m.entry.value == "" or recalling() {
                 let prev = recall_prev()
                 if prev != "" {
                     m.entry = TextInput.with_value(prev)
                 }
                 return next(m)
             }
-        },
-        Down -> {
+        }
+        case Down {
             if recalling() {
                 m.entry = TextInput.with_value(recall_next())
                 return next(m)
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     let before = m.entry.value
     m.entry.handle_key(k)
@@ -806,7 +804,7 @@ fun _key(m: Chat, k: Key) -> Step<Chat> {
 
 // A page of transcript scrolling: the visible height, not a fixed handful of
 // lines.
-fun _page(m: Chat) -> Int {
+fun _page(m: Chat) -> int {
     if m.tr_h > 7 {
         return m.tr_h - 2
     }
@@ -817,8 +815,8 @@ fun _page(m: Chat) -> Int {
 // Up/Down through the panel's own key handler so the clamping (and the theme
 // picker's live preview) stay in one place. False when no panel is open and
 // the wheel should scroll the transcript.
-fun _wheel_panel(m: Chat, delta: Int) -> Bool {
-    let key = Key.Up
+fun _wheel_panel(m: Chat, delta: int) -> bool {
+    var key = Key.Up
     if delta > 0 {
         key = Key.Down
     }
@@ -865,7 +863,7 @@ fun _refresh_mentions(m: Chat) {
     if mn.active {
         m.mention_matches = fuzzy_match(mn.query, cached_files())
     } else {
-        let none: List<String> = []
+        let none: list[str] = []
         m.mention_matches = none
     }
     return
@@ -873,34 +871,34 @@ fun _refresh_mentions(m: Chat) {
 
 // Complete the live mention with the highlighted path, leaving a trailing
 // space so the picker closes and the next enter sends.
-fun _complete_mention(m: Chat, mn: Mention) -> Step<Chat> {
+fun _complete_mention(m: Chat, mn: Mention) -> Step[Chat] {
     let path = m.mention_matches[m.mention_sel]
     let head = m.entry.value.substring(0, mn.at)
     m.entry = TextInput.with_value("${head}@${path} ")
-    let none: List<String> = []
+    let none: list[str] = []
     m.mention_matches = none
     m.mention_sel = 0
     return next(m)
 }
 
 // Answer the model's question: arrows move, enter picks, esc declines.
-fun _question_key(m: Chat, k: Key) -> Step<Chat> {
+fun _question_key(m: Chat, k: Key) -> Step[Chat] {
     match k {
-        Up -> {
+        case Up {
             if m.choice_sel > 0 {
                 m.choice_sel = m.choice_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.choice_sel < m.choices.len() - 1 {
                 m.choice_sel = m.choice_sel + 1
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             m.agent.decide(m.choice_sel)
             m.question = ""
-        },
-        Esc -> {
+        }
+        case Esc {
             // Match the approval prompt: Esc backs out of the whole turn, not
             // just the question, so an interrupt never feels swallowed. Raise
             // the interrupt before answering: decide() unblocks the turn
@@ -909,17 +907,17 @@ fun _question_key(m: Chat, k: Key) -> Step<Chat> {
             m.agent.request_interrupt()
             m.agent.decide(0 - 1)
             m.question = ""
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
 
 // Answer the pending approval: y allow, a allow all of this kind, n or esc
 // deny. Esc also interrupts the turn.
-fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
+fun _approval_key(m: Chat, k: Key) -> Step[Chat] {
     match k {
-        Char(c) -> {
+        case Char(c) {
             if c == "y" {
                 m.agent.decide(1)
                 m.pending = ""
@@ -932,20 +930,20 @@ fun _approval_key(m: Chat, k: Key) -> Step<Chat> {
                 m.agent.decide(0)
                 m.pending = ""
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             m.agent.decide(1)
             m.pending = ""
-        },
-        Esc -> {
+        }
+        case Esc {
             // Interrupt first, then answer: decide() releases the waiting turn
             // goroutine immediately, so setting the flag afterwards races with
             // it and the turn can run another tool call before noticing.
             m.agent.request_interrupt()
             m.agent.decide(0)
             m.pending = ""
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
@@ -975,9 +973,9 @@ fun refresh_pick(m: Chat) {
         m.catalog.pick_labels = m.catalog.labels
         return
     }
-    let ids: List<String> = []
-    let labels: List<String> = []
-    let i = 0
+    let ids: list[str] = []
+    let labels: list[str] = []
+    var i = 0
     while i < m.catalog.ids.len() {
         if m.catalog.lower[i].contains(q) {
             ids.push(m.catalog.ids[i])
@@ -992,8 +990,8 @@ fun refresh_pick(m: Chat) {
 
 // The index of `model` in the cached catalog, or 0 when it is not listed, so
 // the picker opens highlighting the current model.
-fun _catalog_index(m: Chat, model: String) -> Int {
-    let i = 0
+fun _catalog_index(m: Chat, model: str) -> int {
+    var i = 0
     while i < m.catalog.ids.len() {
         if m.catalog.ids[i] == model {
             return i
@@ -1005,28 +1003,28 @@ fun _catalog_index(m: Chat, model: String) -> Int {
 
 // Navigate the /model picker overlay. Printable keys edit the search bar,
 // which narrows the list; arrows move within the matches.
-fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
-    if m.pick_sel >= m.catalog.pick_ids.len() && m.catalog.pick_ids.len() > 0 {
+fun _pick_key(m: Chat, k: Key) -> Step[Chat] {
+    if m.pick_sel >= m.catalog.pick_ids.len() and m.catalog.pick_ids.len() > 0 {
         m.pick_sel = m.catalog.pick_ids.len() - 1
     }
     match k {
-        Up -> {
+        case Up {
             if m.pick_sel > 0 {
                 m.pick_sel = m.pick_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.pick_sel < m.catalog.pick_ids.len() - 1 {
                 m.pick_sel = m.pick_sel + 1
             }
-        },
-        PageUp -> {
+        }
+        case PageUp {
             m.pick_sel = m.pick_sel - 10
             if m.pick_sel < 0 {
                 m.pick_sel = 0
             }
-        },
-        PageDown -> {
+        }
+        case PageDown {
             m.pick_sel = m.pick_sel + 10
             if m.pick_sel >= m.catalog.pick_ids.len() {
                 m.pick_sel = m.catalog.pick_ids.len() - 1
@@ -1034,8 +1032,8 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
             if m.pick_sel < 0 {
                 m.pick_sel = 0
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             if m.catalog.pick_ids.len() > 0 {
                 let err = set_model(m, m.catalog.pick_ids[m.pick_sel])
                 m.picking = false
@@ -1045,52 +1043,52 @@ fun _pick_key(m: Chat, k: Key) -> Step<Chat> {
                 }
                 m.scroll_up = 0
             }
-        },
-        Esc -> {
+        }
+        case Esc {
             m.picking = false
-        },
-        _ -> {
+        }
+        case _ {
             let before = m.pick_input.value
             m.pick_input.handle_key(k)
             if m.pick_input.value != before {
                 refresh_pick(m)
                 m.pick_sel = 0
             }
-        },
+        }
     }
     return next(m)
 }
 
 // Navigate the /sessions picker: arrows move, enter resumes the highlighted
 // session, esc closes.
-fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
+fun _sessions_key(m: Chat, k: Key) -> Step[Chat] {
     // The armed delete survives only into an immediate second Delete; any
     // other key disarms it.
     let armed = m.sessions_confirm
     m.sessions_confirm = 0 - 1
     match k {
-        Char(c) -> {
+        case Char(c) {
             // Typing filters by title and model; Delete removes.
             m.sessions_list = sessions_type(c)
             m.sessions_sel = 0
-        },
-        Tab -> {
+        }
+        case Tab {
             // Switch between the this-directory and all-sessions tabs.
             m.sessions_tab = 1 - m.sessions_tab
-            let scope = ""
+            var scope = ""
             if m.sessions_tab == 0 {
                 scope = session_cwd()
             }
             m.sessions_list = sessions_set_scope(scope)
             m.sessions_sel = 0
-        },
-        Backspace -> {
+        }
+        case Backspace {
             m.sessions_list = sessions_backspace()
             m.sessions_sel = 0
-        },
-        Delete -> {
+        }
+        case Delete {
             if m.sessions_list.len() > 0 {
-                let sel = m.sessions_sel
+                var sel = m.sessions_sel
                 if sel >= m.sessions_list.len() {
                     sel = m.sessions_list.len() - 1
                 }
@@ -1106,24 +1104,24 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
                     m.sessions_confirm = sel
                 }
             }
-        },
-        Up -> {
+        }
+        case Up {
             if m.sessions_sel > 0 {
                 m.sessions_sel = m.sessions_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.sessions_sel < m.sessions_list.len() - 1 {
                 m.sessions_sel = m.sessions_sel + 1
             }
-        },
-        PageUp -> {
+        }
+        case PageUp {
             m.sessions_sel = m.sessions_sel - 10
             if m.sessions_sel < 0 {
                 m.sessions_sel = 0
             }
-        },
-        PageDown -> {
+        }
+        case PageDown {
             m.sessions_sel = m.sessions_sel + 10
             if m.sessions_sel >= m.sessions_list.len() {
                 m.sessions_sel = m.sessions_list.len() - 1
@@ -1131,15 +1129,15 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
             if m.sessions_sel < 0 {
                 m.sessions_sel = 0
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             if m.sessions_list.len() > 0 {
                 _resume(m, m.sessions_list[m.sessions_sel].id)
             }
             let _ = sessions_clear()
             m.sessions_open = false
-        },
-        Esc -> {
+        }
+        case Esc {
             // A first Esc clears an active filter; a second closes.
             if sessions_query() != "" {
                 m.sessions_list = sessions_clear()
@@ -1147,8 +1145,8 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
             } else {
                 m.sessions_open = false
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
@@ -1156,7 +1154,7 @@ fun _sessions_key(m: Chat, k: Key) -> Step<Chat> {
 // Resume a saved session: restore its transcript, rebuild a text-only
 // conversation from it so the model has context, and continue writing to
 // that session's file.
-fun _resume(m: Chat, id: String) {
+fun _resume(m: Chat, id: str) {
     // Read the session off the UI thread; a session file can be hundreds of KB
     // and parsing it inline froze the picker. _tick applies the result when the
     // read finishes (see _apply_loaded).
@@ -1165,7 +1163,7 @@ fun _resume(m: Chat, id: String) {
     return
 }
 
-fun _apply_loaded(m: Chat, id: String, loaded: Loaded) {
+fun _apply_loaded(m: Chat, id: str, loaded: Loaded) {
     if loaded.error != "" {
         m.entries.push(Entry.Notice(loaded.error))
         return
@@ -1185,16 +1183,12 @@ fun _apply_loaded(m: Chat, id: String, loaded: Loaded) {
         // An older session without a saved model history: rebuild a text-only
         // context from the visible user and assistant lines. The model still
         // continues, but without the earlier tool results, so say so.
-        let i = 0
+        var i = 0
         while i < loaded.entries.len() {
             match loaded.entries[i] {
-                UserMsg(t) -> {
-                    m.agent.push_user(t)
-                },
-                BotMsg(t) -> {
-                    m.agent.push_assistant(t)
-                },
-                _ -> {},
+                case UserMsg(t) { m.agent.push_user(t) }
+                case BotMsg(t) { m.agent.push_assistant(t) }
+                case _ {}
             }
             i = i + 1
         }
@@ -1218,88 +1212,88 @@ fun _apply_loaded(m: Chat, id: String, loaded: Loaded) {
 
 // Navigate the /shells panel: arrows move the highlight, esc closes. The
 // list itself refreshes on every frame, so statuses stay live.
-fun _shells_key(m: Chat, k: Key) -> Step<Chat> {
+fun _shells_key(m: Chat, k: Key) -> Step[Chat] {
     // Inside a focused output pane, esc steps back to the list and
     // everything else is ignored; the pane tails the shell on its own.
     if m.shells_focus > 0 {
         match k {
-            Esc -> {
+            case Esc {
                 m.shells_focus = 0
                 m.shells_scroll = 0
-            },
-            Enter -> {
+            }
+            case Enter {
                 m.shells_focus = 0
                 m.shells_scroll = 0
-            },
-            PageUp -> {
+            }
+            case PageUp {
                 // Scroll back into the shell's earlier output; the pane
                 // clamps to what the tail buffer actually holds.
                 m.shells_scroll = m.shells_scroll + 10
-            },
-            PageDown -> {
+            }
+            case PageDown {
                 m.shells_scroll = m.shells_scroll - 10
                 if m.shells_scroll < 0 {
                     m.shells_scroll = 0
                 }
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         return next(m)
     }
     match k {
-        Up -> {
+        case Up {
             if m.shells_sel > 0 {
                 m.shells_sel = m.shells_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             let n = list_shells().len()
             if m.shells_sel < n - 1 {
                 m.shells_sel = m.shells_sel + 1
             }
-        },
-        Esc -> {
+        }
+        case Esc {
             m.shells_open = false
-        },
-        Enter -> {
+        }
+        case Enter {
             let infos = list_shells()
             if infos.len() > 0 {
-                let sel = m.shells_sel
+                var sel = m.shells_sel
                 if sel >= infos.len() {
                     sel = infos.len() - 1
                 }
                 m.shells_focus = infos[sel].id
             }
-        },
-        Char(c) -> {
+        }
+        case Char(c) {
             // k kills the highlighted shell, so a runaway process can be
             // stopped without quitting rook.
             if c == "k" {
                 let infos = list_shells()
                 if infos.len() > 0 {
-                    let sel = m.shells_sel
+                    var sel = m.shells_sel
                     if sel >= infos.len() {
                         sel = infos.len() - 1
                     }
                     m.entries.push(Entry.Notice(kill_shell("${infos[sel].id}")))
                 }
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
 
 // Navigate the /permissions panel. Space or enter toggles the highlighted
 // grant in the user's global ~/.agents/settings.json file.
-fun _permissions_key(m: Chat, k: Key) -> Step<Chat> {
+fun _permissions_key(m: Chat, k: Key) -> Step[Chat] {
     let items = m.permissions_items
     if items.len() == 0 {
         match k {
-            Esc -> {
+            case Esc {
                 m.permissions_open = false
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         return next(m)
     }
@@ -1307,35 +1301,33 @@ fun _permissions_key(m: Chat, k: Key) -> Step<Chat> {
         m.permissions_sel = items.len() - 1
     }
     match k {
-        Up -> {
+        case Up {
             if m.permissions_sel > 0 {
                 m.permissions_sel = m.permissions_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.permissions_sel < items.len() - 1 {
                 m.permissions_sel = m.permissions_sel + 1
             }
-        },
-        Enter -> {
-            _toggle_permission(m)
-        },
-        Char(c) -> {
+        }
+        case Enter { _toggle_permission(m) }
+        case Char(c) {
             if c == " " {
                 _toggle_permission(m)
             }
-        },
-        Esc -> {
+        }
+        case Esc {
             m.permissions_open = false
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
 
 fun _toggle_permission(m: Chat) {
     let msg = toggle_permission_grant(m.permissions_sel)
-    if !msg.starts_with("error:") {
+    if not msg.starts_with("error:") {
         m.permissions_items = permission_grant_states()
     }
     m.entries.push(Entry.Notice(msg))
@@ -1345,36 +1337,36 @@ fun _toggle_permission(m: Chat) {
 
 // Navigate the /help menu: arrows move over every command, enter runs the
 // highlighted one, esc closes.
-fun _help_key(m: Chat, k: Key) -> Step<Chat> {
+fun _help_key(m: Chat, k: Key) -> Step[Chat] {
     // The panel navigates the filtered view, so typing narrows and the
     // selection stays in range.
     let visible = help_filtered(m.cmd_infos, help_query())
     match k {
-        Char(c) -> {
+        case Char(c) {
             help_type(c)
             m.help_sel = 0
-        },
-        Backspace -> {
+        }
+        case Backspace {
             help_backspace()
             m.help_sel = 0
-        },
-        Up -> {
+        }
+        case Up {
             if m.help_sel > 0 {
                 m.help_sel = m.help_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.help_sel < visible.len() - 1 {
                 m.help_sel = m.help_sel + 1
             }
-        },
-        PageUp -> {
+        }
+        case PageUp {
             m.help_sel = m.help_sel - 10
             if m.help_sel < 0 {
                 m.help_sel = 0
             }
-        },
-        PageDown -> {
+        }
+        case PageDown {
             m.help_sel = m.help_sel + 10
             if m.help_sel >= visible.len() {
                 m.help_sel = visible.len() - 1
@@ -1382,16 +1374,16 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
             if m.help_sel < 0 {
                 m.help_sel = 0
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             let sel = m.help_sel
             m.help_open = false
             help_clear()
-            if sel >= 0 && sel < visible.len() {
+            if sel >= 0 and sel < visible.len() {
                 return _run(m, "/${visible[sel].name}")
             }
-        },
-        Esc -> {
+        }
+        case Esc {
             // A first Esc clears an active filter; a second closes.
             if help_query() != "" {
                 help_clear()
@@ -1399,8 +1391,8 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
             } else {
                 m.help_open = false
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
@@ -1408,22 +1400,22 @@ fun _help_key(m: Chat, k: Key) -> Step<Chat> {
 // Navigate the /theme picker. Moving the selection applies the palette
 // immediately so the whole UI previews it; enter keeps and persists the
 // choice, esc restores the theme that was active before.
-fun _theme_pick_key(m: Chat, k: Key) -> Step<Chat> {
+fun _theme_pick_key(m: Chat, k: Key) -> Step[Chat] {
     let items = all_themes()
     match k {
-        Up -> {
+        case Up {
             if m.theme_sel > 0 {
                 m.theme_sel = m.theme_sel - 1
             }
             m.theme = themed(items[m.theme_sel])
-        },
-        Down -> {
+        }
+        case Down {
             if m.theme_sel < items.len() - 1 {
                 m.theme_sel = m.theme_sel + 1
             }
             m.theme = themed(items[m.theme_sel])
-        },
-        Enter -> {
+        }
+        case Enter {
             m.theme = themed(items[m.theme_sel])
             let err = save_theme(m.theme.name)
             m.theme_picking = false
@@ -1433,21 +1425,21 @@ fun _theme_pick_key(m: Chat, k: Key) -> Step<Chat> {
                 m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
             }
             m.scroll_up = 0
-        },
-        Esc -> {
+        }
+        case Esc {
             m.theme = themed(theme_by_name(m.theme_prev))
             m.theme_picking = false
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
 
 // Enter the current provider's API key. Enter saves it (to ~/.rook/auth.json)
 // and applies it to the session; esc cancels.
-fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
+fun _key_entry(m: Chat, k: Key) -> Step[Chat] {
     match k {
-        Enter -> {
+        case Enter {
             let key = m.key_input.value.trim()
             if key != "" {
                 let p = provider_of(m.model)
@@ -1462,8 +1454,8 @@ fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
             }
             m.entering_key = false
             return next(m)
-        },
-        Esc -> {
+        }
+        case Esc {
             m.entering_key = false
             // A prompt held for the missing key: cancel means do not send,
             // so it comes back into the input box instead of being lost.
@@ -1472,8 +1464,8 @@ fun _key_entry(m: Chat, k: Key) -> Step<Chat> {
                 m.entry = TextInput.with_value(held[0])
             }
             return next(m)
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     m.key_input.handle_key(k)
     return next(m)
@@ -1500,7 +1492,7 @@ fun _open_key_entry(m: Chat) {
     return
 }
 
-fun _submit(m: Chat) -> Step<Chat> {
+fun _submit(m: Chat) -> Step[Chat] {
     let text = m.entry.value.trim()
     if text == "" {
         return next(m)
@@ -1513,13 +1505,13 @@ fun _submit(m: Chat) -> Step<Chat> {
     }
     // A leading ! runs the rest as a shell command directly, no model
     // round-trip; the output joins the next prompt's context.
-    if text.starts_with("!") && text != "!" {
+    if text.starts_with("!") and text != "!" {
         return _bang(m, text)
     }
     // A leading # appends the rest to the project AGENTS.md, teaching rook
     // something permanent without opening an editor. Loaded into the system
     // context from the next turn on.
-    if text.starts_with("#") && text != "#" {
+    if text.starts_with("#") and text != "#" {
         return _note(m, text)
     }
     push_history(text)
@@ -1527,28 +1519,24 @@ fun _submit(m: Chat) -> Step<Chat> {
     return _run(m, text)
 }
 
-fun _note(m: Chat, text: String) -> Step<Chat> {
+fun _note(m: Chat, text: str) -> Step[Chat] {
     let note = text.substring(1, text.length()).trim()
     push_history(text)
     m.entry = TextInput.new()
-    let existing = ""
+    var existing = ""
     match read("AGENTS.md") {
-        Ok(t) -> {
+        case Ok(t) {
             existing = t
-        },
-        Err(e) -> {},
+        }
+        case Err(e) {}
     }
-    let body = existing
-    if body != "" && !body.ends_with("\n") {
+    var body = existing
+    if body != "" and not body.ends_with("\n") {
         body = "${body}\n"
     }
     match write("AGENTS.md", "${body}- ${note}\n") {
-        Ok(ok) -> {
-            m.entries.push(Entry.Notice("noted in AGENTS.md: ${note}"))
-        },
-        Err(e) -> {
-            m.entries.push(Entry.Notice("error: could not write AGENTS.md: ${e.message}"))
-        },
+        case Ok(ok) { m.entries.push(Entry.Notice("noted in AGENTS.md: ${note}")) }
+        case Err(e) { m.entries.push(Entry.Notice("error: could not write AGENTS.md: ${e.message}")) }
     }
     m.scroll_up = 0
     return next(m)
@@ -1557,7 +1545,7 @@ fun _note(m: Chat, text: String) -> Step<Chat> {
 // Run a "!command" line: echo a running row, execute on a goroutine, and let
 // _tick swap the output in when it lands. One at a time keeps the pickup
 // unambiguous.
-fun _bang(m: Chat, text: String) -> Step<Chat> {
+fun _bang(m: Chat, text: str) -> Step[Chat] {
     if m.bang_at >= 0 {
         m.entries.push(Entry.Notice("a shell command is already running; wait for it"))
         m.scroll_up = 0
@@ -1569,27 +1557,27 @@ fun _bang(m: Chat, text: String) -> Step<Chat> {
     m.entries.push(Entry.ToolMsg("$ ${cmd}", "running…"))
     m.bang_at = m.entries.len() - 1
     m.scroll_up = 0
-    spawn(fun() -> Unit {
+    spawn {
         push_shell_done(cmd, run_command(cmd))
-    })
+    }
     return next(m)
 }
 
 // Execute one line of input, a command or a message. Split from _submit so
 // the slash menu can run its selection directly.
-fun _run(m: Chat, text: String) -> Step<Chat> {
+fun _run(m: Chat, text: str) -> Step[Chat] {
     m.scroll_up = 0
 
     match parse_command(text) {
-        Quit -> {
+        case Quit {
             kill_all_shells()
             close_all_servers()
             return quit(m)
-        },
-        Clear -> {
-            let e: List<Entry> = []
+        }
+        case Clear {
+            let e: list[Entry] = []
             replace_entries(m, e)
-            let blocks: List<AgentBlock> = []
+            let blocks: list[AgentBlock] = []
             m.open_agents = blocks
             clear_todos()
             m.sess_prompt = 0
@@ -1601,29 +1589,29 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.agent.clear_convo()
             m.entries.push(Entry.Notice("conversation cleared; the previous one is still in /sessions"))
             return next(m)
-        },
-        Help -> {
+        }
+        case Help {
             m.help_open = true
             m.help_sel = 0
             return next(m)
-        },
-        ModelPicker -> {
+        }
+        case ModelPicker {
             m.picking = true
             m.pick_input = TextInput.new()
             ensure_catalog(m)
             refresh_pick(m)
             m.pick_sel = _catalog_index(m, m.model)
             return next(m)
-        },
-        ModelSet(id) -> {
+        }
+        case ModelSet(id) {
             let err = set_model(m, id)
             _after_model_set(m)
             if err != "" {
                 m.entries.push(Entry.Notice(err))
             }
             return next(m)
-        },
-        ThemePicker -> {
+        }
+        case ThemePicker {
             m.theme_prev = m.theme.name
             m.theme_sel = theme_index(m.theme.name)
             if m.theme_sel < 0 {
@@ -1631,39 +1619,35 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             }
             m.theme_picking = true
             return next(m)
-        },
-        ThemeSet(name) -> {
+        }
+        case ThemeSet(name) {
             let idx = theme_index(name)
             if idx < 0 {
                 m.entries.push(Entry.Notice("no theme named ${name}; /theme lists them"))
             } else {
                 m.theme = themed(all_themes()[idx])
                 let err = save_theme(m.theme.name)
-                if err != "" {
-                    m.entries.push(Entry.Notice(err))
-                } else {
-                    m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
-                }
+                m.entries.push(Entry.Notice(err)) if err != "" else m.entries.push(Entry.Notice("theme set to ${m.theme.name}"))
             }
             return next(m)
-        },
-        Shells -> {
+        }
+        case Shells {
             m.shells_open = true
             m.shells_sel = 0
             return next(m)
-        },
-        Permissions -> {
+        }
+        case Permissions {
             m.permissions_items = permission_grant_states()
             m.permissions_open = true
             m.permissions_sel = 0
             return next(m)
-        },
-        Sessions -> {
+        }
+        case Sessions {
             // Scan the sessions directory off the UI thread: it reads one
             // metadata file per saved session, so opening the panel used to
             // stall while that ran. Open immediately with a loading line and
             // let _tick fill the list in when the scan finishes.
-            let none: List<SessionMeta> = []
+            let none: list[SessionMeta] = []
             m.sessions_list = none
             m.sessions_sel = 0
             m.sessions_loading = true
@@ -1673,18 +1657,18 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             let _cleared = sessions_clear()
             begin_list_sessions()
             return next(m)
-        },
-        Status -> {
+        }
+        case Status {
             m.entries.push(Entry.UserMsg(text))
             m.entries.push(Entry.Notice("model: ${m.model} (from ${model_source()})"))
-            let base_label = "endpoint: the provider default"
+            var base_label = "endpoint: the provider default"
             if m.base_url != "" {
                 base_label = "endpoint: ${m.base_url} (from ${base_source()})"
             }
             m.entries.push(Entry.Notice(base_label))
             m.entries.push(Entry.Notice("theme: ${m.theme.name} (from ${theme_source()})"))
             m.entries.push(Entry.Notice("key: from ${key_source(m.model)}"))
-            let plan_label = "off"
+            var plan_label = "off"
             if m.plan_mode {
                 plan_label = "on"
             }
@@ -1698,17 +1682,17 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             }
             m.scroll_up = 0
             return next(m)
-        },
-        Copy -> {
+        }
+        case Copy {
             // The last reply, straight to the clipboard, no mouse dragging.
-            let last = ""
-            let ci = m.entries.len() - 1
-            while ci >= 0 && last == "" {
+            var last = ""
+            var ci = m.entries.len() - 1
+            while ci >= 0 and last == "" {
                 match m.entries[ci] {
-                    BotMsg(t) -> {
+                    case BotMsg(t) {
                         last = t
-                    },
-                    _ -> {},
+                    }
+                    case _ {}
                 }
                 ci = ci - 1
             }
@@ -1718,53 +1702,51 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
                 return next(m)
             }
             match copy_to_clipboard(last) {
-                Copied -> {
+                case Copied {
                     m.flash = "copied the last reply to the clipboard"
                     m.flash_until = m.tick + 60
-                },
-                Sent -> {
+                }
+                case Sent {
                     m.flash = "sent the last reply to the terminal clipboard"
                     m.flash_until = m.tick + 60
-                },
-                Failed -> {
+                }
+                case Failed {
                     m.entries.push(Entry.Notice("copy failed: no clipboard tool found"))
                     m.scroll_up = 0
-                },
+                }
             }
             return next(m)
-        },
-        Export(path) -> {
+        }
+        case Export(path) {
             m.entries.push(Entry.UserMsg(text))
-            let target = path
+            var target = path
             if target == "" {
                 target = "rook-session-${m.session_id}.md"
             }
-            let ew = m.tr_w
+            var ew = m.tr_w
             if ew < 40 {
                 ew = 100
             }
             let texts = transcript_texts(m.entries, m.line_cache, ew, m.theme)
-            let joined = ""
-            let ti = 0
+            var joined = ""
+            var ti = 0
             while ti < texts.len() {
                 joined = "${joined}${texts[ti]}\n"
                 ti = ti + 1
             }
             match write(target, joined) {
-                Ok(ok) -> {
-                    m.entries.push(Entry.Notice("exported ${texts.len()} lines to ${target}"))
-                },
-                Err(e) -> {
+                case Ok(ok) { m.entries.push(Entry.Notice("exported ${texts.len()} lines to ${target}")) }
+                case Err(e) {
                     m.entries.push(Entry.Notice("error: could not write ${target}: ${e.message}"))
-                },
+                }
             }
             m.scroll_up = 0
             return next(m)
-        },
-        Init -> {
+        }
+        case Init {
             return _send_prompt(m, text, INIT_PROMPT)
-        },
-        Rewind -> {
+        }
+        case Rewind {
             m.entries.push(Entry.UserMsg(text))
             let summary = rewind_last_batch()
             if summary == "" {
@@ -1778,8 +1760,8 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             }
             m.scroll_up = 0
             return next(m)
-        },
-        Compact -> {
+        }
+        case Compact {
             m.entries.push(Entry.UserMsg(text))
             if key_needed_with(m.model, m.api_key) {
                 m.entries.push(Entry.Notice("no API key for ${provider_of(m.model)}; /key first"))
@@ -1793,18 +1775,14 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             let compact_model = m.model
             let compact_key = m.api_key
             let compact_base = m.base_url
-            spawn(fun() -> Unit {
+            spawn {
                 let folded = force_compact(st, compact_model, compact_key, compact_base)
-                if folded > 0 {
-                    push_cmd_notice("compacted ${folded} earlier messages into a summary")
-                } else {
-                    push_cmd_notice("nothing to compact yet; the conversation is still short")
-                }
-            })
+                push_cmd_notice("compacted ${folded} earlier messages into a summary") if folded > 0 else push_cmd_notice("nothing to compact yet; the conversation is still short")
+            }
             m.scroll_up = 0
             return next(m)
-        },
-        Plugins(args) -> {
+        }
+        case Plugins(args) {
             m.entries.push(Entry.UserMsg(text))
             // add, update, and browse reach the network or clone a repo, which
             // would freeze the UI for seconds. Run those on a goroutine and let
@@ -1813,26 +1791,26 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             let plugins_arg = args
             if _plugins_backgrounds(plugins_arg) {
                 m.entries.push(Entry.Notice(_plugins_pending_note(plugins_arg)))
-                spawn(fun() -> Unit {
+                spawn {
                     push_cmd_notice(run_plugins_command(plugins_arg))
-                })
+                }
                 m.scroll_up = 0
                 return next(m)
             }
             let lines = run_plugins_command(plugins_arg).lines()
-            let i = 0
+            var i = 0
             while i < lines.len() {
                 m.entries.push(Entry.Notice(lines[i]))
                 i = i + 1
             }
             m.scroll_up = 0
             return next(m)
-        },
-        Mcp(args) -> {
+        }
+        case Mcp(args) {
             return _mcp_command(m, text, args)
-        },
-        Plan -> {
-            m.plan_mode = !m.plan_mode
+        }
+        case Plan {
+            m.plan_mode = not m.plan_mode
             if m.plan_mode {
                 m.entries.push(
                     Entry.Notice(
@@ -1844,12 +1822,12 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             }
             m.scroll_up = 0
             return next(m)
-        },
-        Login -> {
+        }
+        case Login {
             _open_key_entry(m)
             return next(m)
-        },
-        Unknown(t) -> {
+        }
+        case Unknown(t) {
             // A command from .agents/commands: show what was typed, send the
             // expanded template.
             let exp = find_expansion(cached_commands(roots()), t)
@@ -1859,19 +1837,19 @@ fun _run(m: Chat, text: String) -> Step<Chat> {
             m.entries.push(Entry.UserMsg(t))
             m.entries.push(Entry.Notice("unknown command: ${t} (/help lists commands)"))
             return next(m)
-        },
-        Send(t) -> {
+        }
+        case Send(t) {
             return _send(m, t)
-        },
+        }
     }
     return next(m)
 }
 
 // The /mcp command: status by default, connect to kick off connections in
 // the background, and prompt to expand a server prompt and run it as a turn.
-fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
+fun _mcp_command(m: Chat, text: str, args: str) -> Step[Chat] {
     let a = args.trim()
-    if a.starts_with("prompt ") || a == "prompt" {
+    if a.starts_with("prompt ") or a == "prompt" {
         return _mcp_prompt(m, text, a.substring(6, a.length()).trim())
     }
     m.entries.push(Entry.UserMsg(text))
@@ -1884,7 +1862,7 @@ fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
         )
     }
     let lines = mcp_status_text().lines()
-    let i = 0
+    var i = 0
     while i < lines.len() {
         m.entries.push(Entry.Notice(lines[i]))
         i = i + 1
@@ -1894,7 +1872,7 @@ fun _mcp_command(m: Chat, text: String, args: String) -> Step<Chat> {
 }
 
 // The verb of a /plugins invocation ("add", "list", "browse", ...).
-fun _plugins_verb(args: String) -> String {
+fun _plugins_verb(args: str) -> str {
     let a = args.trim()
     let sp = a.index_of(" ")
     if sp >= 0 {
@@ -1905,13 +1883,13 @@ fun _plugins_verb(args: String) -> String {
 
 // True for the /plugins verbs that hit the network or clone a repo, so they
 // should run off the UI thread.
-fun _plugins_backgrounds(args: String) -> Bool {
+fun _plugins_backgrounds(args: str) -> bool {
     let v = _plugins_verb(args)
-    return v == "add" || v == "update" || v == "browse" || v == "search"
+    return v == "add" or v == "update" or v == "browse" or v == "search"
 }
 
 // The placeholder shown while a backgrounded /plugins verb runs.
-fun _plugins_pending_note(args: String) -> String {
+fun _plugins_pending_note(args: str) -> str {
     let v = _plugins_verb(args)
     if v == "add" {
         return "installing plugin…"
@@ -1922,7 +1900,7 @@ fun _plugins_pending_note(args: String) -> String {
     return "searching the plugin index…"
 }
 
-fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
+fun _mcp_prompt(m: Chat, text: str, rest: str) -> Step[Chat] {
     let inv = parse_invoke(rest)
     if inv.error != "" {
         m.entries.push(Entry.UserMsg(text))
@@ -1930,7 +1908,7 @@ fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
         m.scroll_up = 0
         return next(m)
     }
-    if inv.server == "" || inv.name == "" {
+    if inv.server == "" or inv.name == "" {
         m.entries.push(Entry.UserMsg(text))
         m.entries.push(
             Entry.Notice("usage: /mcp prompt <server> <name> [key=value ...] or --json '{...}'"),
@@ -1947,19 +1925,15 @@ fun _mcp_prompt(m: Chat, text: String, rest: String) -> Step<Chat> {
     let server = inv.server
     let name = inv.name
     let args_json = inv.args_json
-    spawn(fun() -> Unit {
+    spawn {
         let expanded = get_prompt(server, name, args_json)
-        if expanded.starts_with("error:") {
-            push_cmd_notice(expanded)
-        } else {
-            push_cmd_prompt(expanded)
-        }
-    })
+        push_cmd_notice(expanded) if expanded.starts_with("error:") else push_cmd_prompt(expanded)
+    }
     m.scroll_up = 0
     return next(m)
 }
 
-fun _send(m: Chat, text: String) -> Step<Chat> {
+fun _send(m: Chat, text: str) -> Step[Chat] {
     // The transcript shows what was typed; the model gets any @-referenced
     // files attached. Drop the mention file cache and rebuild it off-thread,
     // so the next prompt's picker reflects files created during this turn
@@ -1974,7 +1948,7 @@ fun _send(m: Chat, text: String) -> Step<Chat> {
 // a custom command, where the transcript shows what was typed while the
 // model gets the expanded template. With no key for the provider, prompt for
 // one instead of making a doomed request.
-fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
+fun _send_prompt(m: Chat, display: str, prompt: str) -> Step[Chat] {
     m.entries.push(Entry.UserMsg(display))
     return _begin_turn(m, prompt)
 }
@@ -1982,7 +1956,7 @@ fun _send_prompt(m: Chat, display: String, prompt: String) -> Step<Chat> {
 // Record `prompt` in the conversation and spawn the agent goroutine. The caller
 // has already echoed whatever the user typed. With no key for the provider,
 // prompt for one instead of making a doomed request.
-fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
+fun _begin_turn(m: Chat, prompt: str) -> Step[Chat] {
     if key_needed_with(m.model, m.api_key) {
         // Hold the prompt instead of eating it: it waits in the queue while
         // the key entry is open and sends on the tick after the key is saved.
@@ -1996,7 +1970,7 @@ fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
     // Shell commands the user ran with ! since the last send ride along as
     // context, the way file mentions attach.
     let bang_ctx = take_bang_context()
-    let full_prompt = prompt
+    var full_prompt = prompt
     if bang_ctx != "" {
         full_prompt = "[shell commands the user ran]\n${bang_ctx}\n\n${prompt}"
     }
@@ -2011,30 +1985,28 @@ fun _begin_turn(m: Chat, prompt: String) -> Step<Chat> {
     let model = m.model
     let api_key = m.api_key
     let base_url = m.base_url
-    spawn(fun() -> Unit {
+    spawn {
         run_turn(st, model, api_key, base_url)
-    })
+    }
     return next(m)
 }
 
 // The transcript indices of user messages, oldest first, capped to the ten
 // most recent. The rewind picker shows them newest first.
-fun _user_entry_indices(m: Chat) -> List<Int> {
-    let all: List<Int> = []
-    let i = 0
+fun _user_entry_indices(m: Chat) -> list[int] {
+    let all: list[int] = []
+    var i = 0
     while i < m.entries.len() {
         match m.entries[i] {
-            UserMsg(t) -> {
-                all.push(i)
-            },
-            _ -> {},
+            case UserMsg(t) { all.push(i) }
+            case _ {}
         }
         i = i + 1
     }
     if all.len() <= 10 {
         return all
     }
-    let out: List<Int> = []
+    let out: list[int] = []
     i = all.len() - 10
     while i < all.len() {
         out.push(all[i])
@@ -2046,34 +2018,34 @@ fun _user_entry_indices(m: Chat) -> List<Int> {
 // Navigate the edit-a-previous-message picker: enter rewinds the
 // conversation to just before the chosen message and puts its text back in
 // the input for editing; esc closes.
-fun _rewind_key(m: Chat, k: Key) -> Step<Chat> {
+fun _rewind_key(m: Chat, k: Key) -> Step[Chat] {
     let idxs = _user_entry_indices(m)
     match k {
-        Up -> {
+        case Up {
             if m.rewind_sel > 0 {
                 m.rewind_sel = m.rewind_sel - 1
             }
-        },
-        Down -> {
+        }
+        case Down {
             if m.rewind_sel < idxs.len() - 1 {
                 m.rewind_sel = m.rewind_sel + 1
             }
-        },
-        Enter -> {
+        }
+        case Enter {
             m.rewind_open = false
             if idxs.len() > 0 {
-                let sel = m.rewind_sel
+                var sel = m.rewind_sel
                 if sel >= idxs.len() {
                     sel = idxs.len() - 1
                 }
                 // Row 0 is the newest message: ordinal from the end.
                 _apply_rewind(m, idxs[idxs.len() - 1 - sel], sel)
             }
-        },
-        Esc -> {
+        }
+        case Esc {
             m.rewind_open = false
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next(m)
 }
@@ -2083,17 +2055,17 @@ fun _rewind_key(m: Chat, k: Key) -> Step<Chat> {
 // conversation is matched from the end (ordinal `from_end`), which stays
 // aligned with the transcript even after compaction folded older turns; a
 // message older than the compaction summary cannot be rewound to.
-fun _apply_rewind(m: Chat, entry_idx: Int, from_end: Int) {
-    let text = ""
+fun _apply_rewind(m: Chat, entry_idx: int, from_end: int) {
+    var text = ""
     match m.entries[entry_idx] {
-        UserMsg(t) -> {
+        case UserMsg(t) {
             text = t
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     let msgs = m.agent.messages()
-    let user_at: List<Int> = []
-    let i = 0
+    let user_at: list[int] = []
+    var i = 0
     while i < msgs.len() {
         if _is_user_msg(msgs[i]) {
             user_at.push(i)
@@ -2108,7 +2080,7 @@ fun _apply_rewind(m: Chat, entry_idx: Int, from_end: Int) {
         return
     }
     let cut = user_at[user_at.len() - 1 - from_end]
-    let keep: List<Message> = []
+    let keep: list[Message] = []
     i = 0
     while i < cut {
         keep.push(msgs[i])
@@ -2116,7 +2088,7 @@ fun _apply_rewind(m: Chat, entry_idx: Int, from_end: Int) {
     }
     m.agent.replace_convo(keep)
     _remove_entries(m, entry_idx, m.entries.len() - entry_idx)
-    let blocks: List<AgentBlock> = []
+    let blocks: list[AgentBlock] = []
     m.open_agents = blocks
     m.cur_bubble = 0 - 1
     m.entry = TextInput.with_value(text)
@@ -2132,9 +2104,9 @@ fun _apply_rewind(m: Chat, entry_idx: Int, from_end: Int) {
     return
 }
 
-fun _is_user_msg(msg: Message) -> Bool {
+fun _is_user_msg(msg: Message) -> bool {
     return match msg.role {
-        User -> true,
-        _ -> false,
+        case User { true }
+        case _ { false }
     }
 }

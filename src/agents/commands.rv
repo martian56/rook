@@ -5,34 +5,34 @@
 // user typed after the command name; a template without the placeholder gets
 // the arguments appended instead.
 
-import std/string
-import std/sync { Mutex, mutex }
-import std/fs { read, is_file }
-import "./dir" { merged_names, path_of }
-import "./front" { Front, parse_front, front_get }
-import "../commands" { CmdInfo }
+import std.string
+from std.sync import Mutex, mutex
+from std.fs import read, is_file
+from "./dir" import merged_names, path_of
+from "./front" import Front, parse_front, front_get
+from "../commands" import CmdInfo
 
 // The loaded commands, cached so running a custom command does not re-walk
 // and re-read every command file. Invalidated when a plugin changes and at
 // the end of every turn (a turn can create command files); a file added
 // externally mid-session appears after the next turn ends.
-struct CommandCache {
-    lock: Mutex,
-    ready: Bool,
-    cmds: List<CustomCommand>,
+class CommandCache {
+    lock: Mutex
+    ready: bool
+    cmds: list[CustomCommand]
 }
 
 let COMMAND_CACHE: CommandCache = _new_command_cache()
 
 fun _new_command_cache() -> CommandCache {
-    let cmds: List<CustomCommand> = []
-    return CommandCache { lock: mutex(), ready: false, cmds }
+    let cmds: list[CustomCommand] = []
+    return CommandCache(lock: mutex(), ready: false, cmds: cmds)
 }
 
 // The commands under `rs`, from the cache when it is warm.
-fun cached_commands(rs: List<String>) -> List<CustomCommand> {
+fun cached_commands(rs: list[str]) -> list[CustomCommand] {
     COMMAND_CACHE.lock.lock()
-    if !COMMAND_CACHE.ready {
+    if not COMMAND_CACHE.ready {
         COMMAND_CACHE.cmds = load_commands(rs)
         COMMAND_CACHE.ready = true
     }
@@ -49,27 +49,27 @@ fun invalidate_commands() {
     return
 }
 
-struct CustomCommand {
-    name: String,
-    description: String,
-    template: String,
+class CustomCommand {
+    name: str
+    description: str
+    template: str
 }
 
 // Load every command under the roots' commands/ folders, project shadowing
 // global by file name. Only .md files count; the file stem is the name.
-fun load_commands(rs: List<String>) -> List<CustomCommand> {
-    let out: List<CustomCommand> = []
+fun load_commands(rs: list[str]) -> list[CustomCommand] {
+    let out: list[CustomCommand] = []
     let names = merged_names(rs, "commands")
-    let i = 0
+    var i = 0
     while i < names.len() {
         if names[i].ends_with(".md") {
             let p = path_of(rs, "commands", names[i])
-            if p != "" && is_file(p) {
+            if p != "" and is_file(p) {
                 match read(p) {
-                    Ok(text) -> {
+                    case Ok(text) {
                         out.push(parse_command_file(text, names[i].substring(0, names[i].length() - 3)))
-                    },
-                    Err(e) -> {},
+                    }
+                    case Err(e) {}
                 }
             }
         }
@@ -80,28 +80,28 @@ fun load_commands(rs: List<String>) -> List<CustomCommand> {
 
 // Parse one command file: frontmatter between "---" lines may set the
 // description; the rest is the template.
-fun parse_command_file(text: String, name: String) -> CustomCommand {
+fun parse_command_file(text: str, name: str) -> CustomCommand {
     let fm = parse_front(text)
-    return CustomCommand { name, description: front_get(fm, "description"), template: fm.body }
+    return CustomCommand(name: name, description: front_get(fm, "description"), template: fm.body)
 }
 
 // Expand typed input like "/release 1.2" against the commands. "" when the
 // input is not a slash command or no command matches, so the caller falls
 // through to its unknown-command handling.
-fun find_expansion(cmds: List<CustomCommand>, text: String) -> String {
-    if !text.starts_with("/") {
+fun find_expansion(cmds: list[CustomCommand], text: str) -> str {
+    if not text.starts_with("/") {
         return ""
     }
     let rest = text.substring(1, text.length())
-    let name = rest
-    let args = ""
+    var name = rest
+    var args = ""
     let sp = rest.index_of(" ")
     if sp >= 0 {
         name = rest.substring(0, sp)
         args = rest.substring(sp + 1, rest.length()).trim()
     }
     let want = name.to_lower()
-    let i = 0
+    var i = 0
     while i < cmds.len() {
         if cmds[i].name.to_lower() == want {
             return expand(cmds[i].template, args)
@@ -113,7 +113,7 @@ fun find_expansion(cmds: List<CustomCommand>, text: String) -> String {
 
 // Fill a template with the arguments: replace "$ARGUMENTS" where present,
 // else append non-empty arguments after a blank line.
-fun expand(template: String, args: String) -> String {
+fun expand(template: str, args: str) -> str {
     if template.contains("$ARGUMENTS") {
         return template.replace("$ARGUMENTS", args)
     }
@@ -124,15 +124,15 @@ fun expand(template: String, args: String) -> String {
 }
 
 // The custom commands as menu entries, for the slash menu and /help.
-fun command_infos(cmds: List<CustomCommand>) -> List<CmdInfo> {
-    let out: List<CmdInfo> = []
-    let i = 0
+fun command_infos(cmds: list[CustomCommand]) -> list[CmdInfo] {
+    let out: list[CmdInfo] = []
+    var i = 0
     while i < cmds.len() {
-        let d = cmds[i].description
+        var d = cmds[i].description
         if d == "" {
             d = "custom command"
         }
-        out.push(CmdInfo { name: cmds[i].name, desc: d })
+        out.push(CmdInfo(name: cmds[i].name, desc: d))
         i = i + 1
     }
     return out

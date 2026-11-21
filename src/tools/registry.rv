@@ -1,56 +1,56 @@
 // The tool catalog: the schemas the model sees, which tools change things
 // (and so need approval), and the dispatch from a tool call to its result.
 
-import std/string
-import std/json { JsonValue }
-import "github.com/martian56/aviary/request" { CancelToken }
-import "github.com/martian56/aviary/message" { ToolDef, ToolCall }
-import "github.com/martian56/aviary/jsonutil" { Obj }
-import "./args" { arg }
-import "./files" { read_file, list_dir, write_file, edit_file }
-import "./multiedit" { multi_edit }
-import "./paths" { display_path }
-import "./search" { grep }
-import "./shell" { run_command_cancelable }
-import "./shells" { run_background, read_shell, shells_list_text, kill_shell }
-import "./tree" { file_tree }
-import "./todos" { set_todos }
-import "./git" { git_status, git_diff, git_commit }
-import "./web" { web_fetch, web_fetch_approval_detail, web_search }
-import "../agents/dir" { roots }
-import "../agents/skills" { skill_body }
-import "../mcp/manager" { mcp_tools, is_mcp_tool, call_mcp_tool, resource_tools, is_resource_tool, read_resource }
+import std.string
+from std.json import JsonValue
+from "github.com/martian56/aviary/request" import CancelToken
+from "github.com/martian56/aviary/message" import ToolDef, ToolCall
+from "github.com/martian56/aviary/jsonutil" import Obj
+from "./args" import arg
+from "./files" import read_file, list_dir, write_file, edit_file
+from "./multiedit" import multi_edit
+from "./paths" import display_path
+from "./search" import grep
+from "./shell" import run_command_cancelable
+from "./shells" import run_background, read_shell, shells_list_text, kill_shell
+from "./tree" import file_tree
+from "./todos" import set_todos
+from "./git" import git_status, git_diff, git_commit
+from "./web" import web_fetch, web_fetch_approval_detail, web_search
+from "../agents/dir" import roots
+from "../agents/skills" import skill_body
+from "../mcp/manager" import mcp_tools, is_mcp_tool, call_mcp_tool, resource_tools, is_resource_tool, read_resource
 
 // One schema field: a string property and its description.
-struct Prop {
-    name: String,
-    desc: String,
+class Prop {
+    name: str
+    desc: str
 }
 
 // The tool definitions offered to the model: the built-ins, plus any tools
 // discovered from connected MCP servers.
-fun tools() -> List<ToolDef> {
-    let no_props: List<Prop> = []
-    let base: List<ToolDef> = [
+fun tools() -> list[ToolDef] {
+    let no_props: list[Prop] = []
+    let base: list[ToolDef] = [
         ToolDef.new(
             "read_file",
             "Read a UTF-8 text file and return its contents.",
             _schema(
-                [Prop { name: "path", desc: "path to the file, relative to the working directory" }],
+                [Prop(name: "path", desc: "path to the file, relative to the working directory")],
             ),
         ),
         ToolDef.new(
             "list_dir",
             "List the entries of a directory (defaults to the working directory).",
-            _schema([Prop { name: "path", desc: "directory path; defaults to '.'" }]),
+            _schema([Prop(name: "path", desc: "directory path; defaults to '.'")]),
         ),
         ToolDef.new(
             "file_tree",
             "An indented tree of the project structure, depth-limited, with build and dependency noise skipped. The fast way to orient in a repository.",
             _schema(
                 [
-                    Prop { name: "path", desc: "directory to show; defaults to '.'" },
-                    Prop { name: "depth", desc: "levels to descend; defaults to 3" },
+                    Prop(name: "path", desc: "directory to show; defaults to '.'"),
+                    Prop(name: "depth", desc: "levels to descend; defaults to 3"),
                 ],
             ),
         ),
@@ -64,35 +64,35 @@ fun tools() -> List<ToolDef> {
             "Show the git diff of the working tree. Set staged to \"true\" for the staged diff, or give a path to limit it.",
             _schema(
                 [
-                    Prop {
+                    Prop(
                         name: "staged",
                         desc: "\"true\" to diff the index instead of the working tree",
-                    },
-                    Prop { name: "path", desc: "limit the diff to this path; optional" },
+                    ),
+                    Prop(name: "path", desc: "limit the diff to this path; optional"),
                 ],
             ),
         ),
         ToolDef.new(
             "git_commit",
             "Commit the changes that are already staged with a message you draft, following the repository conventions (check AGENTS.md or recent git log). Stage intended files first.",
-            _schema([Prop { name: "message", desc: "the full commit message" }]),
+            _schema([Prop(name: "message", desc: "the full commit message")]),
         ),
         ToolDef.new(
             "grep",
             "Search files under a directory with a regex (RE2 syntax: no backreferences or lookaround); returns matching lines as path:line: text. Prefix the pattern with (?i) for case-insensitive matching, e.g. (?i)error.",
             _schema2(
                 [
-                    Prop {
+                    Prop(
                         name: "pattern",
                         desc: "the regex pattern to search for; prefix with (?i) for case-insensitive matching",
-                    },
-                    Prop { name: "path", desc: "directory to search; defaults to '.'" },
+                    ),
+                    Prop(name: "path", desc: "directory to search; defaults to '.'"),
                 ],
                 [
-                    Prop {
+                    Prop(
                         name: "glob",
                         desc: "only search files whose name matches this glob, e.g. '*.rv'",
-                    },
+                    ),
                 ],
             ),
         ),
@@ -101,8 +101,8 @@ fun tools() -> List<ToolDef> {
             "Create or overwrite a file with the given contents.",
             _schema(
                 [
-                    Prop { name: "path", desc: "file path to write" },
-                    Prop { name: "content", desc: "the full new contents of the file" },
+                    Prop(name: "path", desc: "file path to write"),
+                    Prop(name: "content", desc: "the full new contents of the file"),
                 ],
             ),
         ),
@@ -111,9 +111,9 @@ fun tools() -> List<ToolDef> {
             "Replace old_text with new_text in a file. old_text must occur exactly once; if it appears more than once the edit is refused, so include enough surrounding context to make it unique.",
             _schema(
                 [
-                    Prop { name: "path", desc: "file path to edit" },
-                    Prop { name: "old_text", desc: "exact text to find and replace once" },
-                    Prop { name: "new_text", desc: "replacement text" },
+                    Prop(name: "path", desc: "file path to edit"),
+                    Prop(name: "old_text", desc: "exact text to find and replace once"),
+                    Prop(name: "new_text", desc: "replacement text"),
                 ],
             ),
         ),
@@ -125,17 +125,17 @@ fun tools() -> List<ToolDef> {
         ToolDef.new(
             "run_command",
             "Run a foreground shell command in the working directory and return stdout, stderr, and exit code. It has a timeout; use run_background for long-running commands.",
-            _schema([Prop { name: "command", desc: "the shell command to run" }]),
+            _schema([Prop(name: "command", desc: "the shell command to run")]),
         ),
         ToolDef.new(
             "run_background",
             "Start a long-running shell command (a dev server, a watcher, an app) without waiting for it. Returns a shell id immediately; the output accumulates in the background.",
-            _schema([Prop { name: "command", desc: "the shell command to start" }]),
+            _schema([Prop(name: "command", desc: "the shell command to start")]),
         ),
         ToolDef.new(
             "read_shell",
             "Read a background shell's output since the last read, with its status. Call it again later for what arrived in between.",
-            _schema([Prop { name: "id", desc: "the shell id from run_background" }]),
+            _schema([Prop(name: "id", desc: "the shell id from run_background")]),
         ),
         ToolDef.new(
             "list_shells",
@@ -145,27 +145,27 @@ fun tools() -> List<ToolDef> {
         ToolDef.new(
             "kill_shell",
             "Stop a running background shell and report its exit code.",
-            _schema([Prop { name: "id", desc: "the shell id to stop" }]),
+            _schema([Prop(name: "id", desc: "the shell id to stop")]),
         ),
         ToolDef.new(
             "web_search",
             "Search the web and return the top result titles and links. Use it to find current documentation or references.",
-            _schema([Prop { name: "query", desc: "the search query" }]),
+            _schema([Prop(name: "query", desc: "the search query")]),
         ),
         ToolDef.new(
             "web_fetch",
             "Fetch a URL and return its readable text (HTML stripped, truncated). Hostnames and local or private network targets require approval.",
-            _schema([Prop { name: "url", desc: "the URL to fetch" }]),
+            _schema([Prop(name: "url", desc: "the URL to fetch")]),
         ),
         ToolDef.new(
             "use_skill",
             "Load the full instructions of a skill listed in the system prompt. Call it when a skill matches the task, before doing that work.",
-            _schema([Prop { name: "name", desc: "the skill's name, as listed" }]),
+            _schema([Prop(name: "name", desc: "the skill's name, as listed")]),
         ),
         ToolDef.new(
             "set_todos",
             "Replace your visible checklist for the current work, one item per line: prefix [x] for done, [>] for the one in progress, nothing for pending. Keep it updated as steps finish.",
-            _schema([Prop { name: "todos", desc: "the full checklist, one item per line" }]),
+            _schema([Prop(name: "todos", desc: "the full checklist, one item per line")]),
         ),
         ToolDef.new(
             "ask_user",
@@ -177,20 +177,20 @@ fun tools() -> List<ToolDef> {
             "Delegate one scoped task to a subagent listed in the system prompt and get its final answer back. The subagent works in isolation with its own tools; give it a complete, self-contained task.",
             _schema(
                 [
-                    Prop { name: "agent", desc: "the subagent's name, as listed" },
-                    Prop { name: "task", desc: "the full task, with all the context it needs" },
+                    Prop(name: "agent", desc: "the subagent's name, as listed"),
+                    Prop(name: "task", desc: "the full task, with all the context it needs"),
                 ],
             ),
         ),
     ]
     let mcp = mcp_tools()
-    let i = 0
+    var i = 0
     while i < mcp.len() {
         base.push(mcp[i])
         i = i + 1
     }
     let extra = resource_tools()
-    let k = 0
+    var k = 0
     while k < extra.len() {
         base.push(extra[k])
         k = k + 1
@@ -201,15 +201,15 @@ fun tools() -> List<ToolDef> {
 // Whether a tool changes the repo or the machine and so must be approved.
 // Every MCP tool is approved, since an external server is not assumed to be
 // read-only.
-fun needs_approval(name: String) -> Bool {
-    return name == "write_file" || name == "edit_file" || name == "multi_edit" || name == "run_command" || name == "run_background" || name == "kill_shell" || name == "git_commit" || is_mcp_tool(
+fun needs_approval(name: str) -> bool {
+    return name == "write_file" or name == "edit_file" or name == "multi_edit" or name == "run_command" or name == "run_background" or name == "kill_shell" or name == "git_commit" or is_mcp_tool(
         name,
     )
 }
 
 // Approval detail for concrete calls that are conditional rather than gated
 // solely by tool name.
-fun call_approval_detail(call: ToolCall) -> String {
+fun call_approval_detail(call: ToolCall) -> str {
     if call.name == "web_fetch" {
         return web_fetch_approval_detail(arg(call.arguments, "url"))
     }
@@ -219,7 +219,7 @@ fun call_approval_detail(call: ToolCall) -> String {
 // Whether a concrete call needs approval. Most tools are decided by name,
 // but web_fetch is conditional: public IP literals stay low-friction, while
 // hostnames and local or private network targets require approval.
-fun call_needs_approval(call: ToolCall) -> Bool {
+fun call_needs_approval(call: ToolCall) -> bool {
     if needs_approval(call.name) {
         return true
     }
@@ -227,12 +227,12 @@ fun call_needs_approval(call: ToolCall) -> Bool {
 }
 
 // Run a tool call and return its result string.
-fun dispatch(call: ToolCall) -> String {
+fun dispatch(call: ToolCall) -> str {
     return dispatch_cancelable(call, CancelToken.new())
 }
 
 // Run a tool call with the current turn's cancellation token.
-fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
+fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> str {
     let a = call.arguments
     if is_mcp_tool(call.name) {
         return call_mcp_tool(call.name, a)
@@ -312,7 +312,7 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> String {
 
 // A one-line label for a call, shown as the tool bullet and in the approval
 // prompt: "read_file(src/main.rv)", "run_command(rvpm test)".
-fun label(call: ToolCall) -> String {
+fun label(call: ToolCall) -> str {
     let a = call.arguments
     if is_mcp_tool(call.name) {
         return _mcp_label(call.name)
@@ -341,7 +341,7 @@ fun label(call: ToolCall) -> String {
     if call.name == "file_tree" {
         return "file_tree(${display_path(arg(a, "path"), ".")})"
     }
-    if call.name == "write_file" || call.name == "edit_file" || call.name == "multi_edit" {
+    if call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit" {
         return "${call.name}(${display_path(arg(a, "path"), "")})"
     }
     if call.name == "run_command" {
@@ -379,7 +379,7 @@ fun label(call: ToolCall) -> String {
 
 // A readable label for an MCP tool call: mcp__server__tool shows as
 // "mcp:server/tool".
-fun _mcp_label(name: String) -> String {
+fun _mcp_label(name: str) -> str {
     let rest = name.substring(5, name.length())
     let sep = rest.index_of("__")
     if sep < 0 {
@@ -389,7 +389,7 @@ fun _mcp_label(name: String) -> String {
 }
 
 // The first line of a commit message, for the tool label.
-fun _first_line(msg: String) -> String {
+fun _first_line(msg: str) -> str {
     let nl = msg.index_of("\n")
     if nl < 0 {
         return msg
@@ -397,8 +397,8 @@ fun _first_line(msg: String) -> String {
     return msg.substring(0, nl)
 }
 
-fun _schema(props: List<Prop>) -> JsonValue {
-    let no_optional: List<Prop> = []
+fun _schema(props: list[Prop]) -> JsonValue {
+    let no_optional: list[Prop] = []
     return _schema2(props, no_optional)
 }
 
@@ -412,7 +412,7 @@ fun _multi_edit_schema() -> JsonValue {
     ).build()
     let repl = Obj.new().str("type", "string").str("description", "replacement text").build()
     let edit_props = Obj.new().set("old_text", old).set("new_text", repl).build()
-    let edit_req: List<JsonValue> = [JsonValue.Str("old_text"), JsonValue.Str("new_text")]
+    let edit_req: list[JsonValue] = [JsonValue.Str("old_text"), JsonValue.Str("new_text")]
     let edit_item = Obj.new().str("type", "object").set("properties", edit_props).set(
         "required",
         JsonValue.Array(edit_req),
@@ -423,7 +423,7 @@ fun _multi_edit_schema() -> JsonValue {
         edit_item,
     ).build()
     let props = Obj.new().set("path", path).set("edits", edits).build()
-    let req: List<JsonValue> = [JsonValue.Str("path"), JsonValue.Str("edits")]
+    let req: list[JsonValue] = [JsonValue.Str("path"), JsonValue.Str("edits")]
     return Obj.new().str("type", "object").set("properties", props).set(
         "required",
         JsonValue.Array(req),
@@ -445,7 +445,7 @@ fun _ask_user_schema() -> JsonValue {
         "description",
         description,
     ).build()
-    let option_required: List<JsonValue> = [JsonValue.Str("label")]
+    let option_required: list[JsonValue] = [JsonValue.Str("label")]
     let option_item = Obj.new().str("type", "object").set("properties", option_props).set(
         "required",
         JsonValue.Array(option_required),
@@ -455,7 +455,7 @@ fun _ask_user_schema() -> JsonValue {
         "two to five options; each item has a label plus optional value and description",
     ).set("items", option_item).int("minItems", 2).int("maxItems", 5).build()
     let props = Obj.new().set("question", question).set("options", options).build()
-    let required: List<JsonValue> = [JsonValue.Str("question"), JsonValue.Str("options")]
+    let required: list[JsonValue] = [JsonValue.Str("question"), JsonValue.Str("options")]
     return Obj.new().str("type", "object").set("properties", props).set(
         "required",
         JsonValue.Array(required),
@@ -464,10 +464,10 @@ fun _ask_user_schema() -> JsonValue {
 
 // Like _schema, but props in `optional` are added to the schema without
 // being listed as required (a missing one just reads back as "" via arg()).
-fun _schema2(required: List<Prop>, optional: List<Prop>) -> JsonValue {
-    let properties = Obj.new()
-    let required_names: List<JsonValue> = []
-    let i = 0
+fun _schema2(required: list[Prop], optional: list[Prop]) -> JsonValue {
+    var properties = Obj.new()
+    let required_names: list[JsonValue] = []
+    var i = 0
     while i < required.len() {
         let p = required[i]
         properties = properties.set(
@@ -477,7 +477,7 @@ fun _schema2(required: List<Prop>, optional: List<Prop>) -> JsonValue {
         required_names.push(JsonValue.Str(p.name))
         i = i + 1
     }
-    let j = 0
+    var j = 0
     while j < optional.len() {
         let p = optional[j]
         properties = properties.set(

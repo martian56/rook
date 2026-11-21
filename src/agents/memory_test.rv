@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, remove_file }
-import "./memory" { memory_from, read_memory, memory_paths }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, remove_file
+from "./memory" import memory_from, read_memory, memory_paths
 
 fun test_no_memory_means_no_section() {
-    let none: List<String> = []
+    let none: list[str] = []
     assert_eq_str(memory_from(none), "")
 }
 

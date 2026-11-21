@@ -5,19 +5,19 @@
 // explicitly so it can be driven against a scratch directory in tests; the
 // user-facing install_plugin uses the real one.
 
-import std/string
-import std/env { os_name }
-import std/fs { exists, create_dir_all, read, write }
-import std/process { run, Output }
-import std/json { JsonValue, parse, stringify }
-import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str }
-import "./model" { Plugin, plugins_dir, read_plugin, plugin_target_path }
+import std.string
+from std.env import os_name
+from std.fs import exists, create_dir_all, read, write
+from std.process import run, Output
+from std.json import JsonValue, parse, stringify
+from "github.com/martian56/aviary/jsonutil" import Obj, field, as_str
+from "./model" import Plugin, plugins_dir, read_plugin, plugin_target_path
 
-const LOCK: String = ".rook-plugin.lock"
+let LOCK: str = ".rook-plugin.lock"
 
 // Install from `url` at `ref` (a tag or branch; "" for the default branch)
 // into ~/.rook/plugins. Returns a status or error string.
-fun install_plugin(url: String, ref: String) -> String {
+fun install_plugin(url: str, ref: str) -> str {
     let dir = plugins_dir()
     if dir == "" {
         return "error: no home directory for plugins"
@@ -28,7 +28,7 @@ fun install_plugin(url: String, ref: String) -> String {
 // The mechanism: clone `url` at `ref` into a staging directory, validate the
 // manifest and write the lock file there, then swap the validated directory
 // into place. An existing plugin is kept as a backup until the swap succeeds.
-fun install_into(plugins_dir: String, url: String, ref: String) -> String {
+fun install_into(plugins_dir: str, url: str, ref: str) -> str {
     let u = url.trim()
     if u == "" {
         return "error: install needs a git URL"
@@ -49,13 +49,13 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
 
     // Recover a backup left behind by an interrupted swap before beginning a
     // new transaction. Never discard the only installed copy.
-    if !exists(target) && exists(backup) {
+    if not exists(target) and exists(backup) {
         let recover_error = _move_tree(backup, target)
         if recover_error != "" {
             return "error: could not restore the previous ${name} plugin: ${recover_error}"
         }
     }
-    let cleanup_error = _remove_tree(staging)
+    var cleanup_error = _remove_tree(staging)
     if cleanup_error != "" {
         return "error: could not prepare plugin staging directory: ${cleanup_error}"
     }
@@ -74,8 +74,8 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
     args.push(normalize_url(u))
     args.push(staging)
     let out = match run("git", args) {
-        Ok(o) -> o,
-        Err(e) -> Output { code: 0 - 1, stdout: "", stderr: e.message },
+        case Ok(o) { o }
+        case Err(e) { Output(code: 0 - 1, stdout: "", stderr: e.message) }
     }
     if out.code != 0 {
         _remove_tree(staging)
@@ -87,8 +87,8 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
         return "error: ${u} has no plugin.json; it is not a rook plugin"
     }
     let lock_error = match write("${staging}/${LOCK}", _lock_json(u, ref.trim(), plugin.version)) {
-        Ok(ok) -> "",
-        Err(e) -> e.message,
+        case Ok(ok) { "" }
+        case Err(e) { e.message }
     }
     if lock_error != "" {
         _remove_tree(staging)
@@ -106,7 +106,7 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
     let swap_error = _move_tree(staging, target)
     if swap_error != "" {
         _remove_tree(staging)
-        if !had_target {
+        if not had_target {
             return "error: plugin install failed: ${swap_error}"
         }
         let restore_error = _move_tree(backup, target)
@@ -121,14 +121,14 @@ fun install_into(plugins_dir: String, url: String, ref: String) -> String {
             return "installed ${plugin.name} ${_display_version(plugin.version)} from ${u}; warning: could not remove backup ${backup}: ${backup_cleanup_error}"
         }
     }
-    let v = plugin.version
+    var v = plugin.version
     if v == "" {
         v = "unversioned"
     }
     return "installed ${plugin.name} ${v} from ${u}"
 }
 
-fun _display_version(version: String) -> String {
+fun _display_version(version: str) -> str {
     if version == "" {
         return "unversioned"
     }
@@ -137,8 +137,8 @@ fun _display_version(version: String) -> String {
 
 // The repository name from a git URL: the last path segment without a
 // trailing slash or .git suffix.
-fun plugin_name_from_url(url: String) -> String {
-    let u = url.trim()
+fun plugin_name_from_url(url: str) -> str {
+    var u = url.trim()
     while u.ends_with("/") {
         u = u.substring(0, u.length() - 1)
     }
@@ -155,9 +155,9 @@ fun plugin_name_from_url(url: String) -> String {
 // A bare github.com/user/repo shorthand becomes an https URL, matching how
 // rvpm resolves packages; anything with a scheme or scp-style host is left
 // alone.
-fun normalize_url(url: String) -> String {
+fun normalize_url(url: str) -> str {
     let u = url.trim()
-    if u.contains("://") || u.starts_with("git@") || u.starts_with("/") || u.starts_with(".") || u.starts_with(
+    if u.contains("://") or u.starts_with("git@") or u.starts_with("/") or u.starts_with(".") or u.starts_with(
         "~",
     ) {
         return u
@@ -166,53 +166,54 @@ fun normalize_url(url: String) -> String {
 }
 
 // The lock file recorded next to an installed plugin.
-fun _lock_json(url: String, ref: String, version: String) -> String {
+fun _lock_json(url: str, ref: str, version: str) -> str {
     return stringify(Obj.new().str("url", url).str("ref", ref).str("version", version).build())
 }
 
 // The recorded source of an installed plugin, for management commands: the
 // url, ref, and version from its lock file. Empty strings when absent.
-fun plugin_source(path: String) -> Plugin {
+fun plugin_source(path: str) -> Plugin {
     let lock = "${path}/${LOCK}"
-    if !exists(lock) {
-        return Plugin { name: "", version: "", description: "", path }
+    if not exists(lock) {
+        return Plugin(name: "", version: "", description: "", path: path)
     }
     let text = match read(lock) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
     return match parse(text) {
-        Ok(j) -> Plugin {
-            name: as_str(field(j, "url")),
-            version: as_str(field(j, "version")),
-            description: as_str(field(j, "ref")),
-            path,
-        },
-        Err(e) -> Plugin { name: "", version: "", description: "", path },
+        case Ok(j) {
+            Plugin(
+                name: as_str(field(j, "url")),
+                version: as_str(field(j, "version")),
+                description: as_str(field(j, "ref")),
+                path: path,
+            )
+        }
+        case Err(e) { Plugin(name: "", version: "", description: "", path: path) }
     }
 }
 
 // Move a directory within the plugin root. Staging, backups, and live plugins
 // share a filesystem, so the operating system can rename them without copying.
-fun _move_tree(source: String, destination: String) -> String {
-    let result = if os_name() == "windows" {
-        run("cmd", ["/d", "/c", "move", "/y", _windows_path(source), _windows_path(destination)])
-    } else {
-        run("mv", [source, destination])
-    }
-    let out = Output { code: 0 - 1, stdout: "", stderr: "" }
+fun _move_tree(source: str, destination: str) -> str {
+    let result = run(
+        "cmd",
+        ["/d", "/c", "move", "/y", _windows_path(source), _windows_path(destination)],
+    ) if os_name() == "windows" else run("mv", [source, destination])
+    var out = Output(code: 0 - 1, stdout: "", stderr: "")
     match result {
-        Ok(o) -> {
+        case Ok(o) {
             out = o
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return "move failed to start: ${e.message}"
-        },
+        }
     }
     if out.code != 0 {
         return _output_error("move", out)
     }
-    if exists(source) || !exists(destination) {
+    if exists(source) or not exists(destination) {
         return "move did not place ${destination}"
     }
     return ""
@@ -220,11 +221,11 @@ fun _move_tree(source: String, destination: String) -> String {
 
 // Remove a directory tree. On Windows git leaves read-only pack files that
 // rmdir refuses, so clear the read-only attribute across the tree first.
-fun _remove_tree(path: String) -> String {
-    if !exists(path) {
+fun _remove_tree(path: str) -> str {
+    if not exists(path) {
         return ""
     }
-    let detail = ""
+    var detail = ""
     if os_name() == "windows" {
         let windows_path = _windows_path(path)
         detail = _append_detail(
@@ -235,7 +236,7 @@ fun _remove_tree(path: String) -> String {
     } else {
         detail = _append_detail(detail, _run_remove("rm", ["-rf", path]))
     }
-    if !exists(path) {
+    if not exists(path) {
         return ""
     }
     if detail == "" {
@@ -244,21 +245,15 @@ fun _remove_tree(path: String) -> String {
     return "directory still exists after removal: ${path}; ${detail}"
 }
 
-fun _run_remove(command: String, args: List<String>) -> String {
+fun _run_remove(command: str, args: list[str]) -> str {
     return match run(command, args) {
-        Ok(o) -> {
-            if o.code == 0 {
-                ""
-            } else {
-                _output_error(command, o)
-            }
-        },
-        Err(e) -> "${command} failed to start: ${e.message}",
+        case Ok(o) { "" if o.code == 0 else _output_error(command, o) }
+        case Err(e) { "${command} failed to start: ${e.message}" }
     }
 }
 
-fun _output_error(command: String, out: Output) -> String {
-    let msg = out.stderr.trim()
+fun _output_error(command: str, out: Output) -> str {
+    var msg = out.stderr.trim()
     if msg == "" {
         msg = out.stdout.trim()
     }
@@ -270,7 +265,7 @@ fun _output_error(command: String, out: Output) -> String {
     return "${command}: ${msg}"
 }
 
-fun _append_detail(existing: String, next: String) -> String {
+fun _append_detail(existing: str, next: str) -> str {
     if next == "" {
         return existing
     }
@@ -280,6 +275,6 @@ fun _append_detail(existing: String, next: String) -> String {
     return "${existing}; ${next}"
 }
 
-fun _windows_path(path: String) -> String {
+fun _windows_path(path: str) -> str {
     return path.replace("/", "\\")
 }

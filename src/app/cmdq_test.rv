@@ -1,5 +1,5 @@
-import std/test { assert_true, assert_eq_str }
-import "./cmdq" { push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts, take_cmd_prompt }
+from std.test import assert_true, assert_eq_str
+from "./cmdq" import push_cmd_notice, drain_cmd_notices, push_cmd_prompt, drain_cmd_prompts, take_cmd_prompt
 
 fun test_cmd_notices_round_trip_and_clear() {
     // Clear any residue so the test does not depend on ordering.

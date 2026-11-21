@@ -2,85 +2,85 @@
 // allow rules only to global user settings, preserving deny rules and the
 // rest of ~/.agents/settings.json.
 
-import std/string
-import std/env { get_env, has_env }
-import std/fs { read, write, exists, create_dir_all }
-import std/json { JsonValue, parse, stringify }
-import "github.com/martian56/aviary/jsonutil" { Obj, field, as_str, as_list }
+import std.string
+from std.env import get_env, has_env
+from std.fs import read, write, exists, create_dir_all
+from std.json import JsonValue, parse, stringify
+from "github.com/martian56/aviary/jsonutil" import Obj, field, as_str, as_list
 
-struct PermissionGrant {
-    name: String,
-    desc: String,
-    rules: List<String>,
+class PermissionGrant {
+    name: str
+    desc: str
+    rules: list[str]
 }
 
-struct PermissionGrantState {
-    name: String,
-    desc: String,
-    rules: List<String>,
-    enabled: Bool,
+class PermissionGrantState {
+    name: str
+    desc: str
+    rules: list[str]
+    enabled: bool
 }
 
-struct SettingsText {
-    text: String,
-    error: String,
+class SettingsText {
+    text: str
+    error: str
 }
 
-fun permission_grants() -> List<PermissionGrant> {
+fun permission_grants() -> list[PermissionGrant] {
     return [
-        PermissionGrant {
+        PermissionGrant(
             name: "File edits",
             desc: "write_file, edit_file, and multi_edit",
             rules: ["write_file", "edit_file", "multi_edit"],
-        },
-        PermissionGrant {
+        ),
+        PermissionGrant(
             name: "Shell commands",
             desc: "foreground run_command calls",
             rules: ["run_command"],
-        },
-        PermissionGrant {
+        ),
+        PermissionGrant(
             name: "Background shells",
             desc: "start and stop long-running commands",
             rules: ["run_background", "kill_shell"],
-        },
-        PermissionGrant {
+        ),
+        PermissionGrant(
             name: "Git commits",
             desc: "commit already staged changes",
             rules: ["git_commit"],
-        },
-        PermissionGrant {
+        ),
+        PermissionGrant(
             name: "MCP tools",
             desc: "all connected MCP server tools",
             rules: ["mcp__*"],
-        },
+        ),
     ]
 }
 
-fun permission_grant_states() -> List<PermissionGrantState> {
+fun permission_grant_states() -> list[PermissionGrantState] {
     return permission_states_from_allow(read_user_allow_rules())
 }
 
-fun permission_states_from_allow(allow: List<String>) -> List<PermissionGrantState> {
-    let out: List<PermissionGrantState> = []
+fun permission_states_from_allow(allow: list[str]) -> list[PermissionGrantState] {
+    let out: list[PermissionGrantState] = []
     let grants = permission_grants()
-    let i = 0
+    var i = 0
     while i < grants.len() {
         out.push(
-            PermissionGrantState {
+            PermissionGrantState(
                 name: grants[i].name,
                 desc: grants[i].desc,
                 rules: grants[i].rules,
                 enabled: grant_enabled(allow, grants[i]),
-            },
+            ),
         )
         i = i + 1
     }
     return out
 }
 
-fun toggle_permission_grant(index: Int) -> String {
+fun toggle_permission_grant(index: int) -> str {
     let grants = permission_grants()
-    if index < 0 || index >= grants.len() {
+    if index < 0 or index >= grants.len() {
         return "no permission grant selected"
     }
     let loaded = read_user_settings()
@@ -90,10 +90,10 @@ fun toggle_permission_grant(index: Int) -> String {
     let existing = loaded.text
     if existing.trim() != "" {
         match parse(existing) {
-            Ok(j) -> {},
-            Err(e) -> {
+            case Ok(j) {}
+            case Err(e) {
                 return "error: ~/.agents/settings.json is not valid JSON"
-            },
+            }
         }
     }
     let allow = allow_rules_from_settings(existing)
@@ -108,40 +108,40 @@ fun toggle_permission_grant(index: Int) -> String {
     return "revoked ${grants[index].name}"
 }
 
-fun read_user_allow_rules() -> List<String> {
+fun read_user_allow_rules() -> list[str] {
     let loaded = read_user_settings()
     if loaded.error != "" {
-        let out: List<String> = []
+        let out: list[str] = []
         return out
     }
     return allow_rules_from_settings(loaded.text)
 }
 
-fun allow_rules_from_settings(text: String) -> List<String> {
-    let out: List<String> = []
+fun allow_rules_from_settings(text: str) -> list[str] {
+    let out: list[str] = []
     if text.trim() == "" {
         return out
     }
     match parse(text) {
-        Ok(j) -> {
+        case Ok(j) {
             return _strings(field(field(j, "permissions"), "allow"))
-        },
-        Err(e) -> {},
+        }
+        case Err(e) {}
     }
     return out
 }
 
-fun toggle_grant_rules(allow: List<String>, grant: PermissionGrant) -> List<String> {
+fun toggle_grant_rules(allow: list[str], grant: PermissionGrant) -> list[str] {
     if grant_enabled(allow, grant) {
         return _without(allow, grant.rules)
     }
     return _with_missing(allow, grant.rules)
 }
 
-fun grant_enabled(allow: List<String>, grant: PermissionGrant) -> Bool {
-    let i = 0
+fun grant_enabled(allow: list[str], grant: PermissionGrant) -> bool {
+    var i = 0
     while i < grant.rules.len() {
-        if !_contains(allow, grant.rules[i]) {
+        if not _contains(allow, grant.rules[i]) {
             return false
         }
         i = i + 1
@@ -149,22 +149,22 @@ fun grant_enabled(allow: List<String>, grant: PermissionGrant) -> Bool {
     return true
 }
 
-fun write_user_allow_rules(existing: String, allow: List<String>) -> String {
+fun write_user_allow_rules(existing: str, allow: list[str]) -> str {
     let root = user_agents_root()
     if root == "" {
         return "error: no home directory for ~/.agents/settings.json"
     }
     match create_dir_all(root) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             return "error: could not create ~/.agents: ${e.message}"
-        },
+        }
     }
     match write("${root}/settings.json", settings_with_allow(existing, allow)) {
-        Ok(ok) -> {},
-        Err(e) -> {
+        case Ok(ok) {}
+        case Err(e) {
             return "error: could not write ~/.agents/settings.json: ${e.message}"
-        },
+        }
     }
     return ""
 }
@@ -172,64 +172,63 @@ fun write_user_allow_rules(existing: String, allow: List<String>) -> String {
 fun read_user_settings() -> SettingsText {
     let path = user_settings_path()
     if path == "" {
-        return SettingsText { text: "", error: "" }
+        return SettingsText(text: "", error: "")
     }
-    if !exists(path) {
-        return SettingsText { text: "", error: "" }
+    if not exists(path) {
+        return SettingsText(text: "", error: "")
     }
     return match read(path) {
-        Ok(s) -> SettingsText { text: s, error: "" },
-        Err(e) -> SettingsText {
-            text: "",
-            error: "error: could not read ~/.agents/settings.json: ${e.message}",
-        },
+        case Ok(s) { SettingsText(text: s, error: "") }
+        case Err(e) {
+            SettingsText(text: "", error: "error: could not read ~/.agents/settings.json: ${e.message}")
+        }
     }
 }
 
-fun settings_with_allow(existing: String, allow: List<String>) -> String {
-    let doc = Obj.new()
-    let perms = Obj.new()
+fun settings_with_allow(existing: str, allow: list[str]) -> str {
+    var doc = Obj.new()
+    var perms = Obj.new()
     if existing.trim() != "" {
         match parse(existing) {
-            Ok(j) -> {
+            case Ok(j) {
                 let ks = j.keys()
-                let i = 0
+                var i = 0
                 while i < ks.len() {
                     if ks[i] == "permissions" {
                         match j.get("permissions") {
-                            Some(p) -> {
+                            case Some(p) {
                                 let pks = p.keys()
-                                let k = 0
+                                var k = 0
                                 while k < pks.len() {
                                     if pks[k] != "allow" {
                                         match p.get(pks[k]) {
-                                            Some(v) -> {
+                                            case Some(v) {
                                                 perms = perms.set(pks[k], v)
-                                            },
-                                            None -> {},
+                                            }
+                                            case None {}
                                         }
                                     }
                                     k = k + 1
                                 }
-                            },
-                            None -> {},
+                            }
+                            case None {}
                         }
                     } else {
                         match j.get(ks[i]) {
-                            Some(v) -> {
+                            case Some(v) {
                                 doc = doc.set(ks[i], v)
-                            },
-                            None -> {},
+                            }
+                            case None {}
                         }
                     }
                     i = i + 1
                 }
-            },
-            Err(e) -> {},
+            }
+            case Err(e) {}
         }
     }
-    let arr: List<JsonValue> = []
-    let a = 0
+    let arr: list[JsonValue] = []
+    var a = 0
     while a < allow.len() {
         arr.push(JsonValue.Str(allow[a]))
         a = a + 1
@@ -239,7 +238,7 @@ fun settings_with_allow(existing: String, allow: List<String>) -> String {
     return stringify(doc.build())
 }
 
-fun user_agents_root() -> String {
+fun user_agents_root() -> str {
     let h = _home()
     if h == "" {
         return ""
@@ -247,7 +246,7 @@ fun user_agents_root() -> String {
     return "${h}/.agents"
 }
 
-fun user_settings_path() -> String {
+fun user_settings_path() -> str {
     let root = user_agents_root()
     if root == "" {
         return ""
@@ -255,23 +254,23 @@ fun user_settings_path() -> String {
     return "${root}/settings.json"
 }
 
-fun _read_opt(path: String) -> String {
+fun _read_opt(path: str) -> str {
     if path == "" {
         return ""
     }
-    if !exists(path) {
+    if not exists(path) {
         return ""
     }
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
 }
 
-fun _strings(j: JsonValue) -> List<String> {
-    let out: List<String> = []
+fun _strings(j: JsonValue) -> list[str] {
+    let out: list[str] = []
     let arr = as_list(j)
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let s = as_str(arr[i])
         if s != "" {
@@ -282,18 +281,18 @@ fun _strings(j: JsonValue) -> List<String> {
     return out
 }
 
-fun _with_missing(allow: List<String>, rules: List<String>) -> List<String> {
-    let out: List<String> = []
-    let i = 0
+fun _with_missing(allow: list[str], rules: list[str]) -> list[str] {
+    let out: list[str] = []
+    var i = 0
     while i < allow.len() {
-        if !_contains(out, allow[i]) {
+        if not _contains(out, allow[i]) {
             out.push(allow[i])
         }
         i = i + 1
     }
-    let r = 0
+    var r = 0
     while r < rules.len() {
-        if !_contains(out, rules[r]) {
+        if not _contains(out, rules[r]) {
             out.push(rules[r])
         }
         r = r + 1
@@ -301,11 +300,11 @@ fun _with_missing(allow: List<String>, rules: List<String>) -> List<String> {
     return out
 }
 
-fun _without(allow: List<String>, rules: List<String>) -> List<String> {
-    let out: List<String> = []
-    let i = 0
+fun _without(allow: list[str], rules: list[str]) -> list[str] {
+    let out: list[str] = []
+    var i = 0
     while i < allow.len() {
-        if !_contains(rules, allow[i]) && !_contains(out, allow[i]) {
+        if not _contains(rules, allow[i]) and not _contains(out, allow[i]) {
             out.push(allow[i])
         }
         i = i + 1
@@ -313,8 +312,8 @@ fun _without(allow: List<String>, rules: List<String>) -> List<String> {
     return out
 }
 
-fun _contains(xs: List<String>, x: String) -> Bool {
-    let i = 0
+fun _contains(xs: list[str], x: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == x {
             return true
@@ -324,7 +323,7 @@ fun _contains(xs: List<String>, x: String) -> Bool {
     return false
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

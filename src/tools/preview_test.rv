@@ -1,11 +1,11 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import std/fs { write, remove_file }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./preview" { change_preview }
+import std.string
+from std.test import assert_eq_str, assert_true
+from std.fs import write, remove_file
+from "github.com/martian56/aviary/message" import ToolCall
+from "./preview" import change_preview
 
-fun call(name: String, args: String) -> ToolCall {
-    return ToolCall { id: "1", name, arguments: args }
+fun call(name: str, args: str) -> ToolCall {
+    return ToolCall(id: "1", name: name, arguments: args)
 }
 
 fun test_write_preview_diffs_against_the_current_file() {
@@ -24,7 +24,7 @@ fun test_write_preview_of_a_new_file_is_all_additions() {
         call("write_file", "{\"path\":\"_rook_pv_new.txt\",\"content\":\"fresh\"}"),
     )
     assert_true(p.contains("+ fresh"))
-    assert_true(!p.contains("- "))
+    assert_true(not p.contains("- "))
 }
 
 fun test_edit_preview_shows_the_replacement_in_place() {

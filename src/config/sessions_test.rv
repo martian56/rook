@@ -1,24 +1,24 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import std/fs { write, create_dir_all, remove_file, remove_dir }
-import std/env { get_env, has_env }
-import "./sessions" { SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from, session_cwd, same_dir }
-import "github.com/martian56/aviary/message" { Message, ToolCall, role_str }
-import "../ui/transcript" { Entry }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from std.fs import write, create_dir_all, remove_file, remove_dir
+from std.env import get_env, has_env
+from "./sessions" import SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from, session_cwd, same_dir
+from "github.com/martian56/aviary/message" import Message, ToolCall, role_str
+from "../ui/transcript" import Entry
 
-fun _no_msgs() -> List<Message> {
-    let m: List<Message> = []
+fun _no_msgs() -> list[Message] {
+    let m: list[Message] = []
     return m
 }
 
-fun _entry_tag(e: Entry) -> String {
+fun _entry_tag(e: Entry) -> str {
     return match e {
-        UserMsg(t) -> "u:${t}",
-        BotMsg(t) -> "b:${t}",
-        ToolMsg(n, r) -> "t:${n}:${r}",
-        Notice(t) -> "n:${t}",
-        AgentHeader(n, s) -> "h:${n}:${s}",
-        AgentTool(a, n, r) -> "a:${a}:${n}:${r}",
+        case UserMsg(t) { "u:${t}" }
+        case BotMsg(t) { "b:${t}" }
+        case ToolMsg(n, r) { "t:${n}:${r}" }
+        case Notice(t) { "n:${t}" }
+        case AgentHeader(n, s) { "h:${n}:${s}" }
+        case AgentTool(a, n, r) { "a:${a}:${n}:${r}" }
     }
 }
 
@@ -73,7 +73,7 @@ fun test_title_uses_the_first_user_message() {
 
 fun test_empty_session_is_not_saved() {
     let id = new_session_id()
-    let none: List<Entry> = []
+    let none: list[Entry] = []
     assert_eq_str(save_session(id, "m", none, _no_msgs(), 0, 0), "")
     assert_true(_find(list_sessions(), id).id != id)
 }
@@ -95,7 +95,7 @@ fun test_unknown_id_loads_empty() {
 fun test_model_history_round_trips() {
     let id = new_session_id()
     let entries = [Entry.UserMsg("read x"), Entry.BotMsg("done")]
-    let call = ToolCall { id: "c1", name: "read_file", arguments: "{\"path\":\"x\"}" }
+    let call = ToolCall(id: "c1", name: "read_file", arguments: "{\"path\":\"x\"}")
     let msgs = [
         Message.user("read x"),
         Message.assistant_calls("reading it", [call]),
@@ -217,22 +217,22 @@ fun test_session_list_reports_directory_errors() {
     return
 }
 
-fun _find(xs: List<SessionMeta>, id: String) -> SessionMeta {
-    let i = 0
+fun _find(xs: list[SessionMeta], id: str) -> SessionMeta {
+    var i = 0
     while i < xs.len() {
         if xs[i].id == id {
             return xs[i]
         }
         i = i + 1
     }
-    return SessionMeta { id: "", created: 0, model: "", title: "", cwd: "" }
+    return SessionMeta(id: "", created: 0, model: "", title: "", cwd: "")
 }
 
 fun test_saved_sessions_record_their_directory() {
     let root = "_rook_session_cwd_${new_session_id()}"
     create_dir_all(root)
     let id = new_session_id()
-    let entries: List<Entry> = [Entry.UserMsg("hello from here")]
+    let entries: list[Entry] = [Entry.UserMsg("hello from here")]
     assert_eq_str(save_session_to(root, id, "m", entries, _no_msgs(), 0, 0), "")
     let listed = list_sessions_from(root)
     let meta = _find(listed.sessions, id)
@@ -246,9 +246,9 @@ fun test_saved_sessions_record_their_directory() {
 fun test_same_dir_matching() {
     assert_true(same_dir(session_cwd(), session_cwd()))
     // Unrecorded directories (old sessions) never match anything.
-    assert_true(!same_dir("", session_cwd()))
-    assert_true(!same_dir(session_cwd(), ""))
-    assert_true(!same_dir("/somewhere/else", session_cwd()))
+    assert_true(not same_dir("", session_cwd()))
+    assert_true(not same_dir(session_cwd(), ""))
+    assert_true(not same_dir("/somewhere/else", session_cwd()))
 }
 
 fun test_listing_uses_the_metadata_sidecar() {
@@ -284,7 +284,7 @@ fun test_delete_removes_the_session_and_its_sidecar() {
     return
 }
 
-fun _cleanup(id: String) {
+fun _cleanup(id: str) {
     let home = _home()
     if home == "" {
         return
@@ -293,7 +293,7 @@ fun _cleanup(id: String) {
     return
 }
 
-fun _home() -> String {
+fun _home() -> str {
     if has_env("HOME") {
         let h = get_env("HOME")
         if h != "" {

@@ -2,25 +2,25 @@
 // against the file as it is right now: shown in the approval prompt before
 // anything runs, and in the transcript after. Other tools have no preview.
 
-import std/string
-import std/fs { read, exists }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./args" { arg }
-import "./git" { git_commit_preview }
-import "./multiedit" { apply_edits, parse_edits }
-import "./paths" { resolve_path }
-import "./web" { web_fetch_approval_detail }
-import "../ui/diff" { unified }
+import std.string
+from std.fs import read, exists
+from "github.com/martian56/aviary/message" import ToolCall
+from "./args" import arg
+from "./git" import git_commit_preview
+from "./multiedit" import apply_edits, parse_edits
+from "./paths" import resolve_path
+from "./web" import web_fetch_approval_detail
+from "../ui/diff" import unified
 
 // The unified diff for a mutating file call, or the message for a commit,
 // "" for anything else (or when the change is a no-op).
-fun change_preview(call: ToolCall) -> String {
+fun change_preview(call: ToolCall) -> str {
     if call.name == "git_commit" {
         return git_commit_preview(arg(call.arguments, "message"))
     }
     if call.name == "write_file" {
         let r = resolve_path(arg(call.arguments, "path"), "")
-        if !r.ok {
+        if not r.ok {
             return r.error
         }
         let old = _read_opt(r.path)
@@ -28,12 +28,12 @@ fun change_preview(call: ToolCall) -> String {
     }
     if call.name == "edit_file" {
         let r = resolve_path(arg(call.arguments, "path"), "")
-        if !r.ok {
+        if not r.ok {
             return r.error
         }
         let old = _read_opt(r.path)
         let from = arg(call.arguments, "old_text")
-        if old == "" || from == "" {
+        if old == "" or from == "" {
             return ""
         }
         let at = old.index_of(from)
@@ -46,12 +46,12 @@ fun change_preview(call: ToolCall) -> String {
     }
     if call.name == "multi_edit" {
         let r = resolve_path(arg(call.arguments, "path"), "")
-        if !r.ok {
+        if not r.ok {
             return r.error
         }
         let old = _read_opt(r.path)
         let outcome = apply_edits(old, parse_edits(call.arguments))
-        if !outcome.ok {
+        if not outcome.ok {
             return ""
         }
         return unified(old, outcome.text)
@@ -64,19 +64,19 @@ fun change_preview(call: ToolCall) -> String {
 
 // Append a successful mutation preview to the tool result. Errors stay short
 // because a failed mutation did not apply the proposed change.
-fun append_preview(result: String, preview: String) -> String {
-    if preview == "" || result.starts_with("error:") {
+fun append_preview(result: str, preview: str) -> str {
+    if preview == "" or result.starts_with("error:") {
         return result
     }
     return "${result}\n${preview}"
 }
 
-fun _read_opt(path: String) -> String {
-    if path == "" || !exists(path) {
+fun _read_opt(path: str) -> str {
+    if path == "" or not exists(path) {
         return ""
     }
     return match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
 }

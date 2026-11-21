@@ -4,68 +4,68 @@
 // unknown model reports no price, and the UI then shows tokens without a
 // dollar figure. These are estimates for at-a-glance spend, not billing.
 
-import std/string
+import std.string
 
-struct Price {
-    known: Bool,
+class Price {
+    known: bool
     // Micro-dollars ($1e-6) per 1000 tokens, input and output.
-    in_1k: Int,
-    out_1k: Int,
+    in_1k: int
+    out_1k: int
 }
 
 // Dollars-per-million to micro-dollars-per-1000: multiply by 1000. So a
 // $3 / 1M model is 3000 here.
-struct Rate {
-    needle: String,
-    in_1k: Int,
-    out_1k: Int,
+class Rate {
+    needle: str
+    in_1k: int
+    out_1k: int
 }
 
 // Matched by the first needle contained in the model id, most specific
 // first. The id is a "provider/model" string, so matching on the model
 // name works across providers (openrouter/anthropic/claude-sonnet-5 and
 // anthropic/claude-sonnet-5 both hit "claude-sonnet-5").
-fun _rates() -> List<Rate> {
+fun _rates() -> list[Rate] {
     return [
-        Rate { needle: "claude-haiku", in_1k: 800, out_1k: 4000 },
-        Rate { needle: "claude-sonnet", in_1k: 3000, out_1k: 15000 },
-        Rate { needle: "claude-opus", in_1k: 15000, out_1k: 75000 },
-        Rate { needle: "claude-fable", in_1k: 15000, out_1k: 75000 },
-        Rate { needle: "gpt-5", in_1k: 5000, out_1k: 15000 },
-        Rate { needle: "gpt-4o-mini", in_1k: 150, out_1k: 600 },
-        Rate { needle: "gpt-4o", in_1k: 2500, out_1k: 10000 },
-        Rate { needle: "gemini-3.1-flash", in_1k: 300, out_1k: 2500 },
-        Rate { needle: "gemini-3.1-pro", in_1k: 2500, out_1k: 10000 },
-        Rate { needle: "deepseek", in_1k: 500, out_1k: 1500 },
-        Rate { needle: "kimi", in_1k: 600, out_1k: 2500 },
-        Rate { needle: "minimax", in_1k: 400, out_1k: 1600 },
-        Rate { needle: "glm", in_1k: 500, out_1k: 2000 },
-        Rate { needle: "llama-5", in_1k: 500, out_1k: 1500 },
-        Rate { needle: "qwen", in_1k: 2500, out_1k: 7500 },
-        Rate { needle: "grok-4", in_1k: 3000, out_1k: 15000 },
-        Rate { needle: "mistral-large", in_1k: 2000, out_1k: 6000 },
+        Rate(needle: "claude-haiku", in_1k: 800, out_1k: 4000),
+        Rate(needle: "claude-sonnet", in_1k: 3000, out_1k: 15000),
+        Rate(needle: "claude-opus", in_1k: 15000, out_1k: 75000),
+        Rate(needle: "claude-fable", in_1k: 15000, out_1k: 75000),
+        Rate(needle: "gpt-5", in_1k: 5000, out_1k: 15000),
+        Rate(needle: "gpt-4o-mini", in_1k: 150, out_1k: 600),
+        Rate(needle: "gpt-4o", in_1k: 2500, out_1k: 10000),
+        Rate(needle: "gemini-3.1-flash", in_1k: 300, out_1k: 2500),
+        Rate(needle: "gemini-3.1-pro", in_1k: 2500, out_1k: 10000),
+        Rate(needle: "deepseek", in_1k: 500, out_1k: 1500),
+        Rate(needle: "kimi", in_1k: 600, out_1k: 2500),
+        Rate(needle: "minimax", in_1k: 400, out_1k: 1600),
+        Rate(needle: "glm", in_1k: 500, out_1k: 2000),
+        Rate(needle: "llama-5", in_1k: 500, out_1k: 1500),
+        Rate(needle: "qwen", in_1k: 2500, out_1k: 7500),
+        Rate(needle: "grok-4", in_1k: 3000, out_1k: 15000),
+        Rate(needle: "mistral-large", in_1k: 2000, out_1k: 6000),
     ]
 }
 
 // Built once at startup, not rebuilt on every status-bar draw. The table is
 // constant, and price_for runs on the per-frame render path.
-let RATES: List<Rate> = _rates()
+let RATES: list[Rate] = _rates()
 
-fun price_for(model: String) -> Price {
+fun price_for(model: str) -> Price {
     let rates = RATES
-    let i = 0
+    var i = 0
     while i < rates.len() {
         if model.contains(rates[i].needle) {
-            return Price { known: true, in_1k: rates[i].in_1k, out_1k: rates[i].out_1k }
+            return Price(known: true, in_1k: rates[i].in_1k, out_1k: rates[i].out_1k)
         }
         i = i + 1
     }
-    return Price { known: false, in_1k: 0, out_1k: 0 }
+    return Price(known: false, in_1k: 0, out_1k: 0)
 }
 
 // Cost in micro-dollars for `prompt` input and `completion` output tokens
 // under `model`, or -1 when the model has no known price.
-fun cost_micros(model: String, prompt: Int, completion: Int) -> Int {
+fun cost_micros(model: str, prompt: int, completion: int) -> int {
     return cost_micros_cached(model, prompt, completion, 0, 0)
 }
 
@@ -75,17 +75,17 @@ fun cost_micros(model: String, prompt: Int, completion: Int) -> Int {
 // providers report it); the uncached remainder is charged at the full rate.
 // Scaled to one division so the tenth and the 1.25 stay in integers.
 fun cost_micros_cached(
-    model: String,
-    prompt: Int,
-    completion: Int,
-    cache_read: Int,
-    cache_write: Int,
-) -> Int {
+    model: str,
+    prompt: int,
+    completion: int,
+    cache_read: int,
+    cache_write: int,
+) -> int {
     let p = price_for(model)
-    if !p.known {
+    if not p.known {
         return 0 - 1
     }
-    let uncached = prompt - cache_read - cache_write
+    var uncached = prompt - cache_read - cache_write
     if uncached < 0 {
         uncached = 0
     }
@@ -94,7 +94,7 @@ fun cost_micros_cached(
 }
 
 // Micro-dollars as "$0.0042" (four decimal places, rounded).
-fun format_usd(micros: Int) -> String {
+fun format_usd(micros: int) -> str {
     // Ten-thousandths of a dollar, rounded.
     let tt = (micros + 50) / 100
     let whole = tt / 10000
@@ -103,7 +103,7 @@ fun format_usd(micros: Int) -> String {
 }
 
 // A compact token count: "1.2k" past a thousand, else the raw number.
-fun format_tokens(n: Int) -> String {
+fun format_tokens(n: int) -> str {
     if n < 1000 {
         return "${n}"
     }
@@ -117,12 +117,12 @@ fun format_tokens(n: Int) -> String {
 // prompt-cache reads and writes, and when a meaningful share of the input was
 // cached the label says so, making the caching win visible.
 fun usage_label(
-    model: String,
-    prompt: Int,
-    completion: Int,
-    cache_read: Int,
-    cache_write: Int,
-) -> String {
+    model: str,
+    prompt: int,
+    completion: int,
+    cache_read: int,
+    cache_write: int,
+) -> str {
     let total = prompt + completion
     if total == 0 {
         return ""
@@ -132,7 +132,7 @@ fun usage_label(
     if micros < 0 {
         return toks
     }
-    let label = "${toks} · ${format_usd(micros)}"
+    var label = "${toks} · ${format_usd(micros)}"
     if prompt > 0 {
         let pct = cache_read * 100 / prompt
         if pct >= 1 {
@@ -142,8 +142,8 @@ fun usage_label(
     return label
 }
 
-fun _pad4(n: Int) -> String {
-    let s = "${n}"
+fun _pad4(n: int) -> str {
+    var s = "${n}"
     while s.length() < 4 {
         s = "0".concat(s)
     }

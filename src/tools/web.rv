@@ -4,20 +4,20 @@
 // The parsing (html_to_text, parse_ddg) is pure so it is tested directly;
 // only the network call itself is untested.
 
-import std/string
-import std/http { request_with_timeout, HttpResponse }
+import std.string
+from std.http import request_with_timeout, HttpResponse
 
-const TIMEOUT_MS: Int = 15000
-const MAX_TEXT: Int = 6000
-const MAX_RESULTS: Int = 8
+let TIMEOUT_MS: int = 15000
+let MAX_TEXT: int = 6000
+let MAX_RESULTS: int = 8
 
 // The URL web_fetch will request, after matching web_fetch's input rules.
-fun web_fetch_url(url: String) -> String {
+fun web_fetch_url(url: str) -> str {
     let u = url.trim()
     if u == "" {
         return ""
     }
-    if !u.starts_with("http://") && !u.starts_with("https://") {
+    if not u.starts_with("http://") and not u.starts_with("https://") {
         return "https://${u}"
     }
     return u
@@ -26,12 +26,12 @@ fun web_fetch_url(url: String) -> String {
 // Whether fetching this URL needs user approval. Hostnames are gated so a DNS
 // answer cannot change between approval and the actual fetch; public IP
 // literals stay low-friction.
-fun web_fetch_needs_approval(url: String) -> Bool {
+fun web_fetch_needs_approval(url: str) -> bool {
     return web_fetch_approval_detail(url) != ""
 }
 
 // Detail shown under the approval prompt for sensitive web_fetch targets.
-fun web_fetch_approval_detail(url: String) -> String {
+fun web_fetch_approval_detail(url: str) -> str {
     let u = web_fetch_url(url)
     if u == "" {
         return ""
@@ -54,20 +54,20 @@ fun web_fetch_approval_detail(url: String) -> String {
 
 // Fetch `url` and return its readable text, truncated. HTML is stripped to
 // text; other bodies come back as-is.
-fun web_fetch(url: String) -> String {
+fun web_fetch(url: str) -> str {
     let u = web_fetch_url(url)
     if u == "" {
         return "error: web_fetch needs a url"
     }
     let headers = "User-Agent: rook/1.0\nAccept: text/html,text/plain"
     return match request_with_timeout("GET", u, "", headers, TIMEOUT_MS) {
-        Ok(resp) -> _readable(resp),
-        Err(e) -> "error: could not fetch ${u}: ${e.message}",
+        case Ok(resp) { _readable(resp) }
+        case Err(e) { "error: could not fetch ${u}: ${e.message}" }
     }
 }
 
-fun _url_host(url: String) -> String {
-    let rest = url.trim()
+fun _url_host(url: str) -> str {
+    var rest = url.trim()
     let scheme = rest.index_of("://")
     if scheme >= 0 {
         rest = rest.substring(scheme + 3, rest.length())
@@ -98,12 +98,12 @@ fun _url_host(url: String) -> String {
     return _strip_trailing_dots(rest.to_lower())
 }
 
-fun _first_url_separator(s: String) -> Int {
-    let best = 0 - 1
-    let i = 0
+fun _first_url_separator(s: str) -> int {
+    var best = 0 - 1
+    var i = 0
     while i < s.length() {
         let b = s.byte_at(i)
-        if b == 47 || b == 63 || b == 35 {
+        if b == 47 or b == 63 or b == 35 {
             if best < 0 {
                 best = i
             }
@@ -113,9 +113,9 @@ fun _first_url_separator(s: String) -> Int {
     return best
 }
 
-fun _last_byte(s: String, needle: Int) -> Int {
-    let last = 0 - 1
-    let i = 0
+fun _last_byte(s: str, needle: int) -> int {
+    var last = 0 - 1
+    var i = 0
     while i < s.length() {
         if s.byte_at(i) == needle {
             last = i
@@ -125,23 +125,23 @@ fun _last_byte(s: String, needle: Int) -> Int {
     return last
 }
 
-fun _strip_trailing_dots(host: String) -> String {
-    let h = host.trim()
-    while h.ends_with(".") && h.length() > 0 {
+fun _strip_trailing_dots(host: str) -> str {
+    var h = host.trim()
+    while h.ends_with(".") and h.length() > 0 {
         h = h.substring(0, h.length() - 1)
     }
     return h
 }
 
-fun _sensitive_host_kind(host: String) -> String {
+fun _sensitive_host_kind(host: str) -> str {
     let h = host.to_lower()
     if h == "" {
         return ""
     }
-    if h == "localhost" || h.ends_with(".localhost") {
+    if h == "localhost" or h.ends_with(".localhost") {
         return "localhost"
     }
-    if h == "metadata.google.internal" || h.ends_with(".metadata.google.internal") {
+    if h == "metadata.google.internal" or h.ends_with(".metadata.google.internal") {
         return "metadata hostname"
     }
     let ipv4 = _sensitive_ipv4_kind(h)
@@ -152,13 +152,13 @@ fun _sensitive_host_kind(host: String) -> String {
     if ipv6 != "" {
         return ipv6
     }
-    if !_looks_like_ip_literal(h) {
+    if not _looks_like_ip_literal(h) {
         return "hostname"
     }
     return ""
 }
 
-fun _looks_like_ip_literal(host: String) -> Bool {
+fun _looks_like_ip_literal(host: str) -> bool {
     if host.contains(":") {
         return true
     }
@@ -169,7 +169,7 @@ fun _looks_like_ip_literal(host: String) -> Bool {
     if parts.len() != 4 {
         return false
     }
-    let i = 0
+    var i = 0
     while i < parts.len() {
         if _ipv4_octet(parts[i]) < 0 {
             return false
@@ -179,7 +179,7 @@ fun _looks_like_ip_literal(host: String) -> Bool {
     return true
 }
 
-fun _sensitive_ipv4_kind(host: String) -> String {
+fun _sensitive_ipv4_kind(host: str) -> str {
     let parts = host.split(".")
     if parts.len() == 1 {
         let n = _ipv4_uint(parts[0])
@@ -199,13 +199,13 @@ fun _sensitive_ipv4_kind(host: String) -> String {
     let b = _ipv4_octet(parts[1])
     let c = _ipv4_octet(parts[2])
     let d = _ipv4_octet(parts[3])
-    if a < 0 || b < 0 || c < 0 || d < 0 {
+    if a < 0 or b < 0 or c < 0 or d < 0 {
         return ""
     }
     return _sensitive_ipv4_octets(a, b, c, d)
 }
 
-fun _sensitive_ipv4_octets(a: Int, b: Int, c: Int, d: Int) -> String {
+fun _sensitive_ipv4_octets(a: int, b: int, c: int, d: int) -> str {
     if a == 0 {
         return "local IPv4"
     }
@@ -215,50 +215,50 @@ fun _sensitive_ipv4_octets(a: Int, b: Int, c: Int, d: Int) -> String {
     if a == 127 {
         return "loopback IPv4"
     }
-    if a == 169 && b == 254 {
+    if a == 169 and b == 254 {
         return "link-local IPv4"
     }
-    if a == 172 && b >= 16 && b <= 31 {
+    if a == 172 and b >= 16 and b <= 31 {
         return "private IPv4"
     }
-    if a == 192 && b == 168 {
+    if a == 192 and b == 168 {
         return "private IPv4"
     }
-    if a == 100 && b >= 64 && b <= 127 {
+    if a == 100 and b >= 64 and b <= 127 {
         return "shared-address IPv4"
     }
-    if a == 198 && (b == 18 || b == 19) {
+    if a == 198 and (b == 18 or b == 19) {
         return "benchmark IPv4"
     }
     return ""
 }
 
-fun _ipv4_octet(s: String) -> Int {
+fun _ipv4_octet(s: str) -> int {
     return _ipv4_piece(s, 255)
 }
 
-fun _ipv4_uint(s: String) -> Int {
+fun _ipv4_uint(s: str) -> int {
     return _ipv4_piece(s, 4294967295)
 }
 
-fun _ipv4_piece(s: String, max: Int) -> Int {
+fun _ipv4_piece(s: str, max: int) -> int {
     let t = s.trim()
-    if t == "" || !_all_digits(t) {
+    if t == "" or not _all_digits(t) {
         return 0 - 1
     }
-    let base = 10
-    if t.length() > 1 && t.starts_with("0") {
+    var base = 10
+    if t.length() > 1 and t.starts_with("0") {
         base = 8
     }
     return _uint_base(t, base, max)
 }
 
-fun _uint_base(s: String, base: Int, max: Int) -> Int {
-    let n = 0
-    let i = 0
+fun _uint_base(s: str, base: int, max: int) -> int {
+    var n = 0
+    var i = 0
     while i < s.length() {
         let v = s.byte_at(i) - 48
-        if v < 0 || v >= base {
+        if v < 0 or v >= base {
             return 0 - 1
         }
         if n > (max - v) / base {
@@ -270,9 +270,9 @@ fun _uint_base(s: String, base: Int, max: Int) -> Int {
     return n
 }
 
-fun _sensitive_ipv6_kind(host: String) -> String {
+fun _sensitive_ipv6_kind(host: str) -> str {
     let h = _strip_ipv6_zone(host)
-    if h == "" || !h.contains(":") {
+    if h == "" or not h.contains(":") {
         return ""
     }
     let expanded = _expand_ipv6(h)
@@ -280,7 +280,7 @@ fun _sensitive_ipv6_kind(host: String) -> String {
         if _all_zero_hextets(expanded, 0, 8) {
             return "unspecified IPv6"
         }
-        if _all_zero_hextets(expanded, 0, 7) && _hex_int(expanded[7]) == 1 {
+        if _all_zero_hextets(expanded, 0, 7) and _hex_int(expanded[7]) == 1 {
             return "loopback IPv6"
         }
         let embedded = _embedded_ipv4_kind(expanded)
@@ -288,18 +288,18 @@ fun _sensitive_ipv6_kind(host: String) -> String {
             return "IPv6-mapped ${embedded}"
         }
         let n = _hex_int(expanded[0])
-        if n >= 64512 && n <= 65023 {
+        if n >= 64512 and n <= 65023 {
             return "private IPv6"
         }
-        if n >= 65152 && n <= 65215 {
+        if n >= 65152 and n <= 65215 {
             return "link-local IPv6"
         }
         return ""
     }
-    if h == "::" || _is_expanded_unspecified_ipv6(h) {
+    if h == "::" or _is_expanded_unspecified_ipv6(h) {
         return "unspecified IPv6"
     }
-    if h == "::1" || _is_expanded_loopback_ipv6(h) {
+    if h == "::1" or _is_expanded_loopback_ipv6(h) {
         return "loopback IPv6"
     }
     if h.contains(".") {
@@ -311,26 +311,26 @@ fun _sensitive_ipv6_kind(host: String) -> String {
     }
     let first = _first_hextet(h)
     let n = _hex_int(first)
-    if n >= 64512 && n <= 65023 {
+    if n >= 64512 and n <= 65023 {
         return "private IPv6"
     }
-    if n >= 65152 && n <= 65215 {
+    if n >= 65152 and n <= 65215 {
         return "link-local IPv6"
     }
     return ""
 }
 
-fun _expand_ipv6(host: String) -> List<String> {
-    let empty: List<String> = []
+fun _expand_ipv6(host: str) -> list[str] {
+    let empty: list[str] = []
     if host.contains(".") {
         return empty
     }
-    let out: List<String> = []
+    var out: list[str] = []
     let dbl = host.index_of("::")
     if dbl >= 0 {
         let before = host.substring(0, dbl)
         let after = host.substring(dbl + 2, host.length())
-        if after.index_of("::") >= 0 || before.ends_with(":") || after.starts_with(":") {
+        if after.index_of("::") >= 0 or before.ends_with(":") or after.starts_with(":") {
             return empty
         }
         let left = _hextets(before)
@@ -340,7 +340,7 @@ fun _expand_ipv6(host: String) -> List<String> {
             return empty
         }
         _push_all(out, left)
-        let z = 0
+        var z = 0
         while z < zeros {
             out.push("0")
             z = z + 1
@@ -352,22 +352,22 @@ fun _expand_ipv6(host: String) -> List<String> {
             return empty
         }
     }
-    if out.len() != 8 || !_valid_hextets(out) {
+    if out.len() != 8 or not _valid_hextets(out) {
         return empty
     }
     return out
 }
 
-fun _hextets(s: String) -> List<String> {
-    let out: List<String> = []
+fun _hextets(s: str) -> list[str] {
+    let out: list[str] = []
     if s == "" {
         return out
     }
     let parts = s.split(":")
-    let i = 0
+    var i = 0
     while i < parts.len() {
         if parts[i] == "" {
-            let empty: List<String> = []
+            let empty: list[str] = []
             return empty
         }
         out.push(parts[i])
@@ -376,8 +376,8 @@ fun _hextets(s: String) -> List<String> {
     return out
 }
 
-fun _push_all(out: List<String>, xs: List<String>) {
-    let i = 0
+fun _push_all(out: list[str], xs: list[str]) {
+    var i = 0
     while i < xs.len() {
         out.push(xs[i])
         i = i + 1
@@ -385,8 +385,8 @@ fun _push_all(out: List<String>, xs: List<String>) {
     return
 }
 
-fun _valid_hextets(parts: List<String>) -> Bool {
-    let i = 0
+fun _valid_hextets(parts: list[str]) -> bool {
+    var i = 0
     while i < parts.len() {
         if _hex_int(parts[i]) < 0 {
             return false
@@ -396,8 +396,8 @@ fun _valid_hextets(parts: List<String>) -> Bool {
     return true
 }
 
-fun _all_zero_hextets(parts: List<String>, start: Int, end: Int) -> Bool {
-    let i = start
+fun _all_zero_hextets(parts: list[str], start: int, end: int) -> bool {
+    var i = start
     while i < end {
         if _hex_int(parts[i]) != 0 {
             return false
@@ -407,17 +407,17 @@ fun _all_zero_hextets(parts: List<String>, start: Int, end: Int) -> Bool {
     return true
 }
 
-fun _embedded_ipv4_kind(parts: List<String>) -> String {
-    if !_all_zero_hextets(parts, 0, 5) {
+fun _embedded_ipv4_kind(parts: list[str]) -> str {
+    if not _all_zero_hextets(parts, 0, 5) {
         return ""
     }
     let marker = _hex_int(parts[5])
-    if marker != 65535 && marker != 0 {
+    if marker != 65535 and marker != 0 {
         return ""
     }
     let hi = _hex_int(parts[6])
     let lo = _hex_int(parts[7])
-    if hi < 0 || lo < 0 {
+    if hi < 0 or lo < 0 {
         return ""
     }
     let a = hi / 256
@@ -427,7 +427,7 @@ fun _embedded_ipv4_kind(parts: List<String>) -> String {
     return _sensitive_ipv4_octets(a, b, c, d)
 }
 
-fun _strip_ipv6_zone(host: String) -> String {
+fun _strip_ipv6_zone(host: str) -> str {
     let pct = host.index_of("%")
     if pct < 0 {
         return host
@@ -435,7 +435,7 @@ fun _strip_ipv6_zone(host: String) -> String {
     return host.substring(0, pct)
 }
 
-fun _first_hextet(host: String) -> String {
+fun _first_hextet(host: str) -> str {
     let colon = host.index_of(":")
     if colon < 0 {
         return ""
@@ -443,9 +443,9 @@ fun _first_hextet(host: String) -> String {
     return host.substring(0, colon)
 }
 
-fun _after_last_colon(host: String) -> String {
-    let last = 0 - 1
-    let i = 0
+fun _after_last_colon(host: str) -> str {
+    var last = 0 - 1
+    var i = 0
     while i < host.length() {
         if host.byte_at(i) == 58 {
             last = i
@@ -458,14 +458,14 @@ fun _after_last_colon(host: String) -> String {
     return host.substring(last + 1, host.length())
 }
 
-fun _is_expanded_loopback_ipv6(host: String) -> Bool {
+fun _is_expanded_loopback_ipv6(host: str) -> bool {
     let parts = host.split(":")
     if parts.len() != 8 {
         return false
     }
-    let i = 0
+    var i = 0
     while i < 7 {
-        if !_is_zero_hextet(parts[i]) {
+        if not _is_zero_hextet(parts[i]) {
             return false
         }
         i = i + 1
@@ -473,14 +473,14 @@ fun _is_expanded_loopback_ipv6(host: String) -> Bool {
     return _hex_int(parts[7]) == 1
 }
 
-fun _is_expanded_unspecified_ipv6(host: String) -> Bool {
+fun _is_expanded_unspecified_ipv6(host: str) -> bool {
     let parts = host.split(":")
     if parts.len() != 8 {
         return false
     }
-    let i = 0
+    var i = 0
     while i < parts.len() {
-        if !_is_zero_hextet(parts[i]) {
+        if not _is_zero_hextet(parts[i]) {
             return false
         }
         i = i + 1
@@ -488,11 +488,11 @@ fun _is_expanded_unspecified_ipv6(host: String) -> Bool {
     return true
 }
 
-fun _is_zero_hextet(s: String) -> Bool {
+fun _is_zero_hextet(s: str) -> bool {
     if s == "" {
         return true
     }
-    let i = 0
+    var i = 0
     while i < s.length() {
         if s.byte_at(i) != 48 {
             return false
@@ -502,13 +502,13 @@ fun _is_zero_hextet(s: String) -> Bool {
     return true
 }
 
-fun _hex_int(s: String) -> Int {
+fun _hex_int(s: str) -> int {
     let t = s.trim()
-    if t == "" || t.length() > 4 {
+    if t == "" or t.length() > 4 {
         return 0 - 1
     }
-    let n = 0
-    let i = 0
+    var n = 0
+    var i = 0
     while i < t.length() {
         let v = _hexval(t.byte_at(i))
         if v < 0 {
@@ -520,11 +520,11 @@ fun _hex_int(s: String) -> Int {
     return n
 }
 
-fun _all_digits(s: String) -> Bool {
-    let i = 0
+fun _all_digits(s: str) -> bool {
+    var i = 0
     while i < s.length() {
         let b = s.byte_at(i)
-        if b < 48 || b > 57 {
+        if b < 48 or b > 57 {
             return false
         }
         i = i + 1
@@ -532,11 +532,11 @@ fun _all_digits(s: String) -> Bool {
     return true
 }
 
-fun _readable(resp: HttpResponse) -> String {
+fun _readable(resp: HttpResponse) -> str {
     if resp.status_code >= 400 {
         return "error: ${resp.status_code} ${resp.status_text}"
     }
-    let body = resp.body
+    var body = resp.body
     if _looks_like_html(body) {
         body = html_to_text(body)
     }
@@ -551,7 +551,7 @@ fun _readable(resp: HttpResponse) -> String {
 }
 
 // Search the web and list the top results (title and link).
-fun web_search(query: String) -> String {
+fun web_search(query: str) -> str {
     let q = query.trim()
     if q == "" {
         return "error: web_search needs a query"
@@ -559,22 +559,16 @@ fun web_search(query: String) -> String {
     let url = "https://html.duckduckgo.com/html/?q=${_url_encode(q)}"
     let headers = "User-Agent: rook/1.0\nAccept: text/html"
     return match request_with_timeout("GET", url, "", headers, TIMEOUT_MS) {
-        Ok(resp) -> {
-            if resp.status_code >= 400 {
-                "error: search returned ${resp.status_code} ${resp.status_text}"
-            } else {
-                parse_ddg(resp.body)
-            }
-        },
-        Err(e) -> "error: could not search: ${e.message}",
+        case Ok(resp) { "error: search returned ${resp.status_code} ${resp.status_text}" if resp.status_code >= 400 else parse_ddg(resp.body) }
+        case Err(e) { "error: could not search: ${e.message}" }
     }
 }
 
 // Strip HTML to readable text: drop script and style blocks, turn block
 // boundaries into newlines, remove the remaining tags, decode the common
 // entities, and collapse whitespace.
-fun html_to_text(html: String) -> String {
-    let s = _remove_block(html, "<script", "</script>")
+fun html_to_text(html: str) -> str {
+    var s = _remove_block(html, "<script", "</script>")
     s = _remove_block(s, "<style", "</style>")
     s = s.replace("</p>", "\n").replace("</div>", "\n").replace("</li>", "\n")
     s = s.replace("</h1>", "\n").replace("</h2>", "\n").replace("</h3>", "\n")
@@ -588,9 +582,9 @@ fun html_to_text(html: String) -> String {
 }
 
 // Parse DuckDuckGo HTML results into a numbered list of title and link.
-fun parse_ddg(html: String) -> String {
-    let out: List<String> = []
-    let s = html
+fun parse_ddg(html: str) -> str {
+    let out: list[str] = []
+    var s = html
     while out.len() < MAX_RESULTS {
         let m = s.index_of("result__a")
         if m < 0 {
@@ -607,7 +601,7 @@ fun parse_ddg(html: String) -> String {
             break
         }
         let url = _ddg_url(after.substring(0, end))
-        let title = ""
+        var title = ""
         let gt = after.index_of(">")
         if gt >= 0 {
             let t = after.substring(gt + 1, after.length())
@@ -625,8 +619,8 @@ fun parse_ddg(html: String) -> String {
     if out.len() == 0 {
         return "(no results)"
     }
-    let text = ""
-    let i = 0
+    var text = ""
+    var i = 0
     while i < out.len() {
         if i > 0 {
             text = text.concat("\n\n")
@@ -640,11 +634,11 @@ fun parse_ddg(html: String) -> String {
 // A DuckDuckGo result href is often a redirect //duckduckgo.com/l/?uddg=<encoded>;
 // pull the real URL out and decode it. A plain href is returned as-is, with
 // a scheme added to a protocol-relative one.
-fun _ddg_url(raw: String) -> String {
+fun _ddg_url(raw: str) -> str {
     let key = "uddg="
     let at = raw.index_of(key)
     if at >= 0 {
-        let rest = raw.substring(at + key.length(), raw.length())
+        var rest = raw.substring(at + key.length(), raw.length())
         let amp = rest.index_of("&")
         if amp >= 0 {
             rest = rest.substring(0, amp)
@@ -657,20 +651,20 @@ fun _ddg_url(raw: String) -> String {
     return raw
 }
 
-fun _looks_like_html(body: String) -> Bool {
-    let head = body
+fun _looks_like_html(body: str) -> bool {
+    var head = body
     if head.length() > 400 {
         head = head.substring(0, 400)
     }
     let l = head.to_lower()
-    return l.contains("<html") || l.contains("<!doctype html") || l.contains("<body") || l.contains(
+    return l.contains("<html") or l.contains("<!doctype html") or l.contains("<body") or l.contains(
         "<div",
     )
 }
 
-fun _remove_block(s: String, open: String, close: String) -> String {
-    let out = s
-    let guard = 0
+fun _remove_block(s: str, open: str, close: str) -> str {
+    var out = s
+    var guard = 0
     while guard < 1000 {
         let a = out.index_of(open)
         if a < 0 {
@@ -688,10 +682,10 @@ fun _remove_block(s: String, open: String, close: String) -> String {
     return out
 }
 
-fun _strip_tags(s: String) -> String {
-    let out = ""
-    let depth = 0
-    let i = 0
+fun _strip_tags(s: str) -> str {
+    var out = ""
+    var depth = 0
+    var i = 0
     while i < s.length() {
         let c = s.byte_at(i)
         if c == 60 {
@@ -710,8 +704,8 @@ fun _strip_tags(s: String) -> String {
     return out
 }
 
-fun _decode_entities(s: String) -> String {
-    let out = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+fun _decode_entities(s: str) -> str {
+    var out = s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
     out = out.replace("&quot;", "\"").replace("&#39;", "'").replace("&#x27;", "'")
     out = out.replace("&nbsp;", " ").replace("&mdash;", "-").replace("&ndash;", "-")
     return out
@@ -719,10 +713,10 @@ fun _decode_entities(s: String) -> String {
 
 // Collapse whitespace: trim each line, drop empty lines, and squeeze runs of
 // spaces and tabs inside a line to one space.
-fun _collapse(s: String) -> String {
+fun _collapse(s: str) -> str {
     let lines = s.lines()
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < lines.len() {
         let line = _squeeze(lines[i]).trim()
         if line != "" {
@@ -736,15 +730,15 @@ fun _collapse(s: String) -> String {
     return out
 }
 
-fun _squeeze(s: String) -> String {
-    let out = ""
-    let prev_space = false
-    let i = 0
+fun _squeeze(s: str) -> str {
+    var out = ""
+    var prev_space = false
+    var i = 0
     while i < s.length() {
         let c = s.byte_at(i)
-        let is_space = c == 32 || c == 9
+        let is_space = c == 32 or c == 9
         if is_space {
-            if !prev_space {
+            if not prev_space {
                 out = out.concat(" ")
             }
             prev_space = true
@@ -757,9 +751,9 @@ fun _squeeze(s: String) -> String {
     return out
 }
 
-fun _url_encode(s: String) -> String {
-    let out = ""
-    let i = 0
+fun _url_encode(s: str) -> str {
+    var out = ""
+    var i = 0
     while i < s.length() {
         let b = s.byte_at(i)
         if _unreserved(b) {
@@ -772,15 +766,15 @@ fun _url_encode(s: String) -> String {
     return out
 }
 
-fun _url_decode(s: String) -> String {
-    let out = ""
-    let i = 0
+fun _url_decode(s: str) -> str {
+    var out = ""
+    var i = 0
     while i < s.length() {
         let c = s.byte_at(i)
-        if c == 37 && i + 2 < s.length() {
+        if c == 37 and i + 2 < s.length() {
             let hi = _hexval(s.byte_at(i + 1))
             let lo = _hexval(s.byte_at(i + 2))
-            if hi >= 0 && lo >= 0 {
+            if hi >= 0 and lo >= 0 {
                 out = out.concat(__str_from_byte(hi * 16 + lo))
                 i = i + 3
             } else {
@@ -798,34 +792,34 @@ fun _url_decode(s: String) -> String {
     return out
 }
 
-fun _unreserved(b: Int) -> Bool {
-    if b >= 48 && b <= 57 {
+fun _unreserved(b: int) -> bool {
+    if b >= 48 and b <= 57 {
         return true
     }
-    if b >= 65 && b <= 90 {
+    if b >= 65 and b <= 90 {
         return true
     }
-    if b >= 97 && b <= 122 {
+    if b >= 97 and b <= 122 {
         return true
     }
-    return b == 45 || b == 95 || b == 46 || b == 126
+    return b == 45 or b == 95 or b == 46 or b == 126
 }
 
-fun _hex2(b: Int) -> String {
+fun _hex2(b: int) -> str {
     let digits = "0123456789ABCDEF"
     let hi = b / 16
     let lo = b % 16
     return "%${digits.substring(hi, hi + 1)}${digits.substring(lo, lo + 1)}"
 }
 
-fun _hexval(b: Int) -> Int {
-    if b >= 48 && b <= 57 {
+fun _hexval(b: int) -> int {
+    if b >= 48 and b <= 57 {
         return b - 48
     }
-    if b >= 65 && b <= 70 {
+    if b >= 65 and b <= 70 {
         return b - 55
     }
-    if b >= 97 && b <= 102 {
+    if b >= 97 and b <= 102 {
         return b - 87
     }
     return 0 - 1

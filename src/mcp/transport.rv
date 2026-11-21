@@ -5,20 +5,20 @@
 // notifications and non-JSON stdout noise are skipped while waiting for a
 // response.
 
-import std/string
-import std/sync { Mutex, mutex, sleep_millis }
-import std/json { JsonValue, parse, stringify }
-import std/process { Child }
-import "github.com/martian56/aviary/jsonutil" { field, as_str }
-import "./framing" { LineBuffer }
+import std.string
+from std.sync import Mutex, mutex, sleep_millis
+from std.json import JsonValue, parse, stringify
+from std.process import Child
+from "github.com/martian56/aviary/jsonutil" import field, as_str
+from "./framing" import LineBuffer
 
 // Encode a string as a JSON string literal (quoted and escaped).
-fun enc_str(s: String) -> String {
+fun enc_str(s: str) -> str {
     return stringify(JsonValue.Str(s))
 }
 
 // A JSON-RPC request line. `params` is a JSON value already ("" for none).
-fun build_request(id: Int, method: String, params: String) -> String {
+fun build_request(id: int, method: str, params: str) -> str {
     let head = "{\"jsonrpc\":\"2.0\",\"id\":${id},\"method\":${enc_str(method)}"
     if params == "" {
         return head.concat("}\n")
@@ -27,7 +27,7 @@ fun build_request(id: Int, method: String, params: String) -> String {
 }
 
 // A JSON-RPC notification line (no id, so no response is expected).
-fun build_notification(method: String, params: String) -> String {
+fun build_notification(method: str, params: str) -> str {
     let head = "{\"jsonrpc\":\"2.0\",\"method\":${enc_str(method)}"
     if params == "" {
         return head.concat("}\n")
@@ -38,55 +38,55 @@ fun build_notification(method: String, params: String) -> String {
 // A parsed JSON-RPC response: ok with a result, or an error message. `id`
 // echoes the request id so the reader can match it (-1 when the line carried
 // no numeric id, or for a locally synthesized error).
-struct RpcResponse {
-    ok: Bool,
-    error: String,
-    result: JsonValue,
-    id: Int,
+class RpcResponse {
+    ok: bool
+    error: str
+    result: JsonValue
+    id: int
 }
 
 // Parse one message line. A response (carries result or error) yields Some; a
 // server notification or request (a method, no result/error) or a non-JSON
 // line yields None, so the reader skips it and keeps waiting.
-fun parse_message(line: String) -> Option<RpcResponse> {
+fun parse_message(line: str) -> Option[RpcResponse] {
     return match parse(line) {
-        Ok(j) -> _from_value(j),
-        Err(e) -> None,
+        case Ok(j) { _from_value(j) }
+        case Err(e) { None }
     }
 }
 
-fun _from_value(j: JsonValue) -> Option<RpcResponse> {
+fun _from_value(j: JsonValue) -> Option[RpcResponse] {
     let id = _resp_id(j)
     match j.get("error") {
-        Some(e) -> {
-            return Some(RpcResponse { ok: false, error: _err_text(e), result: JsonValue.Null, id })
-        },
-        None -> {},
+        case Some(e) {
+            return Some(RpcResponse(ok: false, error: _err_text(e), result: JsonValue.Null, id: id))
+        }
+        case None {}
     }
     match j.get("result") {
-        Some(r) -> {
-            return Some(RpcResponse { ok: true, error: "", result: r, id })
-        },
-        None -> {},
+        case Some(r) {
+            return Some(RpcResponse(ok: true, error: "", result: r, id: id))
+        }
+        case None {}
     }
     return None
 }
 
 // The numeric id of a response, or -1 when absent or not a number.
-fun _resp_id(j: JsonValue) -> Int {
+fun _resp_id(j: JsonValue) -> int {
     match j.get("id") {
-        Some(v) -> {
+        case Some(v) {
             return match v.as_int() {
-                Some(n) -> n,
-                None -> 0 - 1,
+                case Some(n) { n }
+                case None { 0 - 1 }
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
     return 0 - 1
 }
 
-fun _err_text(e: JsonValue) -> String {
+fun _err_text(e: JsonValue) -> str {
     let msg = as_str(field(e, "message"))
     if msg == "" {
         return "server error"
@@ -98,43 +98,43 @@ fun _err_text(e: JsonValue) -> String {
 // the manager shares one connection per server, and parallel subagents can
 // call it at once, so a request must hold the lock across its write and read
 // to keep only one request outstanding and its response matched by id.
-struct McpConn {
-    child: Child,
-    buf: LineBuffer,
-    next_id: Int,
-    lock: Mutex,
+class McpConn {
+    child: Child
+    buf: LineBuffer
+    next_id: int
+    lock: Mutex
 }
 
 impl McpConn {
     fun new(child: Child) -> McpConn {
-        return McpConn { child, buf: LineBuffer.new(), next_id: 1, lock: mutex() }
+        return McpConn(child: child, buf: LineBuffer.new(), next_id: 1, lock: mutex())
     }
 
     // Send a request and wait for its response, up to timeout_ms. Serialized
     // per connection so concurrent callers cannot interleave on one stdin.
-    fun request(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
+    fun request(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
         self.lock.lock()
         let resp = self._request_locked(method, params, timeout_ms)
         self.lock.unlock()
         return resp
     }
 
-    fun _request_locked(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
+    fun _request_locked(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
         let id = self.next_id
         self.next_id = self.next_id + 1
-        if !self.child.write_stdin(build_request(id, method, params)) {
-            return RpcResponse {
+        if not self.child.write_stdin(build_request(id, method, params)) {
+            return RpcResponse(
                 ok: false,
                 error: "could not write to the server (it may have exited)",
                 result: JsonValue.Null,
                 id: 0 - 1,
-            }
+            )
         }
         return self.read_response(id, timeout_ms)
     }
 
     // Send a notification; nothing comes back.
-    fun notify(self, method: String, params: String) {
+    fun notify(self, method: str, params: str) {
         self.lock.lock()
         let ignored = self.child.write_stdin(build_notification(method, params))
         self.lock.unlock()
@@ -144,67 +144,67 @@ impl McpConn {
     // Read until the response for `want_id` arrives, the server exits, or the
     // timeout passes. Responses for a different id (a stale reply to an earlier
     // request that timed out) are discarded rather than returned.
-    fun read_response(self, want_id: Int, timeout_ms: Int) -> RpcResponse {
-        let waited = 0
+    fun read_response(self, want_id: int, timeout_ms: int) -> RpcResponse {
+        var waited = 0
         while waited < timeout_ms {
             self.buf.push(self.child.read_stdout())
             match self._take_matching(want_id) {
-                Some(resp) -> {
+                case Some(resp) {
                     return resp
-                },
-                None -> {},
+                }
+                case None {}
             }
-            if !self.child.running() {
+            if not self.child.running() {
                 // The response and the exit can race; drain once more.
                 self.buf.push(self.child.read_stdout())
                 match self._take_matching(want_id) {
-                    Some(resp) -> {
+                    case Some(resp) {
                         return resp
-                    },
-                    None -> {
-                        return RpcResponse {
+                    }
+                    case None {
+                        return RpcResponse(
                             ok: false,
                             error: "the server exited before responding",
                             result: JsonValue.Null,
                             id: 0 - 1,
-                        }
-                    },
+                        )
+                    }
                 }
             }
             sleep_millis(10)
             waited = waited + 10
         }
-        return RpcResponse {
+        return RpcResponse(
             ok: false,
             error: "the server did not respond within ${timeout_ms}ms",
             result: JsonValue.Null,
             id: 0 - 1,
-        }
+        )
     }
 
     // The next buffered response matching `want_id`, skipping blank lines,
     // notifications, non-JSON noise, and responses carrying a different id. A
     // response with no id (-1) is accepted defensively. None when the buffer
     // holds no matching response yet.
-    fun _take_matching(self, want_id: Int) -> Option<RpcResponse> {
-        let scanning = true
+    fun _take_matching(self, want_id: int) -> Option[RpcResponse] {
+        var scanning = true
         while scanning {
             match self.buf.next_line() {
-                Some(line) -> {
+                case Some(line) {
                     if line.trim() != "" {
                         match parse_message(line) {
-                            Some(resp) -> {
-                                if resp.id == want_id || resp.id == 0 - 1 {
+                            case Some(resp) {
+                                if resp.id == want_id or resp.id == 0 - 1 {
                                     return Some(resp)
                                 }
-                            },
-                            None -> {},
+                            }
+                            case None {}
                         }
                     }
-                },
-                None -> {
+                }
+                case None {
                     scanning = false
-                },
+                }
             }
         }
         return None

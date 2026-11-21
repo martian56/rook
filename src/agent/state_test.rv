@@ -1,25 +1,25 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
-import "./state" { AgentState, DisplayEvent, Snapshot }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true, assert_false
+from "./state" import AgentState, DisplayEvent, Snapshot
 
-fun replay(events: List<DisplayEvent>) -> String {
-    let out = ""
-    let i = 0
+fun replay(events: list[DisplayEvent]) -> str {
+    var out = ""
+    var i = 0
     while i < events.len() {
         match events[i] {
-            Started -> {
+            case Started {
                 out = out.concat("[start]")
-            },
-            Chunk(d) -> {
+            }
+            case Chunk(d) {
                 out = out.concat(d)
-            },
-            ToolRan(name, result) -> {
+            }
+            case ToolRan(name, result) {
                 out = out.concat("[tool ${name}=${result}]")
-            },
-            Info(t) -> {
+            }
+            case Info(t) {
                 out = out.concat("[info ${t}]")
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         i = i + 1
     }
@@ -132,7 +132,7 @@ fun test_approval_is_denied_without_prompting_after_an_interrupt() {
 fun test_question_is_declined_without_prompting_after_an_interrupt() {
     let st = AgentState.new()
     st.request_interrupt()
-    let options: List<String> = ["keep", "drop"]
+    let options: list[str] = ["keep", "drop"]
     assert_eq_int(st.ask_question("which?", options), 0 - 1)
     assert_eq_str(st.question_now(), "")
 }

@@ -2,186 +2,192 @@
 // mutates. The conversation the model sees lives in the shared AgentState;
 // this holds the display transcript and the UI's own state.
 
-import "github.com/martian56/plumage/widgets/input" { TextInput }
-import "../agent/state" { AgentState }
-import "../ui/transcript" { Entry, AgentBlock, EntryLines, empty_entry_lines }
-import "../ui/selection" { Selection, no_selection }
-import "../ui/theme" { Theme }
-import "../ui/themes" { startup_theme }
-import "../ui/depth" { themed }
-import std/env { args }
-import "../config/sessions" { SessionMeta, new_session_id, begin_load_latest }
-import "../commands" { CmdInfo, builtin_commands, merge_infos }
-import "../agents/dir" { roots }
-import "../agents/commands" { load_commands, command_infos }
-import "../agents/settings" { settings_errors_from }
-import "../hooks/hooks" { drain_hook_notices }
-import "../config/config" { resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors, resolve_budget_usd }
-import "../tools/permission_menu" { PermissionGrantState }
-import "../tools/mentions" { warm_files }
-import "./update_check" { begin_update_check }
+from "github.com/martian56/plumage/widgets/input" import TextInput
+from "../agent/state" import AgentState
+from "../ui/transcript" import Entry, AgentBlock, EntryLines, empty_entry_lines
+from "../ui/selection" import Selection, no_selection
+from "../ui/theme" import Theme
+from "../ui/themes" import startup_theme
+from "../ui/depth" import themed
+from std.env import args
+from "../config/sessions" import SessionMeta, new_session_id, begin_load_latest
+from "../commands" import CmdInfo, builtin_commands, merge_infos
+from "../agents/dir" import roots
+from "../agents/commands" import load_commands, command_infos
+from "../agents/settings" import settings_errors_from
+from "../hooks/hooks" import drain_hook_notices
+from "../config/config" import resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors, resolve_budget_usd
+from "../tools/permission_menu" import PermissionGrantState
+from "../tools/mentions" import warm_files
+from "./update_check" import begin_update_check
 
 // The /model picker's data, built once and reused. `ids`/`labels`/`lower` are
 // the whole catalog (labels index-aligned to ids, lower a lowercased id copy
 // for search). `pick_ids`/`pick_labels` are the current filtered view the
 // picker renders, recomputed only when the search query changes.
-struct ModelCatalog {
-    ids: List<String>,
-    labels: List<String>,
-    lower: List<String>,
-    pick_ids: List<String>,
-    pick_labels: List<String>,
+class ModelCatalog {
+    ids: list[str]
+    labels: list[str]
+    lower: list[str]
+    pick_ids: list[str]
+    pick_labels: list[str]
 }
 
 fun empty_catalog() -> ModelCatalog {
-    let ids: List<String> = []
-    let labels: List<String> = []
-    let lower: List<String> = []
-    let pick_ids: List<String> = []
-    let pick_labels: List<String> = []
-    return ModelCatalog { ids, labels, lower, pick_ids, pick_labels }
+    let ids: list[str] = []
+    let labels: list[str] = []
+    let lower: list[str] = []
+    let pick_ids: list[str] = []
+    let pick_labels: list[str] = []
+    return ModelCatalog(
+        ids: ids,
+        labels: labels,
+        lower: lower,
+        pick_ids: pick_ids,
+        pick_labels: pick_labels,
+    )
 }
 
-struct Chat {
-    entries: List<Entry>,
+class Chat {
+    entries: list[Entry]
     // Per-entry rendered-line cache, index-aligned with entries. Kept aligned
     // by set_entry/replace_entries and the insert/remove helpers; padded by
     // ensure_cache_len before each render. cache_width/cache_theme are what it
     // was built for, so a resize or theme change invalidates it wholesale.
-    line_cache: List<EntryLines>,
-    cache_width: Int,
-    cache_theme: String,
-    entry: TextInput,
-    agent: AgentState,
+    line_cache: list[EntryLines]
+    cache_width: int
+    cache_theme: str
+    entry: TextInput
+    agent: AgentState
     // A turn is in flight (the goroutine is streaming).
-    active: Bool,
+    active: bool
     // The tool label awaiting approval, "" when none is pending, and the
     // diff preview shown under it.
-    pending: String,
-    pending_detail: String,
+    pending: str
+    pending_detail: str
     // The model's question awaiting a pick, "" when none, with its options
     // and the highlighted one.
-    question: String,
-    choices: List<String>,
-    choice_sel: Int,
+    question: str
+    choices: list[str]
+    choice_sel: int
     // The streaming reply's accumulated text and the transcript index of its
     // bubble (-1 when not streaming a bubble).
-    stream_text: String,
-    cur_bubble: Int,
-    tick: Int,
-    elapsed: Int,
-    word: String,
-    scroll_up: Int,
-    armed: Bool,
-    turns: Int,
+    stream_text: str
+    cur_bubble: int
+    tick: int
+    elapsed: int
+    word: str
+    scroll_up: int
+    armed: bool
+    turns: int
     // Mouse text selection over the transcript, anchored to content lines so
     // it survives scrolling. tr_* is the transcript area and top line that the
     // last render used, so a mouse cell maps to a content line/column.
-    sel: Selection,
-    tr_x: Int,
-    tr_y: Int,
-    tr_w: Int,
-    tr_h: Int,
-    tr_top: Int,
+    sel: Selection
+    tr_x: int
+    tr_y: int
+    tr_w: int
+    tr_h: int
+    tr_top: int
     // A brief status-bar flash (for example "copied") shown until this tick.
-    flash: String,
-    flash_until: Int,
+    flash: str
+    flash_until: int
     // "provider/model" and the key for its provider ("" when none is set).
-    model: String,
-    api_key: String,
+    model: str
+    api_key: str
     // A custom endpoint, "" for the provider default.
-    base_url: String,
+    base_url: str
     // The /model picker overlay: open, the highlighted row (within the
     // filtered list), and the search bar.
-    picking: Bool,
-    pick_sel: Int,
-    pick_input: TextInput,
+    picking: bool
+    pick_sel: int
+    pick_input: TextInput
     // The model catalog, built once on first picker open and reused after.
     // Bundled into one struct so Chat keeps a single field for it (the GC
     // descriptor only tracks a struct's first 64 fields).
-    catalog: ModelCatalog,
+    catalog: ModelCatalog
     // The API-key entry overlay.
-    entering_key: Bool,
-    key_input: TextInput,
+    entering_key: bool
+    key_input: TextInput
     // The active palette; every view reads its styles from here.
-    theme: Theme,
+    theme: Theme
     // The /theme picker overlay: open, the highlighted row, and the name to
     // restore on cancel (selection previews live).
-    theme_picking: Bool,
-    theme_sel: Int,
-    theme_prev: String,
+    theme_picking: bool
+    theme_sel: int
+    theme_prev: str
     // Every command (built-ins then customs), loaded once at startup, for
     // the slash menu and /help.
-    cmd_infos: List<CmdInfo>,
+    cmd_infos: list[CmdInfo]
     // The slash menu: the highlighted row, and whether esc dismissed it for
     // the current input.
-    slash_sel: Int,
-    slash_dismissed: Bool,
+    slash_sel: int
+    slash_dismissed: bool
     // The /help overlay: open, and the highlighted command.
-    help_open: Bool,
-    help_sel: Int,
+    help_open: bool
+    help_sel: int
     // The /permissions panel: open, and the highlighted grant.
-    permissions_open: Bool,
-    permissions_sel: Int,
-    permissions_items: List<PermissionGrantState>,
+    permissions_open: bool
+    permissions_sel: int
+    permissions_items: list[PermissionGrantState]
     // Running subagent blocks in the transcript (name, header index, tool
     // count), so their rows group and collapse.
-    open_agents: List<AgentBlock>,
+    open_agents: list[AgentBlock]
     // The /shells panel: open, the highlighted row, and the shell id whose
     // output pane is focused (0 while the list is showing).
-    shells_open: Bool,
-    shells_sel: Int,
-    shells_focus: Int,
+    shells_open: bool
+    shells_sel: int
+    shells_focus: int
     // Plan mode: the model researches and proposes, mutating tools blocked.
-    plan_mode: Bool,
+    plan_mode: bool
     // The @-file picker: the current path matches, the highlighted row, and
     // whether esc dismissed it until the input changes.
-    mention_matches: List<String>,
-    mention_sel: Int,
-    mention_dismissed: Bool,
+    mention_matches: list[str]
+    mention_sel: int
+    mention_dismissed: bool
     // Session token totals, drained from the agent for the status bar.
-    sess_prompt: Int,
-    sess_completion: Int,
+    sess_prompt: int
+    sess_completion: int
     // Persistence: the current session's id (its file on disk), and the
     // /sessions picker (open, the highlighted row, and the loaded list).
-    session_id: String,
-    sessions_open: Bool,
-    sessions_sel: Int,
-    sessions_list: List<SessionMeta>,
+    session_id: str
+    sessions_open: bool
+    sessions_sel: int
+    sessions_list: list[SessionMeta]
     // True while the background session scan runs, so the panel shows a loading
     // line instead of "no saved sessions" before the list arrives.
-    sessions_loading: Bool,
+    sessions_loading: bool
     // True while a chosen session is being read off the UI thread, until _tick
     // applies the restored transcript and history.
-    resuming: Bool,
+    resuming: bool
     // The session's prompt-cache totals, for the discounted cost estimate.
     // At the end of the struct: these are plain Ints, and the runtime's GC
     // descriptor only tracks heap fields in the first 64 positions, so
     // non-heap fields go last.
-    sess_cache_read: Int,
-    sess_cache_write: Int,
+    sess_cache_read: int
+    sess_cache_write: int
     // The transcript's total line count last frame, so the view can keep the
     // window anchored while scrolled up as new output grows the total.
-    last_total: Int,
+    last_total: int
     // Scrollback in the focused shell pane, in lines up from the live tail.
-    shells_scroll: Int,
+    shells_scroll: int
     // The session row armed for deletion (-1 when none): d arms, d again
     // deletes, any other key disarms.
-    sessions_confirm: Int,
+    sessions_confirm: int
     // The transcript index of a running ! command's placeholder entry, -1
     // when no shell command is in flight.
-    bang_at: Int,
+    bang_at: int
     // The session spend ceiling in micro-dollars (0 when none is configured)
     // and whether its one-time warning already fired.
-    budget_micros: Int,
-    budget_warned: Bool,
+    budget_micros: int
+    budget_warned: bool
     // The edit-a-previous-message picker (opened by double Esc): open, the
     // highlighted row, and the tick of the last bare Esc press.
-    rewind_open: Bool,
-    rewind_sel: Int,
-    last_esc: Int,
+    rewind_open: bool
+    rewind_sel: int
+    last_esc: int
     // The /sessions panel tab: 0 = this directory, 1 = all sessions.
-    sessions_tab: Int,
+    sessions_tab: int
 }
 
 fun chat_init() -> Chat {
@@ -200,27 +206,27 @@ fun chat_init() -> Chat {
     let rs = roots()
     let startup_notices = settings_errors_from(rs)
     let cfg_errors = rook_json_errors()
-    let ci = 0
+    var ci = 0
     while ci < cfg_errors.len() {
         startup_notices.push(cfg_errors[ci])
         ci = ci + 1
     }
     let hook_notices = drain_hook_notices()
-    let i = 0
+    var i = 0
     while i < hook_notices.len() {
         startup_notices.push(hook_notices[i])
         i = i + 1
     }
     let entries = settings_error_entries(startup_notices)
-    let line_cache: List<EntryLines> = []
-    let open_agents: List<AgentBlock> = []
-    let no_choices: List<String> = []
-    let no_matches: List<String> = []
-    let no_sessions: List<SessionMeta> = []
-    let no_permissions: List<PermissionGrantState> = []
-    return Chat {
-        entries,
-        line_cache,
+    let line_cache: list[EntryLines] = []
+    let open_agents: list[AgentBlock] = []
+    let no_choices: list[str] = []
+    let no_matches: list[str] = []
+    let no_sessions: list[SessionMeta] = []
+    let no_permissions: list[PermissionGrantState] = []
+    return Chat(
+        entries: entries,
+        line_cache: line_cache,
         cache_width: 0,
         cache_theme: "",
         entry: TextInput.new(),
@@ -247,7 +253,7 @@ fun chat_init() -> Chat {
         tr_top: 0,
         flash: "",
         flash_until: 0,
-        model,
+        model: model,
         api_key: resolve_key(model),
         base_url: resolve_base(),
         picking: false,
@@ -268,7 +274,7 @@ fun chat_init() -> Chat {
         permissions_open: false,
         permissions_sel: 0,
         permissions_items: no_permissions,
-        open_agents,
+        open_agents: open_agents,
         shells_open: false,
         shells_sel: 0,
         shells_focus: 0,
@@ -296,13 +302,13 @@ fun chat_init() -> Chat {
         rewind_sel: 0,
         last_esc: 0 - 100,
         sessions_tab: 0,
-    }
+    )
 }
 
 // Convert settings load errors into startup transcript notices.
-fun settings_error_entries(errors: List<String>) -> List<Entry> {
-    let out: List<Entry> = []
-    let i = 0
+fun settings_error_entries(errors: list[str]) -> list[Entry] {
+    let out: list[Entry] = []
+    var i = 0
     while i < errors.len() {
         out.push(Entry.Notice(errors[i]))
         i = i + 1
@@ -312,12 +318,12 @@ fun settings_error_entries(errors: List<String>) -> List<Entry> {
 
 // Adopt a newly chosen model: update the running config, resolve its key, and
 // persist the choice so the next session remembers it.
-fun set_model(m: Chat, model: String) -> String {
+fun set_model(m: Chat, model: str) -> str {
     apply_model(m, model)
     return save_model(model)
 }
 
-fun apply_model(m: Chat, model: String) {
+fun apply_model(m: Chat, model: str) {
     m.model = model
     m.api_key = resolve_key(model)
     return
@@ -336,7 +342,7 @@ fun ensure_cache_len(m: Chat) {
 // Mark every cache slot invalid: used when the width or theme changes, so the
 // whole transcript is re-wrapped once at the new size or palette.
 fun invalidate_all_cache(m: Chat) {
-    let i = 0
+    var i = 0
     while i < m.line_cache.len() {
         m.line_cache[i] = empty_entry_lines()
         i = i + 1
@@ -346,10 +352,10 @@ fun invalidate_all_cache(m: Chat) {
 
 // Replace an entry in place and invalidate just its cache slot (the streaming
 // bubble and a finishing agent header take this path).
-fun set_entry(m: Chat, i: Int, e: Entry) {
+fun set_entry(m: Chat, i: int, e: Entry) {
     m.entries[i] = e
     ensure_cache_len(m)
-    if i >= 0 && i < m.line_cache.len() {
+    if i >= 0 and i < m.line_cache.len() {
         m.line_cache[i] = empty_entry_lines()
     }
     return
@@ -357,10 +363,10 @@ fun set_entry(m: Chat, i: Int, e: Entry) {
 
 // Swap the whole transcript (session resume, /clear) and reset the cache to a
 // matching run of invalid slots.
-fun replace_entries(m: Chat, es: List<Entry>) {
+fun replace_entries(m: Chat, es: list[Entry]) {
     m.entries = es
-    let cache: List<EntryLines> = []
-    let i = 0
+    let cache: list[EntryLines] = []
+    var i = 0
     while i < es.len() {
         cache.push(empty_entry_lines())
         i = i + 1
@@ -370,11 +376,11 @@ fun replace_entries(m: Chat, es: List<Entry>) {
 }
 
 // Whether the command line asked to reopen the most recent session.
-fun _wants_continue() -> Bool {
+fun _wants_continue() -> bool {
     let a = args()
-    let i = 0
+    var i = 0
     while i < a.len() {
-        if a[i] == "--continue" || a[i] == "-c" {
+        if a[i] == "--continue" or a[i] == "-c" {
             return true
         }
         i = i + 1

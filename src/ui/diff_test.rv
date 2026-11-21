@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str, assert_true }
-import "./diff" { unified }
+import std.string
+from std.test import assert_eq_str, assert_true
+from "./diff" import unified
 
 fun test_identical_sides_diff_empty() {
     assert_eq_str(unified("a\nb", "a\nb"), "")
@@ -14,16 +14,16 @@ fun test_changed_middle_shows_minus_plus_with_context() {
     assert_true(d.contains("+ THREE"))
     assert_true(d.contains("  two"))
     assert_true(d.contains("  four"))
-    assert_true(!d.contains("- one"))
+    assert_true(not d.contains("- one"))
 }
 
 fun test_pure_addition_and_removal() {
     let add = unified("a\nc", "a\nb\nc")
     assert_true(add.contains("+ b"))
-    assert_true(!add.contains("- "))
+    assert_true(not add.contains("- "))
     let del = unified("a\nb\nc", "a\nc")
     assert_true(del.contains("- b"))
-    assert_true(!del.contains("+ "))
+    assert_true(not del.contains("+ "))
 }
 
 fun test_new_file_is_all_additions() {
@@ -34,8 +34,8 @@ fun test_new_file_is_all_additions() {
 
 fun test_a_huge_change_is_capped() {
     let old = ""
-    let new = ""
-    let i = 0
+    var new = ""
+    var i = 0
     while i < 60 {
         new = "${new}line ${i}\n"
         i = i + 1
@@ -47,8 +47,8 @@ fun test_a_huge_change_is_capped() {
 
 fun test_cap_reports_the_true_remaining_count() {
     let old = ""
-    let new = ""
-    let i = 0
+    var new = ""
+    var i = 0
     while i < 40 {
         new = "${new}L${i}\n"
         i = i + 1

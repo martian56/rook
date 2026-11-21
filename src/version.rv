@@ -3,6 +3,6 @@
 // version to the program, so this is kept in step with rv.toml by
 // version_test.rv: bump both together for a release or CI fails.
 
-fun version() -> String {
-    return "0.3.59"
+fun version() -> str {
+    return "0.4.0"
 }

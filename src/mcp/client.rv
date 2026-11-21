@@ -4,73 +4,70 @@
 // can show the status either way. The live connection is kept so tools can be
 // invoked later (#41).
 
-import std/string
-import std/json { JsonValue, stringify }
-import std/process { Child, start }
-import std/fs { exists, remove_file }
-import std/sync { sleep_millis }
-import std/time { now_millis }
-import "github.com/martian56/aviary/jsonutil" { field, as_str, as_list, is_null }
-import "./transport" { McpConn, RpcResponse }
+import std.string
+from std.json import JsonValue, stringify
+from std.process import Child, start
+from std.fs import exists, remove_file
+from std.sync import sleep_millis
+from std.time import now_millis
+from "github.com/martian56/aviary/jsonutil" import field, as_str, as_list, is_null
+from "./transport" import McpConn, RpcResponse
 
-const PROTOCOL: String = "2024-11-05"
-const HANDSHAKE_TIMEOUT: Int = 20000
-const LIST_TIMEOUT: Int = 15000
+let PROTOCOL: str = "2024-11-05"
+let HANDSHAKE_TIMEOUT: int = 20000
+let LIST_TIMEOUT: int = 15000
 
-struct McpTool {
-    name: String,
-    description: String,
-    schema: String,
+class McpTool {
+    name: str
+    description: str
+    schema: str
 }
 
 // A resource a server exposes: readable context named by a uri.
-struct McpResource {
-    uri: String,
-    name: String,
-    description: String,
-    mime: String,
+class McpResource {
+    uri: str
+    name: str
+    description: str
+    mime: str
 }
 
 // A prompt template a server offers for the user to invoke. `arguments` is
 // the raw JSON array of the prompt's argument descriptors.
-struct McpPrompt {
-    name: String,
-    description: String,
-    arguments: String,
+class McpPrompt {
+    name: str
+    description: str
+    arguments: str
 }
 
-struct McpClient {
-    name: String,
-    server_name: String,
-    server_version: String,
-    tools: List<McpTool>,
-    resources: List<McpResource>,
-    prompts: List<McpPrompt>,
-    ok: Bool,
-    error: String,
-    conn: Option<McpConn>,
+class McpClient {
+    name: str
+    server_name: str
+    server_version: str
+    tools: list[McpTool]
+    resources: list[McpResource]
+    prompts: list[McpPrompt]
+    ok: bool
+    error: str
+    conn: Option[McpConn]
 }
 
 impl McpClient {
     // Call a method on the connected server (used to invoke a tool). Errors
     // when the client never connected.
-    fun call(self, method: String, params: String, timeout_ms: Int) -> RpcResponse {
+    fun call(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
         return match self.conn {
-            Some(c) -> c.request(method, params, timeout_ms),
-            None -> RpcResponse {
-                ok: false,
-                error: "not connected",
-                result: JsonValue.Null,
-                id: 0 - 1,
-            },
+            case Some(c) { c.request(method, params, timeout_ms) }
+            case None {
+                RpcResponse(ok: false, error: "not connected", result: JsonValue.Null, id: 0 - 1)
+            }
         }
     }
 
     // Stop the server, if one is running.
     fun close(self) {
         match self.conn {
-            Some(c) -> c.close(),
-            None -> {},
+            case Some(c) { c.close() }
+            case None {}
         }
         return
     }
@@ -78,19 +75,19 @@ impl McpClient {
 
 // Launch and connect to an MCP server: start the process, run the handshake,
 // and list what it offers (tools, resources, prompts) per its capabilities.
-fun connect(name: String, command: String, cmd_args: List<String>) -> McpClient {
+fun connect(name: str, command: str, cmd_args: list[str]) -> McpClient {
     return connect_with_env_file(name, command, cmd_args, "")
 }
 
 fun connect_with_env_file(
-    name: String,
-    command: String,
-    cmd_args: List<String>,
-    env_file: String,
+    name: str,
+    command: str,
+    cmd_args: list[str],
+    env_file: str,
 ) -> McpClient {
     return match start(command, cmd_args) {
-        Ok(child) -> {
-            if !_handoff_consumed(env_file) {
+        case Ok(child) {
+            if not _handoff_consumed(env_file) {
                 child.kill()
                 child.free()
                 _remove_env_file(env_file)
@@ -98,51 +95,51 @@ fun connect_with_env_file(
             } else {
                 _handshake(name, McpConn.new(child))
             }
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             _remove_env_file(env_file)
             _failed(name, "could not start '${command}': ${e.message}")
-        },
+        }
     }
 }
 
-fun failed_client(name: String, why: String) -> McpClient {
+fun failed_client(name: str, why: str) -> McpClient {
     return _failed(name, why)
 }
 
-fun _handoff_consumed(path: String) -> Bool {
+fun _handoff_consumed(path: str) -> bool {
     if path == "" {
         return true
     }
     let deadline = now_millis() + 5000
-    while exists(path) && now_millis() < deadline {
+    while exists(path) and now_millis() < deadline {
         sleep_millis(10)
     }
-    return !exists(path)
+    return not exists(path)
 }
 
-fun _remove_env_file(path: String) {
-    if path == "" || !exists(path) {
+fun _remove_env_file(path: str) {
+    if path == "" or not exists(path) {
         return
     }
     match remove_file(path) {
-        Ok(ok) -> {},
-        Err(e) -> {},
+        case Ok(ok) {}
+        case Err(e) {}
     }
     return
 }
 
-fun _handshake(name: String, conn: McpConn) -> McpClient {
+fun _handshake(name: str, conn: McpConn) -> McpClient {
     let resp = conn.request("initialize", _init_params(), HANDSHAKE_TIMEOUT)
-    if !resp.ok {
+    if not resp.ok {
         conn.close()
         return _failed(name, "handshake failed: ${resp.error}")
     }
     let info = field(resp.result, "serverInfo")
     let caps = field(resp.result, "capabilities")
     conn.notify("notifications/initialized", "")
-    return McpClient {
-        name,
+    return McpClient(
+        name: name,
         server_name: as_str(field(info, "name")),
         server_version: as_str(field(info, "version")),
         tools: _maybe_tools(conn, caps),
@@ -151,42 +148,42 @@ fun _handshake(name: String, conn: McpConn) -> McpClient {
         ok: true,
         error: "",
         conn: Some(conn),
-    }
+    )
 }
 
 // Each surface is listed only when the server declared the capability, so a
 // server that supports one but not another is not sent an unsupported method.
-fun _maybe_tools(conn: McpConn, caps: JsonValue) -> List<McpTool> {
-    let empty: List<McpTool> = []
+fun _maybe_tools(conn: McpConn, caps: JsonValue) -> list[McpTool] {
+    let empty: list[McpTool] = []
     if is_null(field(caps, "tools")) {
         return empty
     }
     let resp = conn.request("tools/list", "{}", LIST_TIMEOUT)
-    if !resp.ok {
+    if not resp.ok {
         return empty
     }
     return parse_tools(resp.result)
 }
 
-fun _maybe_resources(conn: McpConn, caps: JsonValue) -> List<McpResource> {
-    let empty: List<McpResource> = []
+fun _maybe_resources(conn: McpConn, caps: JsonValue) -> list[McpResource] {
+    let empty: list[McpResource] = []
     if is_null(field(caps, "resources")) {
         return empty
     }
     let resp = conn.request("resources/list", "{}", LIST_TIMEOUT)
-    if !resp.ok {
+    if not resp.ok {
         return empty
     }
     return parse_resources(resp.result)
 }
 
-fun _maybe_prompts(conn: McpConn, caps: JsonValue) -> List<McpPrompt> {
-    let empty: List<McpPrompt> = []
+fun _maybe_prompts(conn: McpConn, caps: JsonValue) -> list[McpPrompt] {
+    let empty: list[McpPrompt] = []
     if is_null(field(caps, "prompts")) {
         return empty
     }
     let resp = conn.request("prompts/list", "{}", LIST_TIMEOUT)
-    if !resp.ok {
+    if not resp.ok {
         return empty
     }
     return parse_prompts(resp.result)
@@ -194,19 +191,19 @@ fun _maybe_prompts(conn: McpConn, caps: JsonValue) -> List<McpPrompt> {
 
 // Extract the tools from a tools/list result. Pure, so it is tested directly.
 // Each tool keeps its raw input schema for registration.
-fun parse_tools(result: JsonValue) -> List<McpTool> {
-    let out: List<McpTool> = []
+fun parse_tools(result: JsonValue) -> list[McpTool] {
+    let out: list[McpTool] = []
     let arr = as_list(field(result, "tools"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let name = as_str(field(arr[i], "name"))
         if name != "" {
             out.push(
-                McpTool {
-                    name,
+                McpTool(
+                    name: name,
                     description: as_str(field(arr[i], "description")),
                     schema: stringify(field(arr[i], "inputSchema")),
-                },
+                ),
             )
         }
         i = i + 1
@@ -215,20 +212,20 @@ fun parse_tools(result: JsonValue) -> List<McpTool> {
 }
 
 // Extract the resources from a resources/list result. Pure.
-fun parse_resources(result: JsonValue) -> List<McpResource> {
-    let out: List<McpResource> = []
+fun parse_resources(result: JsonValue) -> list[McpResource] {
+    let out: list[McpResource] = []
     let arr = as_list(field(result, "resources"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let uri = as_str(field(arr[i], "uri"))
         if uri != "" {
             out.push(
-                McpResource {
-                    uri,
+                McpResource(
+                    uri: uri,
                     name: as_str(field(arr[i], "name")),
                     description: as_str(field(arr[i], "description")),
                     mime: as_str(field(arr[i], "mimeType")),
-                },
+                ),
             )
         }
         i = i + 1
@@ -237,19 +234,19 @@ fun parse_resources(result: JsonValue) -> List<McpResource> {
 }
 
 // Extract the prompts from a prompts/list result. Pure.
-fun parse_prompts(result: JsonValue) -> List<McpPrompt> {
-    let out: List<McpPrompt> = []
+fun parse_prompts(result: JsonValue) -> list[McpPrompt] {
+    let out: list[McpPrompt] = []
     let arr = as_list(field(result, "prompts"))
-    let i = 0
+    var i = 0
     while i < arr.len() {
         let name = as_str(field(arr[i], "name"))
         if name != "" {
             out.push(
-                McpPrompt {
-                    name,
+                McpPrompt(
+                    name: name,
                     description: as_str(field(arr[i], "description")),
                     arguments: stringify(field(arr[i], "arguments")),
-                },
+                ),
             )
         }
         i = i + 1
@@ -257,23 +254,23 @@ fun parse_prompts(result: JsonValue) -> List<McpPrompt> {
     return out
 }
 
-fun _init_params() -> String {
+fun _init_params() -> str {
     return "{\"protocolVersion\":\"${PROTOCOL}\",\"capabilities\":{},\"clientInfo\":{\"name\":\"rook\",\"version\":\"1.0\"}}"
 }
 
-fun _failed(name: String, why: String) -> McpClient {
-    let tools: List<McpTool> = []
-    let resources: List<McpResource> = []
-    let prompts: List<McpPrompt> = []
-    return McpClient {
-        name,
+fun _failed(name: str, why: str) -> McpClient {
+    let tools: list[McpTool] = []
+    let resources: list[McpResource] = []
+    let prompts: list[McpPrompt] = []
+    return McpClient(
+        name: name,
         server_name: "",
         server_version: "",
-        tools,
-        resources,
-        prompts,
+        tools: tools,
+        resources: resources,
+        prompts: prompts,
         ok: false,
         error: why,
         conn: None,
-    }
+    )
 }

@@ -5,30 +5,30 @@
 // it is non-empty; /clear empties it. A mutex guards the store since the
 // tool writes from the turn goroutine and the view reads every frame.
 
-import std/string
-import std/sync { Mutex, mutex }
+import std.string
+from std.sync import Mutex, mutex
 
 // One checklist item: state 0 pending, 1 in progress, 2 done.
-struct Todo {
-    text: String,
-    state: Int,
+class Todo {
+    text: str
+    state: int
 }
 
-struct TodoStore {
-    lock: Mutex,
-    items: List<Todo>,
+class TodoStore {
+    lock: Mutex
+    items: list[Todo]
 }
 
 fun _new_store() -> TodoStore {
-    let items: List<Todo> = []
-    return TodoStore { lock: mutex(), items }
+    let items: list[Todo] = []
+    return TodoStore(lock: mutex(), items: items)
 }
 
 let STORE: TodoStore = _new_store()
 
 // The tool: replace the checklist with `text`, one item per line. Returns a
 // short confirmation with the counts.
-fun set_todos(text: String) -> String {
+fun set_todos(text: str) -> str {
     let items = parse_todos(text)
     STORE.lock.lock()
     STORE.items = items
@@ -36,8 +36,8 @@ fun set_todos(text: String) -> String {
     if items.len() == 0 {
         return "todo list cleared"
     }
-    let done = 0
-    let i = 0
+    var done = 0
+    var i = 0
     while i < items.len() {
         if items[i].state == 2 {
             done = done + 1
@@ -49,15 +49,15 @@ fun set_todos(text: String) -> String {
 
 // Parse the line format. Blank lines are skipped; markers are forgiving
 // about case and surrounding whitespace.
-fun parse_todos(text: String) -> List<Todo> {
-    let out: List<Todo> = []
+fun parse_todos(text: str) -> list[Todo] {
+    let out: list[Todo] = []
     let lines = text.lines()
-    let i = 0
+    var i = 0
     while i < lines.len() {
-        let line = lines[i].trim()
+        var line = lines[i].trim()
         if line != "" {
-            let state = 0
-            if line.starts_with("[x]") || line.starts_with("[X]") {
+            var state = 0
+            if line.starts_with("[x]") or line.starts_with("[X]") {
                 state = 2
                 line = line.substring(3, line.length()).trim()
             } else {
@@ -71,7 +71,7 @@ fun parse_todos(text: String) -> List<Todo> {
                 }
             }
             if line != "" {
-                out.push(Todo { text: line, state })
+                out.push(Todo(text: line, state: state))
             }
         }
         i = i + 1
@@ -83,7 +83,7 @@ fun parse_todos(text: String) -> List<Todo> {
 // because every writer (set_todos, clear_todos) swaps in a freshly built
 // list rather than mutating this one in place, and the view runs every
 // frame, so it should not pay a copy per redraw.
-fun current_todos() -> List<Todo> {
+fun current_todos() -> list[Todo] {
     STORE.lock.lock()
     let out = STORE.items
     STORE.lock.unlock()
@@ -92,7 +92,7 @@ fun current_todos() -> List<Todo> {
 
 fun clear_todos() {
     STORE.lock.lock()
-    let none: List<Todo> = []
+    let none: list[Todo] = []
     STORE.items = none
     STORE.lock.unlock()
     return

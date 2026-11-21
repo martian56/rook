@@ -5,26 +5,26 @@
 // pixel rows fit per text row and the navy-to-violet gradient shows in
 // truecolor. Generated from images/rook-2.png by a script, not hand-edited.
 
-import std/string
-import "github.com/martian56/plumage/buffer" { Buffer }
-import "github.com/martian56/plumage/style" { Style, Color }
+import std.string
+from "github.com/martian56/plumage/buffer" import Buffer
+from "github.com/martian56/plumage/style" import Style, Color
 
-const MW: Int = 128
-const ALPHABET: String = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+let MW: int = 128
+let ALPHABET: str = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 
 // The master's width and height, in the source's own cells.
-fun master_width() -> Int {
+fun master_width() -> int {
     return MW
 }
 
-fun master_rows() -> Int {
+fun master_rows() -> int {
     return _rows().len()
 }
 
 // The rendered height in character rows for a target width.
-fun rendered_height(target_w: Int) -> Int {
+fun rendered_height(target_w: int) -> int {
     let tw = _clamp_w(target_w)
-    let tr = tw * master_rows() / MW
+    var tr = tw * master_rows() / MW
     if tr < 1 {
         tr = 1
     }
@@ -32,30 +32,30 @@ fun rendered_height(target_w: Int) -> Int {
 }
 
 // The averaged half-block colors for one drawn cell.
-struct LogoCell {
-    top: Option<Color>,
-    bot: Option<Color>,
+class LogoCell {
+    top: Option[Color]
+    bot: Option[Color]
 }
 
 // The rasterized logo for one target width. The master is static, so the
 // box-average (thousands of substring + alphabet-scan samples) only needs to
 // run when the width changes, not on every welcome-screen frame.
-struct LogoCache {
-    width: Int,
-    tr: Int,
-    cells: List<LogoCell>,
+class LogoCache {
+    width: int
+    tr: int
+    cells: list[LogoCell]
 }
 
 let LOGO_CACHE: LogoCache = _new_logo_cache()
 
 fun _new_logo_cache() -> LogoCache {
-    let cells: List<LogoCell> = []
-    return LogoCache { width: 0 - 1, tr: 0, cells }
+    let cells: list[LogoCell] = []
+    return LogoCache(width: 0 - 1, tr: 0, cells: cells)
 }
 
 // Rasterize the logo for `tw` into the cache, unless it already holds that
 // width.
-fun _ensure_logo(tw: Int) {
+fun _ensure_logo(tw: int) {
     if LOGO_CACHE.width == tw {
         return
     }
@@ -66,14 +66,14 @@ fun _ensure_logo(tw: Int) {
     let mph = rows.len() * 2
     let tr = rendered_height(tw)
     let tph = tr * 2
-    let cells: List<LogoCell> = []
-    let ry = 0
+    let cells: list[LogoCell] = []
+    var ry = 0
     while ry < tr {
-        let cx = 0
+        var cx = 0
         while cx < tw {
             let top = _avg(rows, pr, pg, pb, cx, ry * 2, tw, tph, mph)
             let bot = _avg(rows, pr, pg, pb, cx, ry * 2 + 1, tw, tph, mph)
-            cells.push(LogoCell { top, bot })
+            cells.push(LogoCell(top: top, bot: bot))
             cx = cx + 1
         }
         ry = ry + 1
@@ -85,13 +85,13 @@ fun _ensure_logo(tw: Int) {
 }
 
 // Draw the logo at (x, y), scaled to `target_w` cells wide.
-fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
+fun draw_logo(buf: Buffer, x: int, y: int, target_w: int) {
     let tw = _clamp_w(target_w)
     _ensure_logo(tw)
-    let i = 0
-    let ry = 0
+    var i = 0
+    var ry = 0
     while ry < LOGO_CACHE.tr {
-        let cx = 0
+        var cx = 0
         while cx < tw {
             let cell = LOGO_CACHE.cells[i]
             _cell(buf, x + cx, y + ry, cell.top, cell.bot)
@@ -103,7 +103,7 @@ fun draw_logo(buf: Buffer, x: Int, y: Int, target_w: Int) {
     return
 }
 
-fun _clamp_w(tw: Int) -> Int {
+fun _clamp_w(tw: int) -> int {
     if tw > MW {
         return MW
     }
@@ -117,36 +117,36 @@ fun _clamp_w(tw: Int) -> Int {
 // over its ink pixels; None when the region has no ink, so the background shows
 // through.
 fun _avg(
-    rows: List<String>,
-    pr: List<Int>,
-    pg: List<Int>,
-    pb: List<Int>,
-    tx: Int,
-    tpy: Int,
-    tw: Int,
-    tph: Int,
-    mph: Int,
-) -> Option<Color> {
+    rows: list[str],
+    pr: list[int],
+    pg: list[int],
+    pb: list[int],
+    tx: int,
+    tpy: int,
+    tw: int,
+    tph: int,
+    mph: int,
+) -> Option[Color] {
     let mx0 = tx * MW / tw
-    let mx1 = (tx + 1) * MW / tw
+    var mx1 = (tx + 1) * MW / tw
     if mx1 <= mx0 {
         mx1 = mx0 + 1
     }
     let my0 = tpy * mph / tph
-    let my1 = (tpy + 1) * mph / tph
+    var my1 = (tpy + 1) * mph / tph
     if my1 <= my0 {
         my1 = my0 + 1
     }
-    let sr = 0
-    let sg = 0
-    let sb = 0
-    let n = 0
-    let my = my0
+    var sr = 0
+    var sg = 0
+    var sb = 0
+    var n = 0
+    var my = my0
     while my < my1 {
         let cr = my / 2
         let half = my - cr * 2
         let row = rows[cr]
-        let mx = mx0
+        var mx = mx0
         while mx < mx1 {
             let idx = _idx(_at(row, mx * 2 + half))
             if idx >= 0 {
@@ -165,39 +165,39 @@ fun _avg(
     return Some(Color.Rgb(sr / n, sg / n, sb / n))
 }
 
-fun _cell(buf: Buffer, x: Int, y: Int, top: Option<Color>, bot: Option<Color>) {
+fun _cell(buf: Buffer, x: int, y: int, top: Option[Color], bot: Option[Color]) {
     match top {
-        Some(tc) -> {
+        case Some(tc) {
             match bot {
-                Some(bc) -> buf.set(x, y, "▀", Style.new().fg(tc).bg(bc)),
-                None -> buf.set(x, y, "▀", Style.new().fg(tc)),
+                case Some(bc) { buf.set(x, y, "▀", Style.new().fg(tc).bg(bc)) }
+                case None { buf.set(x, y, "▀", Style.new().fg(tc)) }
             }
-        },
-        None -> {
+        }
+        case None {
             match bot {
-                Some(bc) -> buf.set(x, y, "▄", Style.new().fg(bc)),
-                None -> {},
+                case Some(bc) { buf.set(x, y, "▄", Style.new().fg(bc)) }
+                case None {}
             }
-        },
+        }
     }
     return
 }
 
-fun _at(row: String, i: Int) -> String {
+fun _at(row: str, i: int) -> str {
     if i < row.length() {
         return row.substring(i, i + 1)
     }
     return " "
 }
 
-fun _idx(ch: String) -> Int {
+fun _idx(ch: str) -> int {
     if ch == " " {
         return 0 - 1
     }
     return ALPHABET.index_of(ch)
 }
 
-fun _pr() -> List<Int> {
+fun _pr() -> list[int] {
     return [
         13,
         28,
@@ -231,7 +231,7 @@ fun _pr() -> List<Int> {
     ]
 }
 
-fun _pg() -> List<Int> {
+fun _pg() -> list[int] {
     return [
         13,
         29,
@@ -265,7 +265,7 @@ fun _pg() -> List<Int> {
     ]
 }
 
-fun _pb() -> List<Int> {
+fun _pb() -> list[int] {
     return [
         27,
         47,
@@ -299,7 +299,7 @@ fun _pb() -> List<Int> {
     ]
 }
 
-fun _rows() -> List<String> {
+fun _rows() -> list[str] {
     return [
         "                                         0 1 2 34515656565651575 3 2 1",
         "                             0 6 20565233353533333333333333333335353533585 3 7",

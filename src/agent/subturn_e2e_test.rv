@@ -3,17 +3,17 @@
 // Esc can cancel them): a full tool round-trip, the allowlist refusing an
 // off-limits tool, and the parent conversation staying clean.
 
-import std/string
-import std/http { Server, Request, Response }
-import std/sync { sleep_millis }
-import std/fs { write as fs_write, remove_file }
-import std/test { assert_true, assert_eq_str, assert_eq_int }
-import "./state" { AgentState, DisplayEvent, Snapshot }
-import "./subturn" { run_subagent }
-import "../agents/subagents" { Subagent }
+import std.string
+from std.http import Server, Request, Response
+from std.sync import sleep_millis
+from std.fs import write as fs_write, remove_file
+from std.test import assert_true, assert_eq_str, assert_eq_int
+from "./state" import AgentState, DisplayEvent, Snapshot
+from "./subturn" import run_subagent
+from "../agents/subagents" import Subagent
 
-let read_hits = 0
-let scoped_hits = 0
+var read_hits = 0
+var scoped_hits = 0
 
 // Round 1: ask to read a file. Round 2: answer.
 fun sub_read_handler(req: Request) -> Response {
@@ -54,22 +54,22 @@ fun serve_sub_scoped() {
     app.listen("127.0.0.1:8464")
 }
 
-fun open_agent(name: String) -> Subagent {
-    let all: List<String> = []
-    return Subagent {
-        name,
+fun open_agent(name: str) -> Subagent {
+    let all: list[str] = []
+    return Subagent(
+        name: name,
         description: "test agent",
         tools: all,
         model: "",
         prompt: "You are a test agent.",
-    }
+    )
 }
 
 fun test_subagent_runs_a_tool_round_and_returns_only_the_answer() {
     fs_write("_rook_sub.txt", "ship it")
-    spawn(fun() -> Unit {
+    spawn {
         serve_sub_read()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
     let got = run_subagent(
@@ -91,20 +91,20 @@ fun test_subagent_runs_a_tool_round_and_returns_only_the_answer() {
     let snap = st.drain()
     assert_eq_int(snap.sess_prompt, 24)
     assert_eq_int(snap.sess_completion, 8)
-    let seen = ""
-    let i = 0
+    var seen = ""
+    var i = 0
     while i < snap.events.len() {
         match snap.events[i] {
-            AgentStarted(id, name) -> {
+            case AgentStarted(id, name) {
                 seen = "${seen}[start ${name}]"
-            },
-            AgentTool(id, agent, name, result) -> {
+            }
+            case AgentTool(id, agent, name, result) {
                 seen = "${seen}[${agent} › ${name}]"
-            },
-            AgentFinished(id, name, used) -> {
+            }
+            case AgentFinished(id, name, used) {
                 seen = "${seen}[done ${name} ${used}]"
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         i = i + 1
     }
@@ -116,18 +116,18 @@ fun test_subagent_runs_a_tool_round_and_returns_only_the_answer() {
 }
 
 fun test_allowlist_refuses_an_off_limits_tool() {
-    spawn(fun() -> Unit {
+    spawn {
         serve_sub_scoped()
-    })
+    }
     sleep_millis(200)
     let st = AgentState.new()
-    let scoped = Subagent {
+    let scoped = Subagent(
         name: "searcher",
         description: "grep only",
         tools: ["grep"],
         model: "",
         prompt: "You may only search.",
-    }
+    )
     let got = run_subagent(
         st,
         "d2",
@@ -139,14 +139,14 @@ fun test_allowlist_refuses_an_off_limits_tool() {
     )
     assert_eq_str(got, "I could not read the file.")
     let snap = st.drain()
-    let seen = ""
-    let i = 0
+    var seen = ""
+    var i = 0
     while i < snap.events.len() {
         match snap.events[i] {
-            AgentTool(id, agent, name, result) -> {
+            case AgentTool(id, agent, name, result) {
                 seen = "${seen}[${agent} › ${name} => ${result}]"
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         i = i + 1
     }

@@ -6,52 +6,52 @@
 // AgentState: tool activity shows as "<agent> › tool(...)" rows, and a
 // mutating call blocks on the same approval prompt as the parent's own.
 
-import std/string
-import "github.com/martian56/aviary" { complete_stream }
-import "github.com/martian56/aviary/request" { ChatRequest }
-import "github.com/martian56/aviary/message" { Message, ToolCall, ToolDef }
-import "./state" { AgentState, DisplayEvent }
-import "./session" { request_timeout_ms }
-import "../tools/registry" { tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label }
-import "../tools/preview" { change_preview, append_preview }
-import "../tools/permissions" { Verdict, check_permission }
-import "../hooks/hooks" { run_pre_tool_hooks_for_agent, fire_hooks_for_agent }
-import "../agents/subagents" { Subagent }
-import "../config/config" { resolve_key, debug_log }
+import std.string
+from "github.com/martian56/aviary" import complete_stream
+from "github.com/martian56/aviary/request" import ChatRequest
+from "github.com/martian56/aviary/message" import Message, ToolCall, ToolDef
+from "./state" import AgentState, DisplayEvent
+from "./session" import request_timeout_ms
+from "../tools/registry" import tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label
+from "../tools/preview" import change_preview, append_preview
+from "../tools/permissions" import Verdict, check_permission
+from "../hooks/hooks" import run_pre_tool_hooks_for_agent, fire_hooks_for_agent
+from "../agents/subagents" import Subagent
+from "../config/config" import resolve_key, debug_log
 
-const SUB_ROUNDS: Int = 15
+let SUB_ROUNDS: int = 15
 
 // The system prompt when a definition body is empty.
-const DEFAULT_SUB_PROMPT: String = "You are a focused assistant working on one delegated task in the user's current directory. Use the available tools to complete it, then reply with a concise final answer; your reply is handed back to the agent that delegated to you."
+let DEFAULT_SUB_PROMPT: str = "You are a focused assistant working on one delegated task in the user's current directory. Use the available tools to complete it, then reply with a concise final answer; your reply is handed back to the agent that delegated to you."
 
 // Run `agent` against `task` to completion and return its final text, or an
 // "error: ..." string. Blocks the calling goroutine, which is the parent
 // turn; the UI stays live because it only ever reads the shared state.
 fun run_subagent(
     st: AgentState,
-    id: String,
+    id: str,
     agent: Subagent,
-    task: String,
-    model: String,
-    api_key: String,
-    base_url: String,
-) -> String {
-    let use_model = model
-    let use_key = api_key
+    task: str,
+    model: str,
+    api_key: str,
+    base_url: str,
+) -> str {
+    var use_model = model
+    var use_key = api_key
     if agent.model != "" {
         use_model = agent.model
         use_key = resolve_key(agent.model)
     }
-    let prompt = agent.prompt
+    var prompt = agent.prompt
     if prompt.trim() == "" {
         prompt = DEFAULT_SUB_PROMPT
     }
 
     st.emit(DisplayEvent.AgentStarted(id, agent.name))
-    let used = 0
-    let history: List<Message> = [Message.user(task)]
-    let allowed: List<String> = []
-    let round = 0
+    var used = 0
+    let history: list[Message] = [Message.user(task)]
+    let allowed: list[str] = []
+    var round = 0
     // Built once for the subagent's whole run, not rebuilt every round.
     let sub_tool_defs = tools()
     while round < SUB_ROUNDS {
@@ -72,15 +72,15 @@ fun run_subagent(
             sub_tool_defs,
         ).cancelable(st.token())
 
-        let reply_text = ""
-        let calls: List<ToolCall> = []
-        let finish = ""
-        let err = ""
+        var reply_text = ""
+        var calls: list[ToolCall] = []
+        var finish = ""
+        var err = ""
         // Streamed with a discarding callback rather than buffered: the
         // buffered path cannot notice a cancel mid-request, so Esc would sit
         // dead for the whole reply. Streaming checks the token every chunk.
         match complete_stream(req, _discard_chunk) {
-            Ok(reply) -> {
+            case Ok(reply) {
                 reply_text = reply.content
                 calls = reply.tool_calls
                 finish = reply.finish_reason
@@ -90,10 +90,10 @@ fun run_subagent(
                     reply.usage.cache_read_tokens,
                     reply.usage.cache_write_tokens,
                 )
-            },
-            Err(e) -> {
+            }
+            case Err(e) {
                 err = e.message
-            },
+            }
         }
         if err != "" {
             debug_log("subagent ${agent.name} error model=${use_model}: ${err}")
@@ -110,7 +110,7 @@ fun run_subagent(
         }
 
         history.push(Message.assistant_calls(reply_text, calls))
-        let i = 0
+        var i = 0
         while i < calls.len() {
             // Esc between the calls of one batch stops the subagent here, so
             // the rest of the batch does not run after the user asked to stop.
@@ -134,7 +134,7 @@ fun run_subagent(
 // Run one of the subagent's tool calls: enforce the allowlist, auto-run
 // read-only tools, and gate mutating ones through the parent's approval
 // prompt (labeled with the agent's name so the user knows who is asking).
-fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: List<String>) -> String {
+fun _sub_one(st: AgentState, agent: Subagent, call: ToolCall, allowed: list[str]) -> str {
     return _sub_one_with_hooks(
         st,
         agent,
@@ -150,11 +150,11 @@ fun _sub_one_with_hooks(
     st: AgentState,
     agent: Subagent,
     call: ToolCall,
-    allowed: List<String>,
-    pre_hook: fun(String, String, String) -> String,
-    post_hook: fun(String, String, String) -> Unit,
+    allowed: list[str],
+    pre_hook: fun(str, str, str) -> str,
+    post_hook: fun(str, str, str) -> Unit,
     permission: fun(ToolCall) -> Verdict,
-) -> String {
+) -> str {
     if call.name == "dispatch" {
         return "error: subagents cannot dispatch further agents; do the work yourself"
     }
@@ -162,10 +162,10 @@ fun _sub_one_with_hooks(
         return "error: subagents cannot ask the user; make a reasonable choice or report back"
     }
     let approval_needed = call_needs_approval(call)
-    if st.plan() && approval_needed {
+    if st.plan() and approval_needed {
         return "error: plan mode is on; you can only read and search, so ${call.name} is unavailable"
     }
-    if !_tool_allowed(agent.tools, call.name) {
+    if not _tool_allowed(agent.tools, call.name) {
         return "error: the ${call.name} tool is not available to this agent"
     }
     let vetoed = pre_hook(agent.name, call.name, call.arguments)
@@ -173,28 +173,28 @@ fun _sub_one_with_hooks(
         return vetoed
     }
     // The user's permission rules bind subagents the same way.
-    let denied = ""
-    let pre_allowed = false
+    var denied = ""
+    var pre_allowed = false
     match permission(call) {
-        Deny(rule) -> {
+        case Deny(rule) {
             denied = rule
-        },
-        Allow -> {
+        }
+        case Allow {
             pre_allowed = true
-        },
-        Ask -> {},
+        }
+        case Ask {}
     }
     if denied != "" {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or report back."
     }
-    if !approval_needed {
+    if not approval_needed {
         return _sub_do(st, agent, call, "", post_hook)
     }
-    let preview = call_approval_detail(call)
+    var preview = call_approval_detail(call)
     if preview == "" {
         preview = change_preview(call)
     }
-    if pre_allowed || _contains(allowed, call.name) {
+    if pre_allowed or _contains(allowed, call.name) {
         return _sub_do(st, agent, call, preview, post_hook)
     }
     let decision = st.ask_detail("${agent.name}: ${label(call)}", preview)
@@ -212,15 +212,15 @@ fun _sub_do(
     st: AgentState,
     agent: Subagent,
     call: ToolCall,
-    preview: String,
-    post_hook: fun(String, String, String) -> Unit,
-) -> String {
+    preview: str,
+    post_hook: fun(str, str, str) -> Unit,
+) -> str {
     let result = append_preview(dispatch_cancelable(call, st.token()), preview)
     post_hook(agent.name, call.name, call.arguments)
     return result
 }
 
-fun _fire_post_tool_hook(agent: String, tool: String, args_json: String) {
+fun _fire_post_tool_hook(agent: str, tool: str, args_json: str) {
     fire_hooks_for_agent(agent, "post-tool", tool, args_json)
     return
 }
@@ -228,17 +228,17 @@ fun _fire_post_tool_hook(agent: String, tool: String, args_json: String) {
 // The subagent's request: its own prompt and history, the session key and
 // endpoint, and only the tools its definition allows.
 fun _sub_request(
-    model: String,
-    prompt: String,
-    history: List<Message>,
-    api_key: String,
-    base_url: String,
-    allow: List<String>,
-    plan: Bool,
-    ts: List<ToolDef>,
+    model: str,
+    prompt: str,
+    history: list[Message],
+    api_key: str,
+    base_url: str,
+    allow: list[str],
+    plan: bool,
+    ts: list[ToolDef],
 ) -> ChatRequest {
-    let req = ChatRequest.new(model).cache(true).system(prompt)
-    let i = 0
+    var req = ChatRequest.new(model).cache(true).system(prompt)
+    var i = 0
     while i < history.len() {
         req = req.message(history[i])
         i = i + 1
@@ -255,16 +255,16 @@ fun _sub_request(
     if request_timeout > 0 {
         req = req.timeout(request_timeout)
     }
-    let t = 0
+    var t = 0
     while t < ts.len() {
         // Nesting stops at one level, and questions belong to the main
         // agent: a subagent never sees dispatch or ask_user; in plan mode
         // the mutating tools are withheld too.
-        let ok = ts[t].name != "dispatch" && ts[t].name != "ask_user" && _tool_allowed(
+        var ok = ts[t].name != "dispatch" and ts[t].name != "ask_user" and _tool_allowed(
             allow,
             ts[t].name,
         )
-        if plan && needs_approval(ts[t].name) {
+        if plan and needs_approval(ts[t].name) {
             ok = false
         }
         if ok {
@@ -276,15 +276,15 @@ fun _sub_request(
 }
 
 // An empty allowlist means every tool.
-fun _tool_allowed(allow: List<String>, name: String) -> Bool {
+fun _tool_allowed(allow: list[str], name: str) -> bool {
     if allow.len() == 0 {
         return true
     }
     return _contains(allow, name)
 }
 
-fun _contains(xs: List<String>, name: String) -> Bool {
-    let i = 0
+fun _contains(xs: list[str], name: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == name {
             return true
@@ -295,8 +295,8 @@ fun _contains(xs: List<String>, name: String) -> Bool {
 }
 
 // A compact one-liner for the tool bullet: the first line, clipped.
-fun _short(result: String) -> String {
-    let first = result
+fun _short(result: str) -> str {
+    var first = result
     let nl = result.index_of("\n")
     if nl >= 0 {
         first = result.substring(0, nl)
@@ -310,6 +310,6 @@ fun _short(result: String) -> String {
 // The stream callback for subagent requests: deltas are not displayed (a
 // subagent reports only its final answer), streaming exists so the cancel
 // token is checked at every chunk and Esc lands mid-reply.
-fun _discard_chunk(d: String) {
+fun _discard_chunk(d: str) {
     return
 }

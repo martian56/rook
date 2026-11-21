@@ -1,6 +1,6 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./transport" { build_request, build_notification, parse_message, enc_str, RpcResponse }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./transport" import build_request, build_notification, parse_message, enc_str, RpcResponse
 
 fun test_build_request_with_and_without_params() {
     assert_eq_str(
@@ -28,26 +28,20 @@ fun test_enc_str_escapes() {
 
 fun test_parse_message_result() {
     match parse_message("{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"ok\":true}}") {
-        Some(r) -> {
+        case Some(r) {
             assert_true(r.ok)
             // The id is parsed so the reader can match a response to its request
             // and discard a stale reply for another id.
             assert_eq_int(r.id, 7)
-        },
-        None -> {
-            assert_true(false)
-        },
+        }
+        case None { assert_true(false) }
     }
 }
 
 fun test_parse_message_without_id_is_negative_one() {
     match parse_message("{\"jsonrpc\":\"2.0\",\"result\":{\"ok\":true}}") {
-        Some(r) -> {
-            assert_eq_int(r.id, 0 - 1)
-        },
-        None -> {
-            assert_true(false)
-        },
+        case Some(r) { assert_eq_int(r.id, 0 - 1) }
+        case None { assert_true(false) }
     }
 }
 
@@ -55,13 +49,11 @@ fun test_parse_message_error_carries_the_message() {
     match parse_message(
         "{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32601,\"message\":\"no method\"}}",
     ) {
-        Some(r) -> {
-            assert_true(!r.ok)
+        case Some(r) {
+            assert_true(not r.ok)
             assert_eq_str(r.error, "no method")
-        },
-        None -> {
-            assert_true(false)
-        },
+        }
+        case None { assert_true(false) }
     }
 }
 
@@ -74,9 +66,9 @@ fun test_parse_message_skips_notifications_and_noise() {
     assert_true(_is_none(parse_message("starting up...")))
 }
 
-fun _is_none(o: Option<RpcResponse>) -> Bool {
+fun _is_none(o: Option[RpcResponse]) -> bool {
     return match o {
-        Some(r) -> false,
-        None -> true,
+        case Some(r) { false }
+        case None { true }
     }
 }

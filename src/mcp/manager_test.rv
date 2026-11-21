@@ -1,62 +1,62 @@
-import std/string
-import std/json { parse, JsonValue }
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "./client" { McpClient, McpTool, McpResource, McpPrompt }
-import "./config" { ServerSpec }
-import "./manager" { Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from, resource_route }
+import std.string
+from std.json import parse, JsonValue
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "./client" import McpClient, McpTool, McpResource, McpPrompt
+from "./config" import ServerSpec
+from "./manager" import Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from, resource_route
 
 fun _client() -> McpClient {
     let tools = [
-        McpTool { name: "read_file", description: "read a file", schema: "{\"type\": \"object\"}" },
-        McpTool { name: "weird name!", description: "", schema: "null" },
+        McpTool(name: "read_file", description: "read a file", schema: "{\"type\": \"object\"}"),
+        McpTool(name: "weird name!", description: "", schema: "null"),
     ]
-    let resources: List<McpResource> = []
-    let prompts: List<McpPrompt> = []
-    return McpClient {
+    let resources: list[McpResource] = []
+    let prompts: list[McpPrompt] = []
+    return McpClient(
         name: "fs",
         server_name: "filesystem",
         server_version: "1.0",
-        tools,
-        resources,
-        prompts,
+        tools: tools,
+        resources: resources,
+        prompts: prompts,
         ok: true,
         error: "",
         conn: None,
-    }
+    )
 }
 
-fun _tool_client(server: String, tool: String) -> McpClient {
-    let tools = [McpTool { name: tool, description: "", schema: "null" }]
-    let resources: List<McpResource> = []
-    let prompts: List<McpPrompt> = []
-    return McpClient {
+fun _tool_client(server: str, tool: str) -> McpClient {
+    let tools = [McpTool(name: tool, description: "", schema: "null")]
+    let resources: list[McpResource] = []
+    let prompts: list[McpPrompt] = []
+    return McpClient(
         name: server,
         server_name: "",
         server_version: "",
-        tools,
-        resources,
-        prompts,
+        tools: tools,
+        resources: resources,
+        prompts: prompts,
         ok: true,
         error: "",
         conn: None,
-    }
+    )
 }
 
-fun _resource_client(server: String, uri: String) -> McpClient {
-    let tools: List<McpTool> = []
-    let resources = [McpResource { uri, name: "doc", description: "", mime: "text/plain" }]
-    let prompts: List<McpPrompt> = []
-    return McpClient {
+fun _resource_client(server: str, uri: str) -> McpClient {
+    let tools: list[McpTool] = []
+    let resources = [McpResource(uri: uri, name: "doc", description: "", mime: "text/plain")]
+    let prompts: list[McpPrompt] = []
+    return McpClient(
         name: server,
         server_name: "",
         server_version: "",
-        tools,
-        resources,
-        prompts,
+        tools: tools,
+        resources: resources,
+        prompts: prompts,
         ok: true,
         error: "",
         conn: None,
-    }
+    )
 }
 
 fun test_exposed_name_namespaces_and_sanitizes() {
@@ -86,10 +86,10 @@ fun test_tools_from_skips_colliding_exposed_names() {
 }
 
 fun test_tools_from_skips_a_failed_client() {
-    let empty: List<McpTool> = []
-    let no_res: List<McpResource> = []
-    let no_pr: List<McpPrompt> = []
-    let dead = McpClient {
+    let empty: list[McpTool] = []
+    let no_res: list[McpResource] = []
+    let no_pr: list[McpPrompt] = []
+    let dead = McpClient(
         name: "down",
         server_name: "",
         server_version: "",
@@ -99,7 +99,7 @@ fun test_tools_from_skips_a_failed_client() {
         ok: false,
         error: "boom",
         conn: None,
-    }
+    )
     assert_eq_int(tools_from([dead]).len(), 0)
 }
 
@@ -131,7 +131,7 @@ fun test_resource_route_reports_missing_uri() {
         "",
         "file:///missing.md",
     )
-    assert_true(!route.ok)
+    assert_true(not route.ok)
     assert_true(route.error.contains("no connected MCP server exposes"))
 }
 
@@ -144,7 +144,7 @@ fun test_resource_route_reports_duplicate_uri_without_server() {
         "",
         "file:///README.md",
     )
-    assert_true(!route.ok)
+    assert_true(not route.ok)
     assert_true(route.error.contains("ambiguous"))
     assert_true(route.error.contains("docs"))
     assert_true(route.error.contains("cache"))
@@ -157,16 +157,16 @@ fun test_resource_route_validates_explicit_server_uri() {
         "docs",
         "file:///missing.md",
     )
-    assert_true(!route.ok)
+    assert_true(not route.ok)
     assert_true(route.error.contains("does not expose"))
 }
 
 fun test_status_from_shows_each_server_state() {
-    let no_res: List<McpResource> = []
-    let no_pr: List<McpPrompt> = []
-    let no_tools: List<McpTool> = []
-    let ok_tools = [McpTool { name: "read", description: "", schema: "null" }]
-    let connected = McpClient {
+    let no_res: list[McpResource] = []
+    let no_pr: list[McpPrompt] = []
+    let no_tools: list[McpTool] = []
+    let ok_tools = [McpTool(name: "read", description: "", schema: "null")]
+    let connected = McpClient(
         name: "fs",
         server_name: "fs-srv",
         server_version: "1.0",
@@ -176,8 +176,8 @@ fun test_status_from_shows_each_server_state() {
         ok: true,
         error: "",
         conn: None,
-    }
-    let failed = McpClient {
+    )
+    let failed = McpClient(
         name: "bad",
         server_name: "",
         server_version: "",
@@ -187,18 +187,13 @@ fun test_status_from_shows_each_server_state() {
         ok: false,
         error: "boom",
         conn: None,
-    }
-    let no_args: List<String> = []
+    )
+    let no_args: list[str] = []
     let specs = [
-        ServerSpec { name: "fs", command: "x", args: no_args, env: no_args },
-        ServerSpec { name: "bad", command: "y", args: no_args, env: no_args },
-        ServerSpec { name: "later", command: "z", args: no_args, env: no_args },
-        ServerSpec {
-            name: "invalid",
-            command: "z",
-            args: no_args,
-            env: ["TOKEN_WITHOUT_VALUE"],
-        },
+        ServerSpec(name: "fs", command: "x", args: no_args, env: no_args),
+        ServerSpec(name: "bad", command: "y", args: no_args, env: no_args),
+        ServerSpec(name: "later", command: "z", args: no_args, env: no_args),
+        ServerSpec(name: "invalid", command: "z", args: no_args, env: ["TOKEN_WITHOUT_VALUE"]),
     ]
     let text = status_from(specs, [connected, failed])
     assert_true(text.contains("fs: connected (fs-srv 1.0)"))
@@ -208,14 +203,14 @@ fun test_status_from_shows_each_server_state() {
     assert_true(text.contains("later: configured, not connected yet"))
     assert_true(text.contains("invalid: invalid configuration"))
     assert_true(text.contains("expected KEY=value"))
-    assert_true(!text.contains("TOKEN_WITHOUT_VALUE"))
+    assert_true(not text.contains("TOKEN_WITHOUT_VALUE"))
 }
 
 fun test_status_from_reports_tool_name_collisions() {
-    let no_args: List<String> = []
+    let no_args: list[str] = []
     let specs = [
-        ServerSpec { name: "a.b", command: "x", args: no_args, env: no_args },
-        ServerSpec { name: "a_b", command: "y", args: no_args, env: no_args },
+        ServerSpec(name: "a.b", command: "x", args: no_args, env: no_args),
+        ServerSpec(name: "a_b", command: "y", args: no_args, env: no_args),
     ]
     let text = status_from(specs, [_tool_client("a.b", "read"), _tool_client("a_b", "read")])
     assert_true(text.contains("warning: MCP tool name collision"))
@@ -226,8 +221,8 @@ fun test_status_from_reports_tool_name_collisions() {
 }
 
 fun test_status_from_with_no_servers() {
-    let no_specs: List<ServerSpec> = []
-    let no_clients: List<McpClient> = []
+    let no_specs: list[ServerSpec] = []
+    let no_clients: list[McpClient] = []
     assert_true(status_from(no_specs, no_clients).contains("no MCP servers configured"))
 }
 
@@ -246,22 +241,16 @@ fun test_format_prompt_flattens_messages() {
 fun test_route_in_maps_the_exposed_name_back() {
     let clients = [_client()]
     match route_in(clients, "mcp__fs__read_file") {
-        Some(r) -> {
+        case Some(r) {
             assert_eq_str(r.server, "fs")
             assert_eq_str(r.tool, "read_file")
-        },
-        None -> {
-            assert_true(false)
-        },
+        }
+        case None { assert_true(false) }
     }
     // The sanitized name routes back to the original bare tool name.
     match route_in(clients, "mcp__fs__weird_name_") {
-        Some(r) -> {
-            assert_eq_str(r.tool, "weird name!")
-        },
-        None -> {
-            assert_true(false)
-        },
+        case Some(r) { assert_eq_str(r.tool, "weird name!") }
+        case None { assert_true(false) }
     }
     // An unknown tool does not route.
     assert_true(_is_none(route_in(clients, "mcp__fs__nope")))
@@ -309,9 +298,9 @@ fun test_format_tool_result_caps_oversized_text() {
     assert_true(out.contains("[truncated: MCP tool result]"))
 }
 
-fun _repeat(s: String, n: Int) -> String {
-    let out = ""
-    let i = 0
+fun _repeat(s: str, n: int) -> str {
+    var out = ""
+    var i = 0
     while i < n {
         out = out.concat(s)
         i = i + 1
@@ -319,16 +308,16 @@ fun _repeat(s: String, n: Int) -> String {
     return out
 }
 
-fun _is_none(o: Option<Route>) -> Bool {
+fun _is_none(o: Option[Route]) -> bool {
     return match o {
-        Some(r) -> false,
-        None -> true,
+        case Some(r) { false }
+        case None { true }
     }
 }
 
-fun _json(text: String) -> JsonValue {
+fun _json(text: str) -> JsonValue {
     return match parse(text) {
-        Ok(j) -> j,
-        Err(e) -> JsonValue.Null,
+        case Ok(j) { j }
+        case Err(e) { JsonValue.Null }
     }
 }

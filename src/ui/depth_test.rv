@@ -1,22 +1,22 @@
-import std/test { assert_eq_str, assert_true }
-import "github.com/martian56/plumage/style" { Style, Color }
-import "./depth" { Depth, depth_from, adapt_theme, adapt_color }
-import "./themes" { theme_by_name }
+from std.test import assert_eq_str, assert_true
+from "github.com/martian56/plumage/style" import Style, Color
+from "./depth" import Depth, depth_from, adapt_theme, adapt_color
+from "./themes" import theme_by_name
 
-fun tag(d: Depth) -> String {
+fun tag(d: Depth) -> str {
     return match d {
-        Full -> "full",
-        Ansi256 -> "256",
-        Ansi16 -> "16",
+        case Full { "full" }
+        case Ansi256 { "256" }
+        case Ansi16 { "16" }
     }
 }
 
-fun ctag(c: Color) -> String {
+fun ctag(c: Color) -> str {
     return match c {
-        Rgb(r, g, b) -> "rgb:${r},${g},${b}",
-        Indexed(i) -> "idx:${i}",
-        Gray -> "gray",
-        _ -> "named",
+        case Rgb(r, g, b) { "rgb:${r},${g},${b}" }
+        case Indexed(i) { "idx:${i}" }
+        case Gray { "gray" }
+        case _ { "named" }
     }
 }
 

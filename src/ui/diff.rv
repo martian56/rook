@@ -4,17 +4,17 @@
 // write_file or edit_file change almost always is; interleaved changes
 // simply widen the block. Pure, so the tests feed strings straight in.
 
-import std/string
+import std.string
 
 // Context lines shown around the changed block.
-const CONTEXT: Int = 2
+let CONTEXT: int = 2
 
 // Cap on emitted lines so a full-file rewrite cannot flood the transcript.
-const MAX_LINES: Int = 24
+let MAX_LINES: int = 24
 
 // The unified diff text, "" when the sides are identical. Lines come back
 // prefixed "  " (context), "- " (removed), or "+ " (added).
-fun unified(old_text: String, new_text: String) -> String {
+fun unified(old_text: str, new_text: str) -> str {
     if old_text == new_text {
         return ""
     }
@@ -22,14 +22,14 @@ fun unified(old_text: String, new_text: String) -> String {
     let new_lines = new_text.lines()
 
     // Common prefix.
-    let start = 0
-    while start < old_lines.len() && start < new_lines.len() && old_lines[start] == new_lines[start] {
+    var start = 0
+    while start < old_lines.len() and start < new_lines.len() and old_lines[start] == new_lines[start] {
         start = start + 1
     }
     // Common suffix, not overlapping the prefix.
-    let old_end = old_lines.len()
-    let new_end = new_lines.len()
-    while old_end > start && new_end > start && old_lines[old_end - 1] == new_lines[new_end - 1] {
+    var old_end = old_lines.len()
+    var new_end = new_lines.len()
+    while old_end > start and new_end > start and old_lines[old_end - 1] == new_lines[new_end - 1] {
         old_end = old_end - 1
         new_end = new_end - 1
     }
@@ -37,16 +37,16 @@ fun unified(old_text: String, new_text: String) -> String {
     // No changed lines but the raw texts differ: the only difference is a
     // trailing newline (lines() drops a single trailing empty line). Say so
     // rather than render a diff with content but no highlighted change.
-    if old_end == start && new_end == start {
+    if old_end == start and new_end == start {
         return "(only the trailing newline changed)"
     }
 
-    let out: List<String> = []
-    let ctx_from = start - CONTEXT
+    let out: list[str] = []
+    var ctx_from = start - CONTEXT
     if ctx_from < 0 {
         ctx_from = 0
     }
-    let ctx_to = old_end + CONTEXT
+    var ctx_to = old_end + CONTEXT
     if ctx_to > old_lines.len() {
         ctx_to = old_lines.len()
     }
@@ -55,30 +55,30 @@ fun unified(old_text: String, new_text: String) -> String {
     // rewrite would otherwise materialize about twice the file's lines).
     let total = (start - ctx_from) + (old_end - start) + (new_end - start) + (ctx_to - old_end)
 
-    let i = ctx_from
-    while i < start && out.len() < MAX_LINES {
+    var i = ctx_from
+    while i < start and out.len() < MAX_LINES {
         out.push("  ${old_lines[i]}")
         i = i + 1
     }
     i = start
-    while i < old_end && out.len() < MAX_LINES {
+    while i < old_end and out.len() < MAX_LINES {
         out.push("- ${old_lines[i]}")
         i = i + 1
     }
     i = start
-    while i < new_end && out.len() < MAX_LINES {
+    while i < new_end and out.len() < MAX_LINES {
         out.push("+ ${new_lines[i]}")
         i = i + 1
     }
     i = old_end
-    while i < ctx_to && out.len() < MAX_LINES {
+    while i < ctx_to and out.len() < MAX_LINES {
         out.push("  ${old_lines[i]}")
         i = i + 1
     }
 
     // Cap, keeping the head where the change starts.
     let shown = out.len()
-    let text = ""
+    var text = ""
     i = 0
     while i < shown {
         if i > 0 {

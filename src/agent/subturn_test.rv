@@ -1,34 +1,34 @@
-import std/string
-import std/fs { write, exists, remove_file }
-import std/sync { sleep_millis }
-import std/test { assert_true, assert_eq_str }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./state" { AgentState }
-import "./subturn" { _sub_one_with_hooks }
-import "../agents/subagents" { Subagent }
-import "../tools/permissions" { Verdict }
+import std.string
+from std.fs import write, exists, remove_file
+from std.sync import sleep_millis
+from std.test import assert_true, assert_eq_str
+from "github.com/martian56/aviary/message" import ToolCall
+from "./state" import AgentState
+from "./subturn" import _sub_one_with_hooks
+from "../agents/subagents" import Subagent
+from "../tools/permissions" import Verdict
 
-let hook_agent = ""
-let hook_tool = ""
-let hook_args = ""
-let post_agent = ""
-let post_tool = ""
-let post_args = ""
-let approval_result = ""
+var hook_agent = ""
+var hook_tool = ""
+var hook_args = ""
+var post_agent = ""
+var post_tool = ""
+var post_args = ""
+var approval_result = ""
 
-fun full_agent(name: String) -> Subagent {
-    let all: List<String> = []
-    return Subagent {
-        name,
+fun full_agent(name: str) -> Subagent {
+    let all: list[str] = []
+    return Subagent(
+        name: name,
         description: "test agent",
         tools: all,
         model: "",
         prompt: "You are a test agent.",
-    }
+    )
 }
 
-fun call(name: String, args: String) -> ToolCall {
-    return ToolCall { id: "1", name, arguments: args }
+fun call(name: str, args: str) -> ToolCall {
+    return ToolCall(id: "1", name: name, arguments: args)
 }
 
 fun reset_hooks() {
@@ -41,21 +41,21 @@ fun reset_hooks() {
     return
 }
 
-fun blocking_pre_hook(agent: String, tool: String, args_json: String) -> String {
+fun blocking_pre_hook(agent: str, tool: str, args_json: str) -> str {
     hook_agent = agent
     hook_tool = tool
     hook_args = args_json
     return "blocked by test hook"
 }
 
-fun allowing_pre_hook(agent: String, tool: String, args_json: String) -> String {
+fun allowing_pre_hook(agent: str, tool: str, args_json: str) -> str {
     hook_agent = agent
     hook_tool = tool
     hook_args = args_json
     return ""
 }
 
-fun record_post_hook(agent: String, tool: String, args_json: String) {
+fun record_post_hook(agent: str, tool: str, args_json: str) {
     post_agent = agent
     post_tool = tool
     post_args = args_json
@@ -68,7 +68,7 @@ fun ask_permission(call: ToolCall) -> Verdict {
 
 fun test_subagent_pre_tool_hook_blocks_mutation() {
     reset_hooks()
-    let allowed: List<String> = []
+    let allowed: list[str] = []
     let result = _sub_one_with_hooks(
         AgentState.new(),
         full_agent("worker"),
@@ -83,13 +83,13 @@ fun test_subagent_pre_tool_hook_blocks_mutation() {
     assert_eq_str(hook_tool, "write_file")
     assert_true(hook_args.contains("_rook_sub_hook_blocked.txt"))
     assert_eq_str(post_tool, "")
-    assert_true(!exists("_rook_sub_hook_blocked.txt"))
+    assert_true(not exists("_rook_sub_hook_blocked.txt"))
 }
 
 fun test_subagent_post_tool_hook_observes_tool_call() {
     reset_hooks()
     write("_rook_sub_hook_read.txt", "observed")
-    let allowed: List<String> = []
+    let allowed: list[str] = []
     let result = _sub_one_with_hooks(
         AgentState.new(),
         full_agent("reader"),
@@ -117,8 +117,8 @@ fun test_subagent_write_approval_shows_and_records_the_preview() {
         remove_file(path)
     }
     let st = AgentState.new()
-    let allowed: List<String> = []
-    spawn(fun() -> Unit {
+    let allowed: list[str] = []
+    spawn {
         approval_result = _sub_one_with_hooks(
             st,
             full_agent("worker"),
@@ -128,12 +128,12 @@ fun test_subagent_write_approval_shows_and_records_the_preview() {
             record_post_hook,
             ask_permission,
         )
-    })
+    }
 
-    let pending = ""
-    let detail = ""
-    let tries = 0
-    while tries < 400 && pending == "" {
+    var pending = ""
+    var detail = ""
+    var tries = 0
+    while tries < 400 and pending == "" {
         pending = st.pending_now()
         if pending != "" {
             detail = st.drain().pending_detail
@@ -144,7 +144,7 @@ fun test_subagent_write_approval_shows_and_records_the_preview() {
         tries = tries + 1
     }
     tries = 0
-    while tries < 400 && approval_result == "" {
+    while tries < 400 and approval_result == "" {
         sleep_millis(5)
         tries = tries + 1
     }
@@ -168,7 +168,7 @@ fun test_subagent_mutation_after_an_interrupt_is_denied_without_prompting() {
     }
     let st = AgentState.new()
     st.request_interrupt()
-    let allowed: List<String> = []
+    let allowed: list[str] = []
     let result = _sub_one_with_hooks(
         st,
         full_agent("worker"),
@@ -180,6 +180,6 @@ fun test_subagent_mutation_after_an_interrupt_is_denied_without_prompting() {
     )
     assert_true(result.contains("denied"))
     assert_eq_str(st.pending_now(), "")
-    assert_true(!exists(path))
+    assert_true(not exists(path))
     return
 }

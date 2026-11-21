@@ -1,11 +1,11 @@
-import std/string
-import std/json { stringify }
-import std/test { assert_eq_str, assert_eq_int, assert_true, assert_false }
-import "github.com/martian56/aviary/message" { ToolCall }
-import "./registry" { tools, needs_approval, call_needs_approval, dispatch, label }
+import std.string
+from std.json import stringify
+from std.test import assert_eq_str, assert_eq_int, assert_true, assert_false
+from "github.com/martian56/aviary/message" import ToolCall
+from "./registry" import tools, needs_approval, call_needs_approval, dispatch, label
 
-fun call(name: String, args: String) -> ToolCall {
-    return ToolCall { id: "1", name, arguments: args }
+fun call(name: str, args: str) -> ToolCall {
+    return ToolCall(id: "1", name: name, arguments: args)
 }
 
 fun test_all_tools_are_defined() {
@@ -28,7 +28,7 @@ fun test_advertised_tools_are_dispatched() {
         "ask_user",
         "dispatch",
     ]
-    let i = 0
+    var i = 0
     while i < names.len() {
         assert_false(dispatch(call(names[i], "{}")).starts_with("error: unknown tool"))
         i = i + 1
@@ -105,10 +105,10 @@ fun test_dispatch_unknown_tool() {
 fun test_dispatch_routes_git_tools() {
     // The precise regression is the unknown-tool fall-through; check the error
     // prefix, not a substring, since a real diff can contain those words.
-    assert_true(!dispatch(call("git_status", "{}")).starts_with("error: unknown tool"))
-    assert_true(!dispatch(call("git_diff", "{}")).starts_with("error: unknown tool"))
+    assert_true(not dispatch(call("git_status", "{}")).starts_with("error: unknown tool"))
+    assert_true(not dispatch(call("git_diff", "{}")).starts_with("error: unknown tool"))
     let c = dispatch(call("git_commit", "{\"message\":\"\"}"))
-    assert_true(!c.starts_with("error: unknown tool"))
+    assert_true(not c.starts_with("error: unknown tool"))
     assert_true(c.starts_with("error:"))
 }
 
@@ -148,9 +148,9 @@ fun test_dispatch_tool_is_auto_run_and_labeled() {
     assert_true(dispatch(call("dispatch", "{}")).starts_with("error:"))
 }
 
-fun _tool_schema(name: String) -> String {
+fun _tool_schema(name: str) -> str {
     let ts = tools()
-    let i = 0
+    var i = 0
     while i < ts.len() {
         if ts[i].name == name {
             return stringify(ts[i].parameters)

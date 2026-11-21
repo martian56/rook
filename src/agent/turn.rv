@@ -3,33 +3,33 @@
 // the results back, until the model answers with no tool calls or the round
 // cap is hit.
 
-import std/string
-import std/sync { Mutex, mutex, sleep_millis }
-import "github.com/martian56/aviary" { complete_stream }
-import "github.com/martian56/aviary/request" { ChatRequest, CancelToken }
-import "github.com/martian56/aviary/message" { ToolCall, ToolDef }
-import "./state" { AgentState, DisplayEvent }
-import "./session" { build_request, turn_agents_prompt }
-import "./compact" { maybe_compact }
-import "./subturn" { run_subagent }
-import "./ask_options" { parse_ask_options, option_labels, option_count_error }
-import "../tools/registry" { tools, needs_approval, call_approval_detail, dispatch_cancelable, label }
-import "../tools/preview" { change_preview, append_preview }
-import "../tools/permissions" { Verdict, check_permission }
-import "../tools/pricing" { usage_label }
-import "../config/config" { debug_log }
-import "../tools/args" { arg }
-import "../tools/checkpoints" { begin_checkpoint_batch }
-import "../agents/dir" { roots }
-import "../agents/subagents" { Subagent, all_subagents, subagent_index }
-import "../hooks/hooks" { run_pre_tool_hooks, fire_hooks }
+import std.string
+from std.sync import Mutex, mutex, sleep_millis
+from "github.com/martian56/aviary" import complete_stream
+from "github.com/martian56/aviary/request" import ChatRequest, CancelToken
+from "github.com/martian56/aviary/message" import ToolCall, ToolDef
+from "./state" import AgentState, DisplayEvent
+from "./session" import build_request, turn_agents_prompt
+from "./compact" import maybe_compact
+from "./subturn" import run_subagent
+from "./ask_options" import parse_ask_options, option_labels, option_count_error
+from "../tools/registry" import tools, needs_approval, call_approval_detail, dispatch_cancelable, label
+from "../tools/preview" import change_preview, append_preview
+from "../tools/permissions" import Verdict, check_permission
+from "../tools/pricing" import usage_label
+from "../config/config" import debug_log
+from "../tools/args" import arg
+from "../tools/checkpoints" import begin_checkpoint_batch
+from "../agents/dir" import roots
+from "../agents/subagents" import Subagent, all_subagents, subagent_index
+from "../hooks/hooks" import run_pre_tool_hooks, fire_hooks
 
-const MAX_ROUNDS: Int = 25
+let MAX_ROUNDS: int = 25
 
-fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
+fun run_turn(st: AgentState, model: str, api_key: str, base_url: str) {
     // Tool kinds the user approved for the rest of this turn.
-    let allowed: List<String> = []
-    let round = 0
+    let allowed: list[str] = []
+    var round = 0
     // The memory, skills, and subagent parts of the system prompt are read from
     // disk once here, not on every round.
     let agents_prompt = turn_agents_prompt()
@@ -67,19 +67,19 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         // keep what already streamed: on an error the partial text is pushed
         // into the conversation (like the cancel path), so what the user saw
         // and what the model remembers stay the same.
-        let streamed: List<String> = []
-        let on_chunk = fun(d: String) -> Unit {
+        let streamed: list[str] = []
+        let on_chunk = (d: str) => {
             st.chunk(d)
             streamed.push(d)
             return
         }
 
-        let reply_text = ""
-        let calls: List<ToolCall> = []
-        let finish = ""
-        let err = ""
+        var reply_text = ""
+        var calls: list[ToolCall] = []
+        var finish = ""
+        var err = ""
         match complete_stream(req, on_chunk) {
-            Ok(reply) -> {
+            case Ok(reply) {
                 reply_text = reply.content
                 calls = reply.tool_calls
                 finish = reply.finish_reason
@@ -89,10 +89,10 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                     reply.usage.cache_read_tokens,
                     reply.usage.cache_write_tokens,
                 )
-            },
-            Err(e) -> {
+            }
+            case Err(e) {
                 err = e.message
-            },
+            }
         }
         if err != "" {
             debug_log("turn error model=${model}: ${err}")
@@ -132,13 +132,13 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
         // Nothing is about to run if Esc already landed while the model was
         // streaming this request, so do not announce a fan-out that will not
         // happen.
-        if fanout && !st.interrupted() {
+        if fanout and not st.interrupted() {
             st.emit(DisplayEvent.Info("running ${_count_dispatch(calls)} agents in parallel…"))
         }
-        let i = 0
+        var i = 0
         // The index of the first call left unrun by an Esc, -1 when the whole
         // batch ran and 0 when the stop arrived before any call started.
-        let stopped = 0 - 1
+        var stopped = 0 - 1
         while i < calls.len() {
             // Esc can land between the calls of one batch, not just before it.
             // Without this the rest of the batch still runs: read-only calls
@@ -151,16 +151,16 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 break
             }
             let call = calls[i]
-            if fanout && call.name == "dispatch" {
+            if fanout and call.name == "dispatch" {
                 let idx = i
                 let spawned_call = call
-                spawn(fun() -> Unit {
-                    let result = _dispatch(st, spawned_call, model, api_key, base_url)
+                spawn {
+                    var result = _dispatch(st, spawned_call, model, api_key, base_url)
                     st.emit(DisplayEvent.ToolRan(label(spawned_call), _short(result)))
                     fanout_results.set(idx, result)
-                })
+                }
             } else {
-                let result = ""
+                var result = ""
                 if call.name == "dispatch" {
                     result = _dispatch(st, call, model, api_key, base_url)
                 } else {
@@ -171,11 +171,7 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                     }
                 }
                 st.emit(DisplayEvent.ToolRan(label(call), _display(call, result)))
-                if fanout {
-                    fanout_results.set(i, result)
-                } else {
-                    st.push_tool_result(call.id, call.name, result)
-                }
+                fanout_results.set(i, result) if fanout else st.push_tool_result(call.id, call.name, result)
             }
             i = i + 1
         }
@@ -188,13 +184,13 @@ fun run_turn(st: AgentState, model: String, api_key: String, base_url: String) {
                 while fanout_results.count() < stopped {
                     sleep_millis(20)
                 }
-                let d = 0
+                var d = 0
                 while d < stopped {
                     st.push_tool_result(calls[d].id, calls[d].name, fanout_results.get(d))
                     d = d + 1
                 }
             }
-            let c = stopped
+            var c = stopped
             while c < calls.len() {
                 st.push_tool_result(calls[c].id, calls[c].name, "(interrupted by user before running)")
                 c = c + 1
@@ -230,9 +226,9 @@ fun _end_turn(st: AgentState) {
 }
 
 // The streamed deltas as one string.
-fun _joined(parts: List<String>) -> String {
-    let out = ""
-    let i = 0
+fun _joined(parts: list[str]) -> str {
+    var out = ""
+    var i = 0
     while i < parts.len() {
         out = out.concat(parts[i])
         i = i + 1
@@ -243,8 +239,8 @@ fun _joined(parts: List<String>) -> String {
 // Turn a provider failure into something actionable instead of dumping the
 // raw HTTP body at the user. Unrecognized errors pass through, capped so a
 // long JSON payload cannot flood the transcript.
-fun friendly_error(err: String) -> String {
-    if err.contains("HTTP 401") || err.contains("HTTP 403") {
+fun friendly_error(err: str) -> str {
+    if err.contains("HTTP 401") or err.contains("HTTP 403") {
         return "the provider rejected the API key; /key updates it"
     }
     if err.contains("HTTP 402") {
@@ -253,7 +249,7 @@ fun friendly_error(err: String) -> String {
     if err.contains("HTTP 429") {
         return "rate limited by the provider; wait a moment and ask again"
     }
-    if err.contains("HTTP 500") || err.contains("HTTP 502") || err.contains("HTTP 503") || err.contains(
+    if err.contains("HTTP 500") or err.contains("HTTP 502") or err.contains("HTTP 503") or err.contains(
         "HTTP 529",
     ) {
         return "the provider had a server error; asking again usually works"
@@ -265,7 +261,7 @@ fun friendly_error(err: String) -> String {
 }
 
 // Emit this turn's token usage and estimated cost, when there is any.
-fun _report_usage(st: AgentState, model: String) {
+fun _report_usage(st: AgentState, model: str) {
     let t = st.turn_tokens()
     if t.prompt + t.completion == 0 {
         return
@@ -280,43 +276,43 @@ fun _report_usage(st: AgentState, model: String) {
 
 // Indexed fan-out results. Dispatch goroutines may finish in any order, but
 // the model-visible tool results are pushed later in the original call order.
-struct ToolResults {
-    lock: Mutex,
-    results: List<String>,
-    n: Int,
+class ToolResults {
+    lock: Mutex
+    results: list[str]
+    n: int
 }
 
 impl ToolResults {
-    fun new(size: Int) -> ToolResults {
-        let results: List<String> = []
-        let i = 0
+    fun new(size: int) -> ToolResults {
+        let results: list[str] = []
+        var i = 0
         while i < size {
             results.push("")
             i = i + 1
         }
-        return ToolResults { lock: mutex(), results, n: 0 }
+        return ToolResults(lock: mutex(), results: results, n: 0)
     }
 
-    fun set(self, idx: Int, result: String) {
+    fun set(self, idx: int, result: str) {
         self.lock.lock()
-        if idx >= 0 && idx < self.results.len() {
+        if idx >= 0 and idx < self.results.len() {
             self.results[idx] = result
             self.n = self.n + 1
         }
         self.lock.unlock()
     }
 
-    fun count(self) -> Int {
+    fun count(self) -> int {
         self.lock.lock()
         let c = self.n
         self.lock.unlock()
         return c
     }
 
-    fun get(self, idx: Int) -> String {
+    fun get(self, idx: int) -> str {
         self.lock.lock()
-        let result = ""
-        if idx >= 0 && idx < self.results.len() {
+        var result = ""
+        if idx >= 0 and idx < self.results.len() {
             result = self.results[idx]
         }
         self.lock.unlock()
@@ -324,8 +320,8 @@ impl ToolResults {
     }
 }
 
-fun _push_tool_results(st: AgentState, calls: List<ToolCall>, results: ToolResults) {
-    let i = 0
+fun _push_tool_results(st: AgentState, calls: list[ToolCall], results: ToolResults) {
+    var i = 0
     while i < calls.len() {
         st.push_tool_result(calls[i].id, calls[i].name, results.get(i))
         i = i + 1
@@ -333,9 +329,9 @@ fun _push_tool_results(st: AgentState, calls: List<ToolCall>, results: ToolResul
     return
 }
 
-fun _count_dispatch(calls: List<ToolCall>) -> Int {
-    let c = 0
-    let i = 0
+fun _count_dispatch(calls: list[ToolCall]) -> int {
+    var c = 0
+    var i = 0
     while i < calls.len() {
         if calls[i].name == "dispatch" {
             c = c + 1
@@ -349,13 +345,7 @@ fun _count_dispatch(calls: List<ToolCall>) -> Int {
 // this goroutine; its final answer is the tool result. Runs without its own
 // approval since every mutating call the subagent makes still gates
 // individually.
-fun _dispatch(
-    st: AgentState,
-    call: ToolCall,
-    model: String,
-    api_key: String,
-    base_url: String,
-) -> String {
+fun _dispatch(st: AgentState, call: ToolCall, model: str, api_key: str, base_url: str) -> str {
     let name = arg(call.arguments, "agent")
     let task = arg(call.arguments, "task")
     if task.trim() == "" {
@@ -364,8 +354,8 @@ fun _dispatch(
     let agents = all_subagents(roots())
     let idx = subagent_index(agents, name)
     if idx < 0 {
-        let names = ""
-        let i = 0
+        var names = ""
+        var i = 0
         while i < agents.len() {
             if i > 0 {
                 names = names.concat(", ")
@@ -381,7 +371,7 @@ fun _dispatch(
 // An ask_user call: publish the question and options and block until the
 // user picks. The chosen option (not its index) goes back to the model, so
 // the answer reads naturally in the conversation.
-fun _ask_user(st: AgentState, call: ToolCall) -> String {
+fun _ask_user(st: AgentState, call: ToolCall) -> str {
     let question = arg(call.arguments, "question").trim()
     if question == "" {
         return "error: ask_user needs a question"
@@ -393,7 +383,7 @@ fun _ask_user(st: AgentState, call: ToolCall) -> String {
     }
     let labels = option_labels(options)
     let idx = st.ask_question(question, labels)
-    if idx < 0 || idx >= options.len() {
+    if idx < 0 or idx >= options.len() {
         return "The user declined to pick an option; ask them in plain chat instead."
     }
     st.emit(DisplayEvent.Info("you chose: ${labels[idx]}"))
@@ -402,12 +392,12 @@ fun _ask_user(st: AgentState, call: ToolCall) -> String {
 
 // Run one tool call, gating a mutating one through approval unless its kind
 // was already allowed for the turn.
-fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
+fun _run_one(st: AgentState, call: ToolCall, allowed: list[str]) -> str {
     let approval_detail = call_approval_detail(call)
-    let approval_needed = needs_approval(call.name) || approval_detail != ""
+    let approval_needed = needs_approval(call.name) or approval_detail != ""
     // Plan mode blocks every mutating tool outright, even if one slips into
     // a request; the model should propose the change, not make it.
-    if st.plan() && approval_needed {
+    if st.plan() and approval_needed {
         return "Plan mode is on, so ${call.name} is unavailable. Describe this change as part of your plan instead; the user will turn plan mode off to carry it out."
     }
     // A pre-tool hook may veto the call before anything runs; its reason goes
@@ -418,30 +408,30 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
     }
     // Settings rules come first: a deny blocks any tool, an allow skips the
     // prompt for a gated one.
-    let denied = ""
-    let pre_allowed = false
+    var denied = ""
+    var pre_allowed = false
     match check_permission(call) {
-        Deny(rule) -> {
+        case Deny(rule) {
             denied = rule
-        },
-        Allow -> {
+        }
+        case Allow {
             pre_allowed = true
-        },
-        Ask -> {},
+        }
+        case Ask {}
     }
     if denied != "" {
         return "This action is blocked by the permission rule '${denied}' in settings. Do not retry it; find another way or ask the user."
     }
-    if !approval_needed {
+    if not approval_needed {
         return _do(st.token(), call, "")
     }
     // The diff this call would make, shown in the approval prompt and, on
     // success, under the tool row.
-    let preview = approval_detail
+    var preview = approval_detail
     if preview == "" {
         preview = change_preview(call)
     }
-    if pre_allowed || _contains(allowed, call.name) {
+    if pre_allowed or _contains(allowed, call.name) {
         return _do(st.token(), call, preview)
     }
     let decision = st.ask_detail(label(call), preview)
@@ -457,7 +447,7 @@ fun _run_one(st: AgentState, call: ToolCall, allowed: List<String>) -> String {
 
 // Run the tool, then fire the post-tool hooks so they observe what ran. The
 // diff (when any) is appended for the transcript and the model.
-fun _do(token: CancelToken, call: ToolCall, preview: String) -> String {
+fun _do(token: CancelToken, call: ToolCall, preview: str) -> str {
     let result = append_preview(dispatch_cancelable(call, token), preview)
     fire_hooks("post-tool", call.name, call.arguments)
     return result
@@ -466,11 +456,11 @@ fun _do(token: CancelToken, call: ToolCall, preview: String) -> String {
 // Attach the tools the model may use. In plan mode the mutating tools are
 // withheld, so the model researches and proposes instead of changing
 // anything.
-fun _with_tools(req: ChatRequest, plan: Bool, ts: List<ToolDef>) -> ChatRequest {
-    let r = req
-    let i = 0
+fun _with_tools(req: ChatRequest, plan: bool, ts: list[ToolDef]) -> ChatRequest {
+    var r = req
+    var i = 0
     while i < ts.len() {
-        if !plan || !needs_approval(ts[i].name) {
+        if not plan or not needs_approval(ts[i].name) {
             r = r.tool(ts[i])
         }
         i = i + 1
@@ -478,8 +468,8 @@ fun _with_tools(req: ChatRequest, plan: Bool, ts: List<ToolDef>) -> ChatRequest 
     return r
 }
 
-fun _contains(xs: List<String>, name: String) -> Bool {
-    let i = 0
+fun _contains(xs: list[str], name: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == name {
             return true
@@ -491,9 +481,9 @@ fun _contains(xs: List<String>, name: String) -> Bool {
 
 // What a tool row shows: the clipped first line, plus the diff lines under
 // a file change so the transcript displays what changed.
-fun _display(call: ToolCall, result: String) -> String {
+fun _display(call: ToolCall, result: str) -> str {
     let head = _short(result)
-    if call.name != "write_file" && call.name != "edit_file" && call.name != "multi_edit" {
+    if call.name != "write_file" and call.name != "edit_file" and call.name != "multi_edit" {
         return head
     }
     let nl = result.index_of("\n")
@@ -504,8 +494,8 @@ fun _display(call: ToolCall, result: String) -> String {
 }
 
 // A compact one-liner for the tool bullet: the first line, clipped.
-fun _short(result: String) -> String {
-    let first = result
+fun _short(result: str) -> str {
+    var first = result
     let nl = result.index_of("\n")
     if nl >= 0 {
         first = result.substring(0, nl)

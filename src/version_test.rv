@@ -1,27 +1,27 @@
-import std/string
-import std/fs { read }
-import std/test { assert_eq_str }
-import "./version" { version }
+import std.string
+from std.fs import read
+from std.test import assert_eq_str
+from "./version" import version
 
 // The compiled-in version must match rv.toml, so a release bump to the manifest
 // that forgets version.rv (or the reverse) fails here instead of shipping a
 // wrong version string.
 fun test_version_matches_manifest() {
     let text = match read("rv.toml") {
-        Ok(s) -> s,
-        Err(e) -> "",
+        case Ok(s) { s }
+        case Err(e) { "" }
     }
     assert_eq_str(_manifest_version(text), version())
 }
 
 // The package `version = "x.y.z"` value from an rv.toml document, "" when
 // absent. The package version is the only key that begins with `version`.
-fun _manifest_version(toml: String) -> String {
+fun _manifest_version(toml: str) -> str {
     let lines = toml.split("\n")
-    let i = 0
+    var i = 0
     while i < lines.len() {
         let line = lines[i].trim()
-        if line.starts_with("version") && line.contains("=") {
+        if line.starts_with("version") and line.contains("=") {
             let q = line.index_of("\"")
             if q >= 0 {
                 let rest = line.substring(q + 1, line.length())

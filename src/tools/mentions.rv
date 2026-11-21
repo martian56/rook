@@ -6,47 +6,47 @@
 // list_files and expand_mentions touch the filesystem (the walk that feeds
 // the picker, and the attachment on send).
 
-import std/string
-import std/sync { Mutex, mutex }
-import std/fs { read, exists, is_file, is_dir, is_symlink, list_dir }
-import "./paths" { resolve_path }
+import std.string
+from std.sync import Mutex, mutex
+from std.fs import read, exists, is_file, is_dir, is_symlink, list_dir
+from "./paths" import resolve_path
 
 // The @token being typed at the end of the input, if any. `at` is the index
 // of the @, for completing the reference in place.
-struct Mention {
-    active: Bool,
-    at: Int,
-    query: String,
+class Mention {
+    active: bool
+    at: int
+    query: str
 }
 
 // The live mention in `input`: the last @token, when it starts a word and
 // its tail has no whitespace yet. Anchored at the end, which is where typing
 // happens.
-fun current_mention(input: String) -> Mention {
+fun current_mention(input: str) -> Mention {
     let at = input.last_index_of("@")
     if at < 0 {
-        return Mention { active: false, at: 0, query: "" }
+        return Mention(active: false, at: 0, query: "")
     }
     // Must begin a word: at the start, or after whitespace.
     if at > 0 {
         let b = input.byte_at(at - 1)
-        if b != 32 && b != 9 && b != 10 {
-            return Mention { active: false, at: 0, query: "" }
+        if b != 32 and b != 9 and b != 10 {
+            return Mention(active: false, at: 0, query: "")
         }
     }
     let query = input.substring(at + 1, input.length())
-    if query.contains(" ") || query.contains("\t") {
-        return Mention { active: false, at: 0, query: "" }
+    if query.contains(" ") or query.contains("\t") {
+        return Mention(active: false, at: 0, query: "")
     }
-    return Mention { active: true, at, query }
+    return Mention(active: true, at: at, query: query)
 }
 
 // The project's files as relative paths, for the picker. Depth-first,
 // build and dependency noise skipped, capped so a huge tree cannot stall.
-const MAX_FILES: Int = 4000
+let MAX_FILES: int = 4000
 
-fun list_files() -> List<String> {
-    let out: List<String> = []
+fun list_files() -> list[str] {
+    let out: list[str] = []
     _walk_files(".", out)
     return out
 }
@@ -57,24 +57,24 @@ fun list_files() -> List<String> {
 // prompt) and rebuilt off the UI thread by warm_files, so typing @ filters a
 // ready list instead of stalling on a project walk. Locked because the warm
 // goroutine fills it while the UI reads it.
-struct FileCache {
-    lock: Mutex,
-    ready: Bool,
-    files: List<String>,
+class FileCache {
+    lock: Mutex
+    ready: bool
+    files: list[str]
 }
 
 let FILE_CACHE: FileCache = _new_file_cache()
 
 fun _new_file_cache() -> FileCache {
-    let files: List<String> = []
-    return FileCache { lock: mutex(), ready: false, files }
+    let files: list[str] = []
+    return FileCache(lock: mutex(), ready: false, files: files)
 }
 
 // The project files. Normally the warm goroutine has already filled the
 // cache; the inline walk is the fallback when the picker is used before a
 // warm finished (it may briefly duplicate a running warm's work, which is
 // harmless: both store the same fresh list).
-fun cached_files() -> List<String> {
+fun cached_files() -> list[str] {
     FILE_CACHE.lock.lock()
     let ready = FILE_CACHE.ready
     let files = FILE_CACHE.files
@@ -108,47 +108,43 @@ fun warm_files() {
     if ready {
         return
     }
-    spawn(fun() -> Unit {
+    spawn {
         let fresh = list_files()
         FILE_CACHE.lock.lock()
-        if !FILE_CACHE.ready {
+        if not FILE_CACHE.ready {
             FILE_CACHE.files = fresh
             FILE_CACHE.ready = true
         }
         FILE_CACHE.lock.unlock()
         return
-    })
+    }
     return
 }
 
-fun _walk_files(dir: String, out: List<String>) {
+fun _walk_files(dir: str, out: list[str]) {
     if out.len() >= MAX_FILES {
         return
     }
-    let names: List<String> = []
+    var names: list[str] = []
     match list_dir(dir) {
-        Ok(ns) -> {
+        case Ok(ns) {
             names = ns
-        },
-        Err(e) -> {
+        }
+        case Err(e) {
             return
-        },
+        }
     }
-    let i = 0
-    while i < names.len() && out.len() < MAX_FILES {
+    var i = 0
+    while i < names.len() and out.len() < MAX_FILES {
         let name = names[i]
-        if !_ignored(name) {
+        if not _ignored(name) {
             let full = "${dir}/${name}"
-            let rel = full
+            var rel = full
             if rel.starts_with("./") {
                 rel = rel.substring(2, rel.length())
             }
-            if !is_symlink(full) {
-                if is_dir(full) {
-                    _walk_files(full, out)
-                } else {
-                    out.push(rel)
-                }
+            if not is_symlink(full) {
+                _walk_files(full, out) if is_dir(full) else out.push(rel)
             }
         }
         i = i + 1
@@ -156,48 +152,44 @@ fun _walk_files(dir: String, out: List<String>) {
     return
 }
 
-fun _ignored(name: String) -> Bool {
-    if name == "node_modules" || name == "target" || name == "dist" || name == "__pycache__" {
+fun _ignored(name: str) -> bool {
+    if name == "node_modules" or name == "target" or name == "dist" or name == "__pycache__" {
         return true
     }
     if name.starts_with(".") {
-        return name != ".agents" && name != ".github"
+        return name != ".agents" and name != ".github"
     }
     return false
 }
 
 // The best matches for `query` among `paths`, highest first, capped. An
 // empty query returns the head of the list.
-const MAX_MATCHES: Int = 8
+let MAX_MATCHES: int = 8
 
-fun fuzzy_match(query: String, paths: List<String>) -> List<String> {
+fun fuzzy_match(query: str, paths: list[str]) -> list[str] {
     if query.trim() == "" {
         return _head(paths, MAX_MATCHES)
     }
     let q = query.to_lower()
     // Bucket by score so the ordering is stable and cheap: 0 basename
     // substring, 1 path substring, 2 subsequence.
-    let b0: List<String> = []
-    let b1: List<String> = []
-    let b2: List<String> = []
-    let i = 0
+    let b0: list[str] = []
+    let b1: list[str] = []
+    let b2: list[str] = []
+    var i = 0
     while i < paths.len() {
         let p = paths[i]
         let lp = p.to_lower()
         if _basename(lp).contains(q) {
             b0.push(p)
         } else {
-            if lp.contains(q) {
-                b1.push(p)
-            } else {
-                if _subsequence(q, lp) {
-                    b2.push(p)
-                }
+            b1.push(p) if lp.contains(q) else if _subsequence(q, lp) {
+                b2.push(p)
             }
         }
         i = i + 1
     }
-    let out: List<String> = []
+    let out: list[str] = []
     _take_into(b0, out, MAX_MATCHES)
     _take_into(b1, out, MAX_MATCHES)
     _take_into(b2, out, MAX_MATCHES)
@@ -207,27 +199,27 @@ fun fuzzy_match(query: String, paths: List<String>) -> List<String> {
 // Attach real files referenced by @tokens in `text`, capped as a whole so a
 // prompt cannot balloon from many mentions. Returns `text` unchanged when
 // nothing valid is referenced.
-const MAX_ATTACH: Int = 20000
-const MAX_ATTACH_TOTAL: Int = 60000
-const MAX_ATTACH_FILES: Int = 10
+let MAX_ATTACH: int = 20000
+let MAX_ATTACH_TOTAL: int = 60000
+let MAX_ATTACH_FILES: int = 10
 
-struct Attachment {
-    body: String,
-    used: Int,
+class Attachment {
+    body: str
+    used: int
 }
 
-fun expand_mentions(text: String) -> String {
+fun expand_mentions(text: str) -> str {
     let paths = mentioned_paths(text)
     if paths.len() == 0 {
         return text
     }
-    let out = text
-    let omitted: List<String> = []
-    let used = 0
-    let attached = 0
-    let i = 0
+    var out = text
+    let omitted: list[str] = []
+    var used = 0
+    var attached = 0
+    var i = 0
     while i < paths.len() {
-        if attached >= MAX_ATTACH_FILES || used >= MAX_ATTACH_TOTAL {
+        if attached >= MAX_ATTACH_FILES or used >= MAX_ATTACH_TOTAL {
             omitted.push(paths[i])
         } else {
             let body = _read_budgeted(paths[i], MAX_ATTACH_TOTAL - used)
@@ -244,15 +236,15 @@ fun expand_mentions(text: String) -> String {
 }
 
 // The real files an @token in `text` points at, in order, deduped.
-fun mentioned_paths(text: String) -> List<String> {
-    let out: List<String> = []
+fun mentioned_paths(text: str) -> list[str] {
+    let out: list[str] = []
     let tokens = text.split_whitespace()
-    let i = 0
+    var i = 0
     while i < tokens.len() {
         let t = tokens[i]
-        if t.starts_with("@") && t.length() > 1 {
+        if t.starts_with("@") and t.length() > 1 {
             let r = resolve_path(t.substring(1, t.length()), "")
-            if r.ok && exists(r.path) && is_file(r.path) && !_contains(out, r.path) {
+            if r.ok and exists(r.path) and is_file(r.path) and not _contains(out, r.path) {
                 out.push(r.path)
             }
         }
@@ -261,27 +253,27 @@ fun mentioned_paths(text: String) -> List<String> {
     return out
 }
 
-fun _read_budgeted(path: String, remaining: Int) -> Attachment {
+fun _read_budgeted(path: str, remaining: int) -> Attachment {
     let body = match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "(could not read ${path})",
+        case Ok(s) { s }
+        case Err(e) { "(could not read ${path})" }
     }
-    let cap = MAX_ATTACH
+    var cap = MAX_ATTACH
     if remaining < cap {
         cap = remaining
     }
     if body.length() > cap {
-        return Attachment { body: "${body.substring(0, cap)}\n... (truncated)", used: cap }
+        return Attachment(body: "${body.substring(0, cap)}\n... (truncated)", used: cap)
     }
-    return Attachment { body, used: body.length() }
+    return Attachment(body: body, used: body.length())
 }
 
-fun _omitted_note(paths: List<String>) -> String {
-    let out = "\n\n--- mention attachments omitted ---\n"
+fun _omitted_note(paths: list[str]) -> str {
+    var out = "\n\n--- mention attachments omitted ---\n"
     out = out.concat(
         "Omitted ${paths.len()} file(s) after the mention attachment budget. Use read_file for any omitted file you need.\n",
     )
-    let i = 0
+    var i = 0
     while i < paths.len() {
         out = out.concat("- ${paths[i]}\n")
         i = i + 1
@@ -289,10 +281,10 @@ fun _omitted_note(paths: List<String>) -> String {
     return out
 }
 
-fun _read_capped(path: String) -> String {
+fun _read_capped(path: str) -> str {
     let body = match read(path) {
-        Ok(s) -> s,
-        Err(e) -> "(could not read ${path})",
+        case Ok(s) { s }
+        case Err(e) { "(could not read ${path})" }
     }
     if body.length() > MAX_ATTACH {
         return "${body.substring(0, MAX_ATTACH)}\n… (truncated)"
@@ -301,10 +293,10 @@ fun _read_capped(path: String) -> String {
 }
 
 // Whether `q` occurs as a subsequence of `s` (both already lowercased).
-fun _subsequence(q: String, s: String) -> Bool {
-    let qi = 0
-    let si = 0
-    while qi < q.length() && si < s.length() {
+fun _subsequence(q: str, s: str) -> bool {
+    var qi = 0
+    var si = 0
+    while qi < q.length() and si < s.length() {
         if q.byte_at(qi) == s.byte_at(si) {
             qi = qi + 1
         }
@@ -313,7 +305,7 @@ fun _subsequence(q: String, s: String) -> Bool {
     return qi >= q.length()
 }
 
-fun _basename(path: String) -> String {
+fun _basename(path: str) -> str {
     let slash = path.last_index_of("/")
     if slash < 0 {
         return path
@@ -321,27 +313,27 @@ fun _basename(path: String) -> String {
     return path.substring(slash + 1, path.length())
 }
 
-fun _head(xs: List<String>, n: Int) -> List<String> {
-    let out: List<String> = []
-    let i = 0
-    while i < xs.len() && i < n {
+fun _head(xs: list[str], n: int) -> list[str] {
+    let out: list[str] = []
+    var i = 0
+    while i < xs.len() and i < n {
         out.push(xs[i])
         i = i + 1
     }
     return out
 }
 
-fun _take_into(src: List<String>, dst: List<String>, cap: Int) {
-    let i = 0
-    while i < src.len() && dst.len() < cap {
+fun _take_into(src: list[str], dst: list[str], cap: int) {
+    var i = 0
+    while i < src.len() and dst.len() < cap {
         dst.push(src[i])
         i = i + 1
     }
     return
 }
 
-fun _contains(xs: List<String>, x: String) -> Bool {
-    let i = 0
+fun _contains(xs: list[str], x: str) -> bool {
+    var i = 0
     while i < xs.len() {
         if xs[i] == x {
             return true

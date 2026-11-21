@@ -4,40 +4,38 @@
 // a markdown body of instructions. Loading builds the index; the body is
 // carried along so invocation (a later feature) can inject it on demand.
 
-import std/string
-import std/fs { read, is_dir }
-import "./dir" { merged_names, path_of }
-import "./front" { Front, parse_front, front_get }
-import "./limits" { cap_text, clip_line }
+import std.string
+from std.fs import read, is_dir
+from "./dir" import merged_names, path_of
+from "./front" import Front, parse_front, front_get
+from "./limits" import cap_text, clip_line
 
 // A skill body is loaded whole when use_skill pulls it in; its description is
 // a one-line index row. Cap both so a large skill cannot dominate the context.
-const MAX_SKILL_CHARS: Int = 8000
-const MAX_SKILL_DESC_CHARS: Int = 200
+let MAX_SKILL_CHARS: int = 8000
+let MAX_SKILL_DESC_CHARS: int = 200
 
-struct Skill {
-    name: String,
-    description: String,
-    body: String,
+class Skill {
+    name: str
+    description: str
+    body: str
     // Where the SKILL.md was loaded from, for display and debugging.
-    path: String,
+    path: str
 }
 
 // Load every skill under the roots' skills/ folders, project shadowing
 // global by folder name. A folder without a readable SKILL.md is skipped.
-fun load_skills(rs: List<String>) -> List<Skill> {
-    let out: List<Skill> = []
+fun load_skills(rs: list[str]) -> list[Skill] {
+    let out: list[Skill] = []
     let names = merged_names(rs, "skills")
-    let i = 0
+    var i = 0
     while i < names.len() {
         let folder = path_of(rs, "skills", names[i])
-        if folder != "" && is_dir(folder) {
+        if folder != "" and is_dir(folder) {
             let p = "${folder}/SKILL.md"
             match read(p) {
-                Ok(text) -> {
-                    out.push(parse_skill(text, names[i], p))
-                },
-                Err(e) -> {},
+                case Ok(text) { out.push(parse_skill(text, names[i], p)) }
+                case Err(e) {}
             }
         }
         i = i + 1
@@ -48,25 +46,25 @@ fun load_skills(rs: List<String>) -> List<Skill> {
 // Parse one SKILL.md. The frontmatter sits between two "---" lines and
 // carries "name:" and "description:" entries; everything after it is the
 // body. A file without frontmatter is all body, named after its folder.
-fun parse_skill(text: String, fallback_name: String, path: String) -> Skill {
+fun parse_skill(text: str, fallback_name: str, path: str) -> Skill {
     let fm = parse_front(text)
-    let name = front_get(fm, "name")
+    var name = front_get(fm, "name")
     if name == "" {
         name = fallback_name
     }
-    return Skill { name, description: front_get(fm, "description"), body: fm.body, path }
+    return Skill(name: name, description: front_get(fm, "description"), body: fm.body, path: path)
 }
 
 // The index the model sees: one line per skill in the system prompt, so it
 // knows what exists and can ask for one. "" when there are no skills.
-fun skills_prompt(skills: List<Skill>) -> String {
+fun skills_prompt(skills: list[Skill]) -> str {
     if skills.len() == 0 {
         return ""
     }
-    let out = "\n\n[project skills]\nThe project defines skills, reusable instructions for specific tasks. Use them only when they do not conflict with higher-priority instructions. Available skills:"
-    let i = 0
+    var out = "\n\n[project skills]\nThe project defines skills, reusable instructions for specific tasks. Use them only when they do not conflict with higher-priority instructions. Available skills:"
+    var i = 0
     while i < skills.len() {
-        let d = skills[i].description
+        var d = skills[i].description
         if d == "" {
             d = "no description"
         }
@@ -79,20 +77,20 @@ fun skills_prompt(skills: List<Skill>) -> String {
 
 // The full instructions of one skill, for the use_skill tool. Unknown names
 // get an error string listing what exists, so the model can correct itself.
-fun skill_body(rs: List<String>, name: String) -> String {
+fun skill_body(rs: list[str], name: str) -> str {
     let skills = load_skills(rs)
     if skills.len() == 0 {
         return "error: no skills are defined"
     }
     let want = name.to_lower()
-    let i = 0
+    var i = 0
     while i < skills.len() {
         if skills[i].name.to_lower() == want {
             return "[skill: ${skills[i].name}]\nThis skill is project guidance. Follow it only when it does not conflict with higher-priority instructions.\n${cap_text(skills[i].body, MAX_SKILL_CHARS, "skill body")}"
         }
         i = i + 1
     }
-    let names = ""
+    var names = ""
     i = 0
     while i < skills.len() {
         if i > 0 {

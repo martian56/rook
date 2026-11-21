@@ -2,22 +2,22 @@
 // the visual identity of rook: muted "> " user prompts, coral "● " replies,
 // green "● " tool calls with an indented result, red notices.
 
-import std/string
-import "github.com/martian56/plumage/style" { Style, Color }
-import "github.com/martian56/plumage/text" { Span, Line, wrap }
-import "github.com/martian56/magpie" { render }
-import "github.com/martian56/magpie/theme" { MdTheme }
-import "./theme" { Theme }
+import std.string
+from "github.com/martian56/plumage/style" import Style, Color
+from "github.com/martian56/plumage/text" import Span, Line, wrap
+from "github.com/martian56/magpie" import render
+from "github.com/martian56/magpie/theme" import MdTheme
+from "./theme" import Theme
 
 enum Entry {
-    UserMsg(String),
-    BotMsg(String),
-    ToolMsg(String, String),
-    Notice(String),
+    UserMsg(str),
+    BotMsg(str),
+    ToolMsg(str, str),
+    Notice(str),
     // A subagent block header: the agent's name and its status line.
-    AgentHeader(String, String),
+    AgentHeader(str, str),
     // One tool a subagent ran, nested under its header: agent, label, result.
-    AgentTool(String, String, String),
+    AgentTool(str, str, str),
 }
 
 // Where a running subagent's block sits in the entries, so new tool rows
@@ -25,35 +25,35 @@ enum Entry {
 // A running subagent's rows in the transcript. `id` is the dispatch's unique
 // tool-call id, so two dispatches of the same subagent name stay separate
 // blocks instead of collapsing into each other.
-struct AgentBlock {
-    id: String,
-    name: String,
-    header: Int,
-    tools: Int,
+class AgentBlock {
+    id: str
+    name: str
+    header: int
+    tools: int
 }
 
 // One entry's laid-out lines, cached so a finished entry is wrapped once and
 // reused every frame instead of re-wrapped ~22x/second. `valid` false means
 // the slot must be recomputed (a fresh, changed, or invalidated entry).
-struct EntryLines {
-    valid: Bool,
-    lines: List<Line>,
+class EntryLines {
+    valid: bool
+    lines: list[Line]
 }
 
 // An empty, invalid cache slot.
 fun empty_entry_lines() -> EntryLines {
-    let none: List<Line> = []
-    return EntryLines { valid: false, lines: none }
+    let none: list[Line] = []
+    return EntryLines(valid: false, lines: none)
 }
 
 // Lay the conversation out as lines wrapped to w columns, styled by the theme.
 // Recomputes everything; assemble_cached is the per-frame path.
-fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
-    let out: List<Line> = []
-    let i = 0
+fun build_lines(entries: list[Entry], w: int, theme: Theme) -> list[Line] {
+    let out: list[Line] = []
+    var i = 0
     while i < entries.len() {
         _append(out, entry_lines(entries[i], w, theme))
-        if !_binds_to_next(entries, i) {
+        if not _binds_to_next(entries, i) {
             out.push(Line.raw(""))
         }
         i = i + 1
@@ -67,19 +67,19 @@ fun build_lines(entries: List<Entry>, w: Int, theme: Theme) -> List<Line> {
 // place. Separators are applied here, not cached, so a neighbor changing type
 // costs only the O(1) _binds_to_next check, not a re-wrap.
 fun assemble_cached(
-    entries: List<Entry>,
-    cache: List<EntryLines>,
-    w: Int,
+    entries: list[Entry],
+    cache: list[EntryLines],
+    w: int,
     theme: Theme,
-) -> List<Line> {
-    let out: List<Line> = []
-    let i = 0
+) -> list[Line] {
+    let out: list[Line] = []
+    var i = 0
     while i < entries.len() {
-        if !cache[i].valid {
-            cache[i] = EntryLines { valid: true, lines: entry_lines(entries[i], w, theme) }
+        if not cache[i].valid {
+            cache[i] = EntryLines(valid: true, lines: entry_lines(entries[i], w, theme))
         }
         _append(out, cache[i].lines)
-        if !_binds_to_next(entries, i) {
+        if not _binds_to_next(entries, i) {
             out.push(Line.raw(""))
         }
         i = i + 1
@@ -90,15 +90,15 @@ fun assemble_cached(
 // Validate every cache slot (wrapping only the invalid ones) and return the
 // total display-line count, separators included. The caller uses the total to
 // clamp scrolling before drawing only the visible window.
-fun validate_and_count(entries: List<Entry>, cache: List<EntryLines>, w: Int, theme: Theme) -> Int {
-    let total = 0
-    let i = 0
+fun validate_and_count(entries: list[Entry], cache: list[EntryLines], w: int, theme: Theme) -> int {
+    var total = 0
+    var i = 0
     while i < entries.len() {
-        if !cache[i].valid {
-            cache[i] = EntryLines { valid: true, lines: entry_lines(entries[i], w, theme) }
+        if not cache[i].valid {
+            cache[i] = EntryLines(valid: true, lines: entry_lines(entries[i], w, theme))
         }
         total = total + cache[i].lines.len()
-        if !_binds_to_next(entries, i) {
+        if not _binds_to_next(entries, i) {
             total = total + 1
         }
         i = i + 1
@@ -112,15 +112,15 @@ fun validate_and_count(entries: List<Entry>, cache: List<EntryLines>, w: Int, th
 // lines). This is the virtualized per-frame path, so scrolled-off history is
 // never materialized.
 fun window_lines(
-    entries: List<Entry>,
-    cache: List<EntryLines>,
-    top: Int,
-    count: Int,
-) -> List<Line> {
-    let out: List<Line> = []
-    let line_no = 0
-    let i = 0
-    while i < entries.len() && out.len() < count {
+    entries: list[Entry],
+    cache: list[EntryLines],
+    top: int,
+    count: int,
+) -> list[Line] {
+    let out: list[Line] = []
+    var line_no = 0
+    var i = 0
+    while i < entries.len() and out.len() < count {
         let el = cache[i].lines
         // Skip entries that sit entirely above the window without walking their
         // lines, so the cost stays O(entries + count) instead of O(total lines
@@ -129,17 +129,17 @@ fun window_lines(
         if line_no + el.len() <= top {
             line_no = line_no + el.len()
         } else {
-            let j = 0
+            var j = 0
             while j < el.len() {
-                if line_no >= top && out.len() < count {
+                if line_no >= top and out.len() < count {
                     out.push(el[j])
                 }
                 line_no = line_no + 1
                 j = j + 1
             }
         }
-        if !_binds_to_next(entries, i) {
-            if line_no >= top && out.len() < count {
+        if not _binds_to_next(entries, i) {
+            if line_no >= top and out.len() < count {
                 out.push(Line.raw(""))
             }
             line_no = line_no + 1
@@ -153,21 +153,21 @@ fun window_lines(
 // and quotes styled from the theme, wrapped at the body width, under the
 // usual reply bullet. Plain prose comes out exactly as the old word wrap
 // did; markdown structure now renders instead of showing its markers.
-fun _push_markdown(out: List<Line>, t: String, body: Int, theme: Theme) {
+fun _push_markdown(out: list[Line], t: str, body: int, theme: Theme) {
     let md = render(t, body, _md_theme(theme))
     if md.len() == 0 {
         out.push(Line.from_spans([Span.styled("● ", theme.assistant)]))
         return
     }
-    let r = 0
+    var r = 0
     while r < md.len() {
-        let spans: List<Span> = []
+        let spans: list[Span] = []
         if r == 0 {
             spans.push(Span.styled("● ", theme.assistant))
         } else {
             spans.push(Span.raw("  "))
         }
-        let s = 0
+        var s = 0
         while s < md[r].spans.len() {
             spans.push(md[r].spans[s])
             s = s + 1
@@ -182,7 +182,7 @@ fun _push_markdown(out: List<Line>, t: String, body: Int, theme: Theme) {
 // accent, code in the accent over the tool-result tone for blocks, markers
 // matching the reply bullet, quotes dim.
 fun _md_theme(theme: Theme) -> MdTheme {
-    return MdTheme {
+    return MdTheme(
         text: theme.text,
         heading: theme.accent.bold(),
         bold: theme.text.bold(),
@@ -197,29 +197,25 @@ fun _md_theme(theme: Theme) -> MdTheme {
         // Diff fences use the same tones as tool-result diffs.
         ins: theme.tool,
         del: theme.error,
-    }
+    )
 }
 
 // The styled lines for one entry, without the trailing separator.
-fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
-    let out: List<Line> = []
-    let body = w - 2
+fun entry_lines(entry: Entry, w: int, theme: Theme) -> list[Line] {
+    let out: list[Line] = []
+    var body = w - 2
     if body < 8 {
         body = 8
     }
     match entry {
-        UserMsg(t) -> {
-            _push_wrapped(out, t, body, "> ", theme.user, theme.user)
-        },
-        BotMsg(t) -> {
-            _push_markdown(out, t, body, theme)
-        },
-        ToolMsg(name, result) -> {
+        case UserMsg(t) { _push_wrapped(out, t, body, "> ", theme.user, theme.user) }
+        case BotMsg(t) { _push_markdown(out, t, body, theme) }
+        case ToolMsg(name, result) {
             // A failed call gets the error color on its bullet and result, so
             // failures stand out when scanning a transcript instead of looking
             // exactly like successes.
-            let bullet = theme.tool
-            let res_style = theme.result
+            var bullet = theme.tool
+            var res_style = theme.result
             if result.starts_with("error") {
                 bullet = theme.error
                 res_style = theme.error
@@ -228,21 +224,19 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
             // The first line sits behind the elbow; any further lines are a
             // diff, colored by their -/+ prefix.
             let rows = result.lines()
-            let first = ""
+            var first = ""
             if rows.len() > 0 {
                 first = rows[0]
             }
             out.push(Line.from_spans([Span.styled("  ⎿  ", res_style), Span.styled(first, res_style)]))
-            let r = 1
+            var r = 1
             while r < rows.len() {
                 out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
                 r = r + 1
             }
-        },
-        Notice(t) -> {
-            out.push(Line.styled("  ${t}", _notice_style(t, theme)))
-        },
-        AgentHeader(name, status) -> {
+        }
+        case Notice(t) { out.push(Line.styled("  ${t}", _notice_style(t, theme))) }
+        case AgentHeader(name, status) {
             out.push(
                 Line.from_spans(
                     [
@@ -252,10 +246,10 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
                     ],
                 ),
             )
-        },
-        AgentTool(agent, name, result) -> {
-            let a_bullet = theme.tool
-            let a_res = theme.result
+        }
+        case AgentTool(agent, name, result) {
+            var a_bullet = theme.tool
+            var a_res = theme.result
             if result.starts_with("error") {
                 a_bullet = theme.error
                 a_res = theme.error
@@ -264,13 +258,13 @@ fun entry_lines(entry: Entry, w: Int, theme: Theme) -> List<Line> {
                 Line.from_spans([Span.styled("  ● ", a_bullet), Span.styled(name, theme.text.bold())]),
             )
             out.push(Line.from_spans([Span.styled("    ⎿  ", a_res), Span.styled(result, a_res)]))
-        },
+        }
     }
     return out
 }
 
-fun _append(out: List<Line>, more: List<Line>) {
-    let i = 0
+fun _append(out: list[Line], more: list[Line]) {
+    var i = 0
     while i < more.len() {
         out.push(more[i])
         i = i + 1
@@ -279,9 +273,9 @@ fun _append(out: List<Line>, more: List<Line>) {
 }
 
 // The plain text of one line: its spans' text joined, no styling.
-fun plain_of(line: Line) -> String {
-    let out = ""
-    let i = 0
+fun plain_of(line: Line) -> str {
+    var out = ""
+    var i = 0
     while i < line.spans.len() {
         out = out.concat(line.spans[i].text)
         i = i + 1
@@ -292,14 +286,14 @@ fun plain_of(line: Line) -> String {
 // The plain text of every assembled transcript line, in order. Used to
 // extract a mouse selection; O(total) but only on release, not per frame.
 fun transcript_texts(
-    entries: List<Entry>,
-    cache: List<EntryLines>,
-    w: Int,
+    entries: list[Entry],
+    cache: list[EntryLines],
+    w: int,
     theme: Theme,
-) -> List<String> {
+) -> list[str] {
     let lines = assemble_cached(entries, cache, w, theme)
-    let out: List<String> = []
-    let i = 0
+    let out: list[str] = []
+    var i = 0
     while i < lines.len() {
         out.push(plain_of(lines[i]))
         i = i + 1
@@ -313,9 +307,9 @@ fun transcript_texts(
 // the per-turn usage line), so only error-shaped text gets the error color;
 // everything else renders dim. Confirmations after every successful turn
 // should not read as alarms.
-fun _notice_style(t: String, theme: Theme) -> Style {
+fun _notice_style(t: str, theme: Theme) -> Style {
     let low = t.to_lower()
-    if low.starts_with("error") || low.contains("error:") || low.starts_with("could not") || low.starts_with(
+    if low.starts_with("error") or low.contains("error:") or low.starts_with("could not") or low.starts_with(
         "failed",
     ) {
         return theme.error
@@ -323,7 +317,7 @@ fun _notice_style(t: String, theme: Theme) -> Style {
     return theme.dim
 }
 
-fun _diff_style(line: String, theme: Theme) -> Style {
+fun _diff_style(line: str, theme: Theme) -> Style {
     if line.starts_with("- ") {
         return theme.error
     }
@@ -335,29 +329,29 @@ fun _diff_style(line: String, theme: Theme) -> Style {
 
 // Whether the entry at i should sit flush against the next one: a header
 // above its tools, or a tool row followed by another.
-fun _binds_to_next(entries: List<Entry>, i: Int) -> Bool {
+fun _binds_to_next(entries: list[Entry], i: int) -> bool {
     if i + 1 >= entries.len() {
         return false
     }
-    let here_block = false
+    var here_block = false
     match entries[i] {
-        AgentHeader(n, s) -> {
+        case AgentHeader(n, s) {
             here_block = true
-        },
-        AgentTool(a, n, r) -> {
+        }
+        case AgentTool(a, n, r) {
             here_block = true
-        },
-        _ -> {},
+        }
+        case _ {}
     }
-    if !here_block {
+    if not here_block {
         return false
     }
-    let next_tool = false
+    var next_tool = false
     match entries[i + 1] {
-        AgentTool(a, n, r) -> {
+        case AgentTool(a, n, r) {
             next_tool = true
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return next_tool
 }
@@ -365,10 +359,10 @@ fun _binds_to_next(entries: List<Entry>, i: Int) -> Bool {
 // Wrap t to the body width and push its rows: the first behind the lead
 // marker, the rest indented to line up under it.
 fun _push_wrapped(
-    out: List<Line>,
-    t: String,
-    body: Int,
-    lead: String,
+    out: list[Line],
+    t: str,
+    body: int,
+    lead: str,
     lead_style: Style,
     text_style: Style,
 ) {
@@ -377,7 +371,7 @@ fun _push_wrapped(
         out.push(Line.from_spans([Span.styled(lead, lead_style)]))
         return
     }
-    let r = 0
+    var r = 0
     while r < rows.len() {
         if r == 0 {
             out.push(Line.from_spans([Span.styled(lead, lead_style), Span.styled(rows[r], text_style)]))

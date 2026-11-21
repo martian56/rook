@@ -3,37 +3,37 @@
 // built-in look is coral over dim gray; more palettes plug in by returning a
 // different Theme from a constructor like default_theme.
 
-import "github.com/martian56/plumage/style" { Style, Color }
+from "github.com/martian56/plumage/style" import Style, Color
 
-struct Theme {
+class Theme {
     // The palette's name, shown in the picker.
-    name: String,
+    name: str
     // Brand color: the welcome banner border and title, the armed status hint.
-    accent: Style,
+    accent: Style
     // Chrome and secondary text: hints, the input prompt, the model line.
-    dim: Style,
+    dim: Style
     // Primary body text: the assistant's reply, the wrapped continuation rows.
-    text: Style,
+    text: Style
     // The user's own prompt marker and text.
-    user: Style,
+    user: Style
     // The assistant reply bullet.
-    assistant: Style,
+    assistant: Style
     // The tool-call bullet and name.
-    tool: Style,
+    tool: Style
     // The tool result row under a call.
-    result: Style,
+    result: Style
     // The input box border.
-    border: Style,
+    border: Style
     // Modal borders and titles: the model picker and the key entry.
-    modal: Style,
+    modal: Style
     // The status bar text.
-    status: Style,
+    status: Style
     // The pulsing thinking marker.
-    spinner: Style,
+    spinner: Style
     // The approval prompt and the awaiting-approval line.
-    warn: Style,
+    warn: Style
     // Notices and errors.
-    error: Style,
+    error: Style
 }
 
 // The built-in palette: coral accent, dim gray chrome, matching the look rook
@@ -41,7 +41,7 @@ struct Theme {
 fun default_theme() -> Theme {
     let coral = Style.new().fg(Color.Rgb(215, 119, 87))
     let gray = Style.new().fg(Color.Gray)
-    return Theme {
+    return Theme(
         name: "Rook",
         accent: coral,
         dim: gray,
@@ -56,7 +56,7 @@ fun default_theme() -> Theme {
         spinner: coral,
         warn: Style.new().fg(Color.Yellow),
         error: Style.new().fg(Color.Red),
-    }
+    )
 }
 
 // Build a Theme from a palette's six canonical colors: the signature accent,
@@ -65,7 +65,7 @@ fun default_theme() -> Theme {
 // accent is the assistant bullet, the modals, and the spinner; the muted
 // color is the chrome.
 fun from_colors(
-    name: String,
+    name: str,
     accent_c: Color,
     muted_c: Color,
     text_c: Color,
@@ -75,9 +75,9 @@ fun from_colors(
 ) -> Theme {
     let accent = Style.new().fg(accent_c)
     let muted = Style.new().fg(muted_c)
-    return Theme {
-        name,
-        accent,
+    return Theme(
+        name: name,
+        accent: accent,
         dim: muted,
         text: Style.new().fg(text_c),
         user: muted,
@@ -90,5 +90,5 @@ fun from_colors(
         spinner: accent,
         warn: Style.new().fg(warn_c),
         error: Style.new().fg(error_c),
-    }
+    )
 }

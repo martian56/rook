@@ -2,44 +2,44 @@
 // thinking line, the input box, and the status bar. Pure rendering from the
 // model; no state changes here.
 
-import std/string
-import std/path { basename }
-import "github.com/martian56/plumage" { Frame }
-import "github.com/martian56/plumage/layout" { Rect, Constraint, split_v }
-import "github.com/martian56/plumage/widgets/block" { Block }
-import "github.com/martian56/plumage/widgets/paragraph" { Paragraph }
-import "github.com/martian56/plumage/widgets/list" { ListView }
-import "github.com/martian56/plumage/style" { Style }
-import "github.com/martian56/wingspan" { width }
-import "./model" { Chat, ensure_cache_len, invalidate_all_cache }
-import "../ui/transcript" { Entry, validate_and_count, window_lines }
-import "../ui/selection" { normalize, is_empty, contains }
-import "../ui/logo" { draw_logo, rendered_height, master_width, master_rows }
-import "../ui/themes" { all_themes }
-import "../ui/spinner" { pulse }
-import "../config/config" { provider_of, key_env, key_optional }
-import "../version" { version }
-import "../commands" { CmdInfo, menu_matches, help_filtered }
-import "../tools/shells" { ShellInfo, shells_snapshot, shell_tail_at }
-import "../tools/todos" { Todo, current_todos }
-import "../tools/mentions" { current_mention }
-import "../tools/pricing" { usage_label }
-import "../config/sessions" { SessionMeta }
-import "./panel_filter" { sessions_query, help_query }
-import std/time { now_millis }
+import std.string
+from std.path import basename
+from "github.com/martian56/plumage" import Frame
+from "github.com/martian56/plumage/layout" import Rect, Constraint, split_v
+from "github.com/martian56/plumage/widgets/block" import Block
+from "github.com/martian56/plumage/widgets/paragraph" import Paragraph
+from "github.com/martian56/plumage/widgets/list" import ListView
+from "github.com/martian56/plumage/style" import Style
+from "github.com/martian56/wingspan" import width
+from "./model" import Chat, ensure_cache_len, invalidate_all_cache
+from "../ui/transcript" import Entry, validate_and_count, window_lines
+from "../ui/selection" import normalize, is_empty, contains
+from "../ui/logo" import draw_logo, rendered_height, master_width, master_rows
+from "../ui/themes" import all_themes
+from "../ui/spinner" import pulse
+from "../config/config" import provider_of, key_env, key_optional
+from "../version" import version
+from "../commands" import CmdInfo, menu_matches, help_filtered
+from "../tools/shells" import ShellInfo, shells_snapshot, shell_tail_at
+from "../tools/todos" import Todo, current_todos
+from "../tools/mentions" import current_mention
+from "../tools/pricing" import usage_label
+from "../config/sessions" import SessionMeta
+from "./panel_filter" import sessions_query, help_query
+from std.time import now_millis
 
 fun chat_view(m: Chat, f: Frame) {
     // The model's checklist takes a strip above the thinking line while it
     // has items.
     let todos = current_todos()
-    let strip = todos.len()
+    var strip = todos.len()
     if strip > 6 {
         strip = 6
     }
     // A permanent blank spacer sits between the transcript and the strip or
     // thinking line, so the transcript's last row (often a green tool
     // bullet) is never directly adjacent to the pulsing indicator.
-    let cs: List<Constraint> = [Constraint.Fill(1), Constraint.Len(1)]
+    let cs: list[Constraint] = [Constraint.Fill(1), Constraint.Len(1)]
     if strip > 0 {
         cs.push(Constraint.Len(strip))
     }
@@ -47,7 +47,7 @@ fun chat_view(m: Chat, f: Frame) {
     cs.push(Constraint.Len(3))
     cs.push(Constraint.Len(1))
     let rows = split_v(f.area(), cs)
-    let off = 0
+    var off = 0
     if strip > 0 {
         off = 1
     }
@@ -69,11 +69,13 @@ fun chat_view(m: Chat, f: Frame) {
     f.buf.set_string(ia.x + 1, ia.y, "> ", m.theme.dim)
     m.entry.render(Rect.new(ia.x + 3, ia.y, ia.w - 4, 1), f.buf)
     _status(m, rows[4 + off], f)
-    let idle = !m.active && m.pending == "" && !m.picking && !m.theme_picking && !m.entering_key && !m.help_open && !m.permissions_open && !m.shells_open && !m.sessions_open
-    if idle && !m.mention_dismissed && m.mention_matches.len() > 0 && current_mention(m.entry.value).active {
+    let idle = not m.active and m.pending == "" and not m.picking and not m.theme_picking and not m.entering_key and not m.help_open and not m.permissions_open and not m.shells_open and not m.sessions_open
+    if idle and not m.mention_dismissed and m.mention_matches.len() > 0 and current_mention(
+        m.entry.value,
+    ).active {
         _mention_menu(m, input_area, f)
     } else {
-        if idle && !m.slash_dismissed {
+        if idle and not m.slash_dismissed {
             _slash_menu(m, input_area, f)
         }
     }
@@ -96,11 +98,7 @@ fun chat_view(m: Chat, f: Frame) {
         _permissions_panel(m, f)
     }
     if m.shells_open {
-        if m.shells_focus > 0 {
-            _shell_pane(m, f)
-        } else {
-            _shells_panel(m, f)
-        }
+        _shell_pane(m, f) if m.shells_focus > 0 else _shells_panel(m, f)
     }
     if m.sessions_open {
         _sessions_panel(m, f)
@@ -121,12 +119,12 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
     if matches.len() == 0 {
         return
     }
-    let count = matches.len()
+    var count = matches.len()
     if count > 8 {
         count = 8
     }
-    let h = count + 2
-    let y = input_area.y - h
+    var h = count + 2
+    var y = input_area.y - h
     if y < f.area().y {
         y = f.area().y
         h = input_area.y - y
@@ -135,7 +133,7 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
         }
         count = h - 2
     }
-    let w = input_area.w
+    var w = input_area.w
     if w > 64 {
         w = 64
     }
@@ -145,24 +143,24 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
     box.render(area, f.buf)
     let inner = box.inner(area)
 
-    let sel = m.slash_sel
+    var sel = m.slash_sel
     if sel >= matches.len() {
         sel = matches.len() - 1
     }
     // Scroll the window so the selection stays visible.
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
+    var r = 0
     while r < count {
         let it = matches[top + r]
-        let name = "/${it.name}"
+        var name = "/${it.name}"
         while name.length() < 12 {
             name = name.concat(" ")
         }
         let avail = inner.w - name.length() - 3
-        let desc = it.desc
+        var desc = it.desc
         if avail <= 0 {
             desc = ""
         } else {
@@ -171,7 +169,7 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
             }
         }
         if top + r == sel {
-            let row = "${name}  ${desc}"
+            var row = "${name}  ${desc}"
             while row.length() < inner.w - 1 {
                 row = row.concat(" ")
             }
@@ -190,12 +188,12 @@ fun _slash_menu(m: Chat, input_area: Rect, f: Frame) {
 // this only renders.
 fun _mention_menu(m: Chat, input_area: Rect, f: Frame) {
     let matches = m.mention_matches
-    let count = matches.len()
+    var count = matches.len()
     if count > 8 {
         count = 8
     }
-    let h = count + 2
-    let y = input_area.y - h
+    var h = count + 2
+    var y = input_area.y - h
     if y < f.area().y {
         y = f.area().y
         h = input_area.y - y
@@ -204,7 +202,7 @@ fun _mention_menu(m: Chat, input_area: Rect, f: Frame) {
         }
         count = h - 2
     }
-    let w = input_area.w
+    var w = input_area.w
     if w > 72 {
         w = 72
     }
@@ -213,17 +211,17 @@ fun _mention_menu(m: Chat, input_area: Rect, f: Frame) {
     let box = Block.new().rounded().title("@ files  (tab, enter, esc)").style(m.theme.border)
     box.render(area, f.buf)
     let inner = box.inner(area)
-    let sel = m.mention_sel
+    var sel = m.mention_sel
     if sel >= matches.len() {
         sel = matches.len() - 1
     }
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
+    var r = 0
     while r < count {
-        let path = matches[top + r]
+        var path = matches[top + r]
         if path.length() > inner.w - 2 {
             path = path.substring(0, inner.w - 2)
         }
@@ -245,11 +243,11 @@ fun _mention_menu(m: Chat, input_area: Rect, f: Frame) {
 // steps back to the list.
 fun _shell_pane(m: Chat, f: Frame) {
     let full = f.area()
-    let w = full.w - 4
+    var w = full.w - 4
     if w > 100 {
         w = 100
     }
-    let h = full.h - 4
+    var h = full.h - 4
     if h < 5 {
         h = full.h
     }
@@ -260,11 +258,11 @@ fun _shell_pane(m: Chat, f: Frame) {
 
     // The shell's current status for the title.
     let infos = shells_snapshot()
-    let title = "shell ${m.shells_focus}  (pageup scrolls, esc)"
-    let i = 0
+    var title = "shell ${m.shells_focus}  (pageup scrolls, esc)"
+    var i = 0
     while i < infos.len() {
         if infos[i].id == m.shells_focus {
-            let state = "exit ${infos[i].code}"
+            var state = "exit ${infos[i].code}"
             if infos[i].running {
                 state = "running ${infos[i].runtime_ms / 1000}s"
             }
@@ -290,13 +288,13 @@ fun _shell_pane(m: Chat, f: Frame) {
         return
     }
     let lines = text.lines()
-    let top = lines.len() - inner.h - m.shells_scroll
+    var top = lines.len() - inner.h - m.shells_scroll
     if top < 0 {
         top = 0
     }
-    let r = 0
-    while r < inner.h && top + r < lines.len() {
-        let line = lines[top + r]
+    var r = 0
+    while r < inner.h and top + r < lines.len() {
+        var line = lines[top + r]
         if line.length() > inner.w - 2 {
             line = line.substring(0, inner.w - 2)
         }
@@ -312,7 +310,7 @@ fun _shell_pane(m: Chat, f: Frame) {
 fun _shells_panel(m: Chat, f: Frame) {
     let full = f.area()
     let infos = shells_snapshot()
-    let count = infos.len()
+    var count = infos.len()
     if count < 1 {
         count = 1
     }
@@ -320,12 +318,12 @@ fun _shells_panel(m: Chat, f: Frame) {
         count = full.h - 6
     }
     let h = count + 2
-    let w = 70
+    var w = 70
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -340,25 +338,25 @@ fun _shells_panel(m: Chat, f: Frame) {
         f.buf.set_string(inner.x + 1, inner.y, "(no background shells)", m.theme.dim)
         return
     }
-    let sel = m.shells_sel
+    var sel = m.shells_sel
     if sel >= infos.len() {
         sel = infos.len() - 1
     }
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
-    while r < count && top + r < infos.len() {
+    var r = 0
+    while r < count and top + r < infos.len() {
         let s = infos[top + r]
-        let state = "exit ${s.code}"
+        var state = "exit ${s.code}"
         if s.running {
             state = "running ${s.runtime_ms / 1000}s"
         }
         while state.length() < 14 {
             state = state.concat(" ")
         }
-        let row = "${s.id}  ${state} ${s.command}"
+        var row = "${s.id}  ${state} ${s.command}"
         let avail = inner.w - 2
         if row.length() > avail {
             row = row.substring(0, avail)
@@ -369,8 +367,8 @@ fun _shells_panel(m: Chat, f: Frame) {
             }
             f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
         } else {
-            let sty = m.theme.text
-            if !s.running {
+            var sty = m.theme.text
+            if not s.running {
                 sty = m.theme.dim
             }
             f.buf.set_string(inner.x + 1, inner.y + r, row, sty)
@@ -385,7 +383,7 @@ fun _shells_panel(m: Chat, f: Frame) {
 fun _sessions_panel(m: Chat, f: Frame) {
     let full = f.area()
     let list = m.sessions_list
-    let count = list.len()
+    var count = list.len()
     if count < 1 {
         count = 1
     }
@@ -394,18 +392,18 @@ fun _sessions_panel(m: Chat, f: Frame) {
     }
     // One extra inner row for the tab bar above the list.
     let h = count + 3
-    let w = 72
+    var w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let panel_title = "Resume a session  (type to filter, enter, del deletes, esc)"
+    var panel_title = "Resume a session  (type to filter, enter, del deletes, esc)"
     if sessions_query() != "" {
         panel_title = "Resume a session  ·  filter: ${sessions_query()}"
     }
@@ -417,17 +415,17 @@ fun _sessions_panel(m: Chat, f: Frame) {
     )
     box.render(area, f.buf)
     let inner = box.inner(area)
-    let here_sty = m.theme.accent.reverse()
-    let all_sty = m.theme.dim
+    var here_sty = m.theme.accent.reverse()
+    var all_sty = m.theme.dim
     if m.sessions_tab == 1 {
         here_sty = m.theme.dim
         all_sty = m.theme.accent.reverse()
     }
-    let tx = f.buf.set_string(inner.x + 1, inner.y, " This directory ", here_sty)
+    var tx = f.buf.set_string(inner.x + 1, inner.y, " This directory ", here_sty)
     tx = f.buf.set_string(tx + 1, inner.y, " All sessions ", all_sty)
     f.buf.set_string(tx + 2, inner.y, "tab switches", m.theme.dim)
     if list.len() == 0 {
-        let empty_msg = "(no saved sessions)"
+        var empty_msg = "(no saved sessions)"
         if m.sessions_tab == 0 {
             empty_msg = "(no sessions for this directory; press tab for all)"
         }
@@ -437,24 +435,24 @@ fun _sessions_panel(m: Chat, f: Frame) {
         f.buf.set_string(inner.x + 1, inner.y + 1, empty_msg, m.theme.dim)
         return
     }
-    let sel = m.sessions_sel
+    var sel = m.sessions_sel
     if sel >= list.len() {
         sel = list.len() - 1
     }
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
-    while r < count && top + r < list.len() {
+    var r = 0
+    while r < count and top + r < list.len() {
         let s = list[top + r]
-        let title = s.title
+        var title = s.title
         if title == "" {
             title = "(untitled)"
         }
-        let row = "${title}  ·  ${s.model}${_session_age(s.created)}"
+        var row = "${title}  ·  ${s.model}${_session_age(s.created)}"
         // The all-sessions tab says where each one came from.
-        if m.sessions_tab == 1 && s.cwd != "" {
+        if m.sessions_tab == 1 and s.cwd != "" {
             row = "${title}  ·  ${basename(s.cwd)}  ·  ${s.model}${_session_age(s.created)}"
         }
         if row.length() > inner.w - 2 {
@@ -481,7 +479,7 @@ fun _help_menu(m: Chat, f: Frame) {
     // The filtered view: typing in the panel narrows it, and the key handler
     // navigates the same list.
     let cmds = help_filtered(m.cmd_infos, help_query())
-    let count = cmds.len()
+    var count = cmds.len()
     if count > full.h - 6 {
         count = full.h - 6
     }
@@ -489,18 +487,18 @@ fun _help_menu(m: Chat, f: Frame) {
         count = 1
     }
     let h = count + 4
-    let w = 64
+    var w = 64
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
     let area = Rect.new(x, y, w, h)
     f.buf.fill(area, " ", m.theme.dim)
-    let help_title = "Commands  (type to filter, enter to run, esc)"
+    var help_title = "Commands  (type to filter, enter to run, esc)"
     if help_query() != "" {
         help_title = "Commands  ·  filter: ${help_query()}"
     }
@@ -514,23 +512,23 @@ fun _help_menu(m: Chat, f: Frame) {
         return
     }
 
-    let sel = m.help_sel
+    var sel = m.help_sel
     if sel >= cmds.len() {
         sel = cmds.len() - 1
     }
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
+    var r = 0
     while r < count {
         let it = cmds[top + r]
-        let name = "/${it.name}"
+        var name = "/${it.name}"
         while name.length() < 12 {
             name = name.concat(" ")
         }
         let avail = inner.w - name.length() - 3
-        let desc = it.desc
+        var desc = it.desc
         if avail <= 0 {
             desc = ""
         } else {
@@ -539,7 +537,7 @@ fun _help_menu(m: Chat, f: Frame) {
             }
         }
         if top + r == sel {
-            let row = "${name}  ${desc}"
+            var row = "${name}  ${desc}"
             while row.length() < inner.w - 1 {
                 row = row.concat(" ")
             }
@@ -564,7 +562,7 @@ fun _help_menu(m: Chat, f: Frame) {
 fun _permissions_panel(m: Chat, f: Frame) {
     let full = f.area()
     let items = m.permissions_items
-    let count = items.len()
+    var count = items.len()
     if count < 1 {
         count = 1
     }
@@ -572,12 +570,12 @@ fun _permissions_panel(m: Chat, f: Frame) {
         count = full.h - 6
     }
     let h = count + 4
-    let w = 78
+    var w = 78
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -592,26 +590,26 @@ fun _permissions_panel(m: Chat, f: Frame) {
         f.buf.set_string(inner.x + 1, inner.y, "(no permission grants)", m.theme.dim)
         return
     }
-    let sel = m.permissions_sel
+    var sel = m.permissions_sel
     if sel >= items.len() {
         sel = items.len() - 1
     }
-    let top = 0
+    var top = 0
     if sel >= count {
         top = sel - count + 1
     }
-    let r = 0
-    while r < count && top + r < items.len() {
+    var r = 0
+    while r < count and top + r < items.len() {
         let it = items[top + r]
-        let mark = "[ ]"
+        var mark = "[ ]"
         if it.enabled {
             mark = "[x]"
         }
-        let name = "${mark} ${it.name}"
+        var name = "${mark} ${it.name}"
         while name.length() < 24 {
             name = name.concat(" ")
         }
-        let desc = it.desc
+        var desc = it.desc
         let avail = inner.w - name.length() - 3
         if avail <= 0 {
             desc = ""
@@ -620,14 +618,14 @@ fun _permissions_panel(m: Chat, f: Frame) {
                 desc = desc.substring(0, avail)
             }
         }
-        let row = "${name}  ${desc}"
+        var row = "${name}  ${desc}"
         if top + r == sel {
             while row.length() < inner.w - 1 {
                 row = row.concat(" ")
             }
             f.buf.set_string(inner.x + 1, inner.y + r, row, m.theme.accent.reverse())
         } else {
-            let sty = m.theme.text
+            var sty = m.theme.text
             if it.enabled {
                 sty = m.theme.accent
             }
@@ -649,13 +647,13 @@ fun _permissions_panel(m: Chat, f: Frame) {
 // masked so a key is not left on screen.
 fun _key_modal(m: Chat, f: Frame) {
     let full = f.area()
-    let w = 60
+    var w = 60
     if w > full.w - 2 {
         w = full.w - 2
     }
     let h = 6
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -676,12 +674,12 @@ fun _key_modal(m: Chat, f: Frame) {
     return
 }
 
-fun _mask(value: String, w: Int) -> String {
+fun _mask(value: str, w: int) -> str {
     let n = value.length()
     if n == 0 {
         return ""
     }
-    let count = n
+    var count = n
     if count > w {
         count = w
     }
@@ -690,16 +688,16 @@ fun _mask(value: String, w: Int) -> String {
 
 // The checklist strip: one line per item, done checked off dim, the one in
 // progress in the accent, pending plain. Shows the newest six.
-fun _todo_strip(m: Chat, todos: List<Todo>, area: Rect, f: Frame) {
-    let top = todos.len() - area.h
+fun _todo_strip(m: Chat, todos: list[Todo], area: Rect, f: Frame) {
+    var top = todos.len() - area.h
     if top < 0 {
         top = 0
     }
-    let r = 0
-    while r < area.h && top + r < todos.len() {
+    var r = 0
+    while r < area.h and top + r < todos.len() {
         let t = todos[top + r]
-        let mark = "· "
-        let sty = m.theme.text
+        var mark = "· "
+        var sty = m.theme.text
         if t.state == 2 {
             mark = "✓ "
             sty = m.theme.dim
@@ -708,7 +706,7 @@ fun _todo_strip(m: Chat, todos: List<Todo>, area: Rect, f: Frame) {
             mark = "▸ "
             sty = m.theme.accent
         }
-        let line = "${mark}${t.text}"
+        var line = "${mark}${t.text}"
         if line.length() > area.w - 2 {
             line = line.substring(0, area.w - 2)
         }
@@ -722,16 +720,16 @@ fun _todo_strip(m: Chat, todos: List<Todo>, area: Rect, f: Frame) {
 // on top, the options below, arrow-select and enter (esc declines).
 fun _question(m: Chat, f: Frame) {
     let full = f.area()
-    let w = 62
+    var w = 62
     if w > full.w - 2 {
         w = full.w - 2
     }
-    let h = m.choices.len() + 4
+    var h = m.choices.len() + 4
     if h > full.h {
         h = full.h
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -742,14 +740,14 @@ fun _question(m: Chat, f: Frame) {
     ).style(m.theme.modal).title_style(m.theme.modal.bold())
     box.render(area, f.buf)
     let inner = box.inner(area)
-    let q = m.question
+    var q = m.question
     if q.length() > inner.w - 2 {
         q = "${q.substring(0, inner.w - 3)}…"
     }
     f.buf.set_string(inner.x + 1, inner.y, q, Style.new().bold())
-    let i = 0
-    while i < m.choices.len() && inner.y + 2 + i < inner.y + inner.h {
-        let row = m.choices[i]
+    var i = 0
+    while i < m.choices.len() and inner.y + 2 + i < inner.y + inner.h {
+        var row = m.choices[i]
         if row.length() > inner.w - 4 {
             row = row.substring(0, inner.w - 4)
         }
@@ -769,21 +767,21 @@ fun _question(m: Chat, f: Frame) {
 // A centered modal asking to approve one mutating tool call.
 fun _approval(m: Chat, f: Frame) {
     let full = f.area()
-    let w = 72
+    var w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
-    let detail: List<String> = []
+    var detail: list[str] = []
     if m.pending_detail != "" {
         detail = m.pending_detail.lines()
     }
-    let extra = detail.len()
+    var extra = detail.len()
     if extra > 12 {
         extra = 12
     }
     let h = 6 + extra
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -795,9 +793,9 @@ fun _approval(m: Chat, f: Frame) {
     box.render(area, f.buf)
     let inner = box.inner(area)
     f.buf.set_string(inner.x + 1, inner.y, m.pending, Style.new().bold())
-    let r = 0
+    var r = 0
     while r < extra {
-        let line = detail[r]
+        var line = detail[r]
         if line.length() > inner.w - 2 {
             line = line.substring(0, inner.w - 2)
         }
@@ -813,7 +811,7 @@ fun _approval(m: Chat, f: Frame) {
     return
 }
 
-fun _approval_diff_style(line: String, m: Chat) -> Style {
+fun _approval_diff_style(line: str, m: Chat) -> Style {
     if line.starts_with("- ") {
         return m.theme.error
     }
@@ -828,20 +826,20 @@ fun _approval_diff_style(line: String, m: Chat) -> Style {
 fun _picker(m: Chat, f: Frame) {
     let full = f.area()
     let labels = m.catalog.pick_labels
-    let count = m.catalog.pick_ids.len()
+    var count = m.catalog.pick_ids.len()
     if count < 1 {
         count = 1
     }
-    let h = count + 4
+    var h = count + 4
     if h > full.h {
         h = full.h
     }
-    let w = 72
+    var w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -868,7 +866,7 @@ fun _picker(m: Chat, f: Frame) {
 
 // How long ago a session was created, so ten "(untitled)" rows are still
 // tellable apart. "" for sessions saved before the timestamp existed.
-fun _session_age(created: Int) -> String {
+fun _session_age(created: int) -> str {
     if created <= 0 {
         return ""
     }
@@ -890,22 +888,22 @@ fun _session_age(created: Int) -> String {
 fun _theme_picker(m: Chat, f: Frame) {
     let full = f.area()
     let themes = all_themes()
-    let items: List<String> = []
-    let i = 0
+    let items: list[str] = []
+    var i = 0
     while i < themes.len() {
         items.push(themes[i].name)
         i = i + 1
     }
-    let h = items.len() + 2
+    var h = items.len() + 2
     if h > full.h {
         h = full.h
     }
-    let w = 46
+    var w = 46
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -924,15 +922,15 @@ fun _theme_picker(m: Chat, f: Frame) {
 
 fun _welcome(m: Chat, area: Rect, f: Frame) {
     let top = area.y + 1
-    let below = 0
-    let text_x = area.x + 3
+    var below = 0
+    var text_x = area.x + 3
     // Size the logo to the terminal: as wide as there is room, capped by a
     // height budget so the tagline and input stay visible, and by the master
     // width so it is never upscaled. It falls back to the ASCII wordmark when
     // the terminal is too narrow for a legible render.
     let h_budget = area.h - 6
     let by_h = h_budget * master_width() / master_rows()
-    let tw = area.w - 2
+    var tw = area.w - 2
     if by_h < tw {
         tw = by_h
     }
@@ -946,7 +944,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
         text_x = lx + 1
     } else {
         let art = _banner()
-        let i = 0
+        var i = 0
         while i < art.len() {
             f.buf.set_string(area.x + 2, top + i, art[i], m.theme.accent.bold())
             i = i + 1
@@ -956,10 +954,10 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
     f.buf.set_string(text_x, below, "a coding agent for your terminal · v${version()}", m.theme.dim)
     f.buf.set_string(text_x, below + 1, "model: ${m.model}", m.theme.dim)
 
-    let tips = "Type a task to start · / lists commands · @ attaches a file.\n\nEsc interrupts a turn · ctrl+c twice to quit · drag to copy."
-    if m.api_key == "" && !key_optional(provider_of(m.model)) {
+    var tips = "Type a task to start · / lists commands · @ attaches a file.\n\nEsc interrupts a turn · ctrl+c twice to quit · drag to copy."
+    if m.api_key == "" and not key_optional(provider_of(m.model)) {
         let env = key_env(provider_of(m.model))
-        let hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
+        var hint = "no API key for ${provider_of(m.model)} yet; type /key to add one"
         if env != "" {
             hint = "${hint} (or set ${env})"
         }
@@ -974,7 +972,7 @@ fun _welcome(m: Chat, area: Rect, f: Frame) {
 }
 
 // The ASCII "rook" wordmark (standard figlet), with the logo's >_ prompt.
-fun _banner() -> List<String> {
+fun _banner() -> list[str] {
     return [
         "                 _",
         "  _ __ ___   ___ | | __",
@@ -987,7 +985,7 @@ fun _banner() -> List<String> {
 fun _transcript(m: Chat, area: Rect, f: Frame) {
     // The cache is wrapped for a given width and theme; a change to either
     // invalidates it so everything re-wraps once at the new size or palette.
-    if area.w != m.cache_width || m.theme.name != m.cache_theme {
+    if area.w != m.cache_width or m.theme.name != m.cache_theme {
         invalidate_all_cache(m)
         m.cache_width = area.w
         m.cache_theme = m.theme.name
@@ -1002,15 +1000,15 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
     // up under the reader. Growing scroll_up by the same amount keeps the
     // text being read still; new lines land below, counted by the status
     // bar's scrolled-up indicator.
-    if m.scroll_up > 0 && m.last_total > 0 && total > m.last_total {
+    if m.scroll_up > 0 and m.last_total > 0 and total > m.last_total {
         m.scroll_up = m.scroll_up + (total - m.last_total)
     }
     m.last_total = total
-    let max_up = total - area.h
+    var max_up = total - area.h
     if max_up < 0 {
         max_up = 0
     }
-    let up = m.scroll_up
+    var up = m.scroll_up
     if up > max_up {
         up = max_up
     }
@@ -1031,16 +1029,16 @@ fun _transcript(m: Chat, area: Rect, f: Frame) {
 // Paint the mouse selection by reversing each selected cell that is on screen.
 // The selection is in content-line coordinates, so `top` maps a content line
 // to its screen row.
-fun _draw_selection(m: Chat, area: Rect, top: Int, f: Frame) {
-    if !m.sel.present || is_empty(m.sel) {
+fun _draw_selection(m: Chat, area: Rect, top: int, f: Frame) {
+    if not m.sel.present or is_empty(m.sel) {
         return
     }
     let sp = normalize(m.sel)
-    let row = 0
+    var row = 0
     while row < area.h {
         let abs_line = top + row
-        if abs_line >= sp.lo_line && abs_line <= sp.hi_line {
-            let col = 0
+        if abs_line >= sp.lo_line and abs_line <= sp.hi_line {
+            var col = 0
             while col < area.w {
                 if contains(sp, abs_line, col) {
                     let cell = f.buf.get(area.x + col, area.y + row)
@@ -1055,7 +1053,7 @@ fun _draw_selection(m: Chat, area: Rect, top: Int, f: Frame) {
 }
 
 fun _thinking_line(m: Chat, area: Rect, f: Frame) {
-    if !m.active {
+    if not m.active {
         return
     }
     if m.pending != "" {
@@ -1073,8 +1071,8 @@ fun _thinking_line(m: Chat, area: Rect, f: Frame) {
 }
 
 fun _status(m: Chat, area: Rect, f: Frame) {
-    let left = "enter to send · /model /clear /help · ctrl+c twice to quit"
-    let sty = m.theme.status
+    var left = "enter to send · /model /clear /help · ctrl+c twice to quit"
+    var sty = m.theme.status
     if m.active {
         left = "streaming · esc to interrupt"
     }
@@ -1097,14 +1095,14 @@ fun _status(m: Chat, area: Rect, f: Frame) {
         sty = m.theme.accent
     }
     // A copy confirmation briefly takes over the left hint.
-    if m.flash != "" && m.tick < m.flash_until {
+    if m.flash != "" and m.tick < m.flash_until {
         left = "✓ ${m.flash}"
         sty = m.theme.accent
     }
     f.buf.set_string(area.x + 1, area.y, left, sty)
     // Right side: session token usage (when any), the model, and a
     // plan-mode badge ahead of it when on.
-    let right = "rook · ${m.model}"
+    var right = "rook · ${m.model}"
     let usage = usage_label(
         m.model,
         m.sess_prompt,
@@ -1120,7 +1118,7 @@ fun _status(m: Chat, area: Rect, f: Frame) {
     }
     let rx = area.x + area.w - width(right) - 1
     if rx > area.x + width(left) + 2 {
-        let rsty = m.theme.status
+        var rsty = m.theme.status
         if m.plan_mode {
             rsty = m.theme.warn
         }
@@ -1136,7 +1134,7 @@ fun _status(m: Chat, area: Rect, f: Frame) {
 fun _rewind_picker(m: Chat, f: Frame) {
     let full = f.area()
     let idxs = _user_entry_texts(m)
-    let count = idxs.len()
+    var count = idxs.len()
     if count < 1 {
         count = 1
     }
@@ -1144,12 +1142,12 @@ fun _rewind_picker(m: Chat, f: Frame) {
         count = full.h - 6
     }
     let h = count + 2
-    let w = 72
+    var w = 72
     if w > full.w - 2 {
         w = full.w - 2
     }
     let x = full.x + (full.w - w) / 2
-    let y = full.y + (full.h - h) / 2
+    var y = full.y + (full.h - h) / 2
     if y < full.y {
         y = full.y
     }
@@ -1164,13 +1162,13 @@ fun _rewind_picker(m: Chat, f: Frame) {
         f.buf.set_string(inner.x + 1, inner.y, "(no messages yet)", m.theme.dim)
         return
     }
-    let sel = m.rewind_sel
+    var sel = m.rewind_sel
     if sel >= idxs.len() {
         sel = idxs.len() - 1
     }
-    let r = 0
-    while r < count && r < idxs.len() {
-        let row = idxs[r]
+    var r = 0
+    while r < count and r < idxs.len() {
+        var row = idxs[r]
         if row.length() > inner.w - 2 {
             row = row.substring(0, inner.w - 2)
         }
@@ -1188,20 +1186,20 @@ fun _rewind_picker(m: Chat, f: Frame) {
 }
 
 // The last user messages' first lines, newest first, for the picker rows.
-fun _user_entry_texts(m: Chat) -> List<String> {
-    let out: List<String> = []
-    let i = m.entries.len() - 1
-    while i >= 0 && out.len() < 10 {
+fun _user_entry_texts(m: Chat) -> list[str] {
+    let out: list[str] = []
+    var i = m.entries.len() - 1
+    while i >= 0 and out.len() < 10 {
         match m.entries[i] {
-            UserMsg(t) -> {
-                let first = t
+            case UserMsg(t) {
+                var first = t
                 let lines = t.lines()
                 if lines.len() > 0 {
                     first = lines[0]
                 }
                 out.push(first)
-            },
-            _ -> {},
+            }
+            case _ {}
         }
         i = i - 1
     }

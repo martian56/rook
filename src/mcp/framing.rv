@@ -4,31 +4,31 @@
 // line at a time, so the transport can parse a message as soon as its line is
 // whole. A trailing carriage return is stripped so CRLF servers parse too.
 
-import std/string
+import std.string
 
-struct LineBuffer {
-    data: String,
+class LineBuffer {
+    data: str
 }
 
 impl LineBuffer {
     fun new() -> LineBuffer {
-        return LineBuffer { data: "" }
+        return LineBuffer(data: "")
     }
 
     // Add a chunk of output to the buffer.
-    fun push(self, chunk: String) {
+    fun push(self, chunk: str) {
         self.data = self.data.concat(chunk)
         return
     }
 
     // The next complete line (without its newline), removed from the buffer,
     // or None when no newline has arrived yet.
-    fun next_line(self) -> Option<String> {
+    fun next_line(self) -> Option[str] {
         let nl = self.data.index_of("\n")
         if nl < 0 {
             return None
         }
-        let line = self.data.substring(0, nl)
+        var line = self.data.substring(0, nl)
         self.data = self.data.substring(nl + 1, self.data.length())
         if line.ends_with("\r") {
             line = line.substring(0, line.length() - 1)

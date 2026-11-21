@@ -1,7 +1,7 @@
-import std/string
-import std/test { assert_eq_str, assert_eq_int, assert_true }
-import "github.com/martian56/aviary/message" { Message }
-import "./compact" { estimate_tokens, context_window, should_compact, split_index, rebuild, flatten }
+import std.string
+from std.test import assert_eq_str, assert_eq_int, assert_true
+from "github.com/martian56/aviary/message" import Message
+from "./compact" import estimate_tokens, context_window, should_compact, split_index, rebuild, flatten
 
 fun test_estimate_tokens_is_chars_over_four() {
     // "abcd" is 4 chars plus 8 overhead = 12, /4 = 3.
@@ -18,13 +18,13 @@ fun test_context_window_by_family() {
 
 fun test_should_compact_only_when_large_and_is_model_aware() {
     let small = [Message.user("hello"), Message.assistant("hi")]
-    assert_true(!should_compact(small, "gpt-4o"))
+    assert_true(not should_compact(small, "gpt-4o"))
 
     // ~400k chars is ~100k tokens: over 70% of gpt-4o's 128k, under claude's.
     let unit = _repeat("x", 1000)
     let huge = [Message.user(_repeat(unit, 400))]
     assert_true(should_compact(huge, "gpt-4o"))
-    assert_true(!should_compact(huge, "claude-opus-4"))
+    assert_true(not should_compact(huge, "claude-opus-4"))
 }
 
 fun test_split_index_keeps_the_last_turns() {
@@ -76,9 +76,9 @@ fun test_flatten_labels_roles() {
     assert_true(text.contains("TOOL(grep): match"))
 }
 
-fun _repeat(chunk: String, times: Int) -> String {
-    let out = ""
-    let i = 0
+fun _repeat(chunk: str, times: int) -> str {
+    var out = ""
+    var i = 0
     while i < times {
         out = out.concat(chunk)
         i = i + 1

@@ -2,25 +2,25 @@
 // objects with a display label and optional stable value, while the parser
 // keeps the old comma-separated string format working for now.
 
-import std/string
-import std/json { JsonValue, parse }
+import std.string
+from std.json import JsonValue, parse
 
-struct AskOption {
-    label: String,
-    value: String,
+class AskOption {
+    label: str
+    value: str
 }
 
-fun parse_ask_options(args_json: String) -> List<AskOption> {
-    let out: List<AskOption> = []
+fun parse_ask_options(args_json: str) -> list[AskOption] {
+    let out: list[AskOption] = []
     if args_json.trim() == "" {
         return out
     }
     match parse(args_json) {
-        Ok(j) -> {
+        case Ok(j) {
             let options = _field(j, "options")
             match options {
-                Array(items) -> {
-                    let i = 0
+                case Array(items) {
+                    var i = 0
                     while i < items.len() {
                         let option = _option_from_json(items[i])
                         if option.label != "" {
@@ -28,20 +28,18 @@ fun parse_ask_options(args_json: String) -> List<AskOption> {
                         }
                         i = i + 1
                     }
-                },
-                _ -> {
-                    _append_comma_options(_as_str(options), out)
-                },
+                }
+                case _ { _append_comma_options(_as_str(options), out) }
             }
-        },
-        Err(e) -> {},
+        }
+        case Err(e) {}
     }
     return out
 }
 
-fun option_labels(options: List<AskOption>) -> List<String> {
-    let labels: List<String> = []
-    let i = 0
+fun option_labels(options: list[AskOption]) -> list[str] {
+    let labels: list[str] = []
+    var i = 0
     while i < options.len() {
         labels.push(options[i].label)
         i = i + 1
@@ -49,22 +47,22 @@ fun option_labels(options: List<AskOption>) -> List<String> {
     return labels
 }
 
-fun option_count_error(options: List<AskOption>) -> String {
-    if options.len() < 2 || options.len() > 5 {
+fun option_count_error(options: list[AskOption]) -> str {
+    if options.len() < 2 or options.len() > 5 {
         return "error: ask_user needs two to five options"
     }
     return ""
 }
 
 fun _option_from_json(j: JsonValue) -> AskOption {
-    let label = ""
-    let value = ""
+    var label = ""
+    var value = ""
     match j {
-        Str(s) -> {
+        case Str(s) {
             label = s.trim()
             value = label
-        },
-        Object(obj) -> {
+        }
+        case Object(obj) {
             label = _as_str(_field(j, "label")).trim()
             value = _as_str(_field(j, "value")).trim()
             if label == "" {
@@ -73,35 +71,35 @@ fun _option_from_json(j: JsonValue) -> AskOption {
             if value == "" {
                 value = label
             }
-        },
-        _ -> {},
+        }
+        case _ {}
     }
-    return AskOption { label, value }
+    return AskOption(label: label, value: value)
 }
 
-fun _append_comma_options(raw: String, out: List<AskOption>) {
+fun _append_comma_options(raw: str, out: list[AskOption]) {
     let parts = raw.split(",")
-    let i = 0
+    var i = 0
     while i < parts.len() {
         let label = parts[i].trim()
         if label != "" {
-            out.push(AskOption { label, value: label })
+            out.push(AskOption(label: label, value: label))
         }
         i = i + 1
     }
     return
 }
 
-fun _field(j: JsonValue, key: String) -> JsonValue {
+fun _field(j: JsonValue, key: str) -> JsonValue {
     return match j.get(key) {
-        Some(v) -> v,
-        None -> JsonValue.Null,
+        case Some(v) { v }
+        case None { JsonValue.Null }
     }
 }
 
-fun _as_str(j: JsonValue) -> String {
+fun _as_str(j: JsonValue) -> str {
     return match j.as_string() {
-        Some(s) -> s,
-        None -> "",
+        case Some(s) { s }
+        case None { "" }
     }
 }

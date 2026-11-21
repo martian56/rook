@@ -4,10 +4,10 @@
 // RGB color to the xterm 256 cube (or its grayscale ramp) or to the nearest
 // of the basic 16.
 
-import std/string
-import std/env { get_env, has_env, os_name }
-import "github.com/martian56/plumage/style" { Style, Color }
-import "./theme" { Theme }
+import std.string
+from std.env import get_env, has_env, os_name
+from "github.com/martian56/plumage/style" import Style, Color
+from "./theme" import Theme
 
 enum Depth {
     Full,
@@ -17,11 +17,11 @@ enum Depth {
 
 // What the running terminal supports, judged from the environment.
 fun detect_depth() -> Depth {
-    let ct = ""
+    var ct = ""
     if has_env("COLORTERM") {
         ct = get_env("COLORTERM")
     }
-    let t = ""
+    var t = ""
     if has_env("TERM") {
         t = get_env("TERM")
     }
@@ -32,15 +32,15 @@ fun detect_depth() -> Depth {
 // truecolor wins; a 256color TERM means the cube; otherwise 16 colors. The
 // Windows console has no TERM but its VT mode does full color, so an empty
 // environment there means full depth.
-fun depth_from(colorterm: String, term: String, os: String) -> Depth {
+fun depth_from(colorterm: str, term: str, os: str) -> Depth {
     let c = colorterm.to_lower()
-    if c.contains("truecolor") || c.contains("24bit") {
+    if c.contains("truecolor") or c.contains("24bit") {
         return Depth.Full
     }
     if term.to_lower().contains("256color") {
         return Depth.Ansi256
     }
-    if term == "" && os == "windows" {
+    if term == "" and os == "windows" {
         return Depth.Full
     }
     return Depth.Ansi16
@@ -54,7 +54,7 @@ fun themed(t: Theme) -> Theme {
 
 // Downsample every style in a theme to the given depth.
 fun adapt_theme(t: Theme, d: Depth) -> Theme {
-    return Theme {
+    return Theme(
         name: t.name,
         accent: adapt_style(t.accent, d),
         dim: adapt_style(t.dim, d),
@@ -69,11 +69,11 @@ fun adapt_theme(t: Theme, d: Depth) -> Theme {
         spinner: adapt_style(t.spinner, d),
         warn: adapt_style(t.warn, d),
         error: adapt_style(t.error, d),
-    }
+    )
 }
 
 fun adapt_style(s: Style, d: Depth) -> Style {
-    return Style {
+    return Style(
         fg: adapt_color(s.fg, d),
         bg: adapt_color(s.bg, d),
         bold: s.bold,
@@ -82,44 +82,44 @@ fun adapt_style(s: Style, d: Depth) -> Style {
         underline: s.underline,
         reverse: s.reverse,
         strike: s.strike,
-    }
+    )
 }
 
 // Quantize one color. Only RGB values need work: named colors and palette
 // indexes already mean something at every depth.
 fun adapt_color(c: Color, d: Depth) -> Color {
-    let full = false
+    var full = false
     match d {
-        Full -> {
+        case Full {
             full = true
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     if full {
         return c
     }
-    let to16 = false
+    var to16 = false
     match d {
-        Ansi16 -> {
+        case Ansi16 {
             to16 = true
-        },
-        _ -> {},
+        }
+        case _ {}
     }
     return match c {
-        Rgb(r, g, b) -> {
-            let out = Color.Indexed(_nearest_256(r, g, b))
+        case Rgb(r, g, b) {
+            var out = Color.Indexed(_nearest_256(r, g, b))
             if to16 {
                 out = Color.Indexed(_nearest_16(r, g, b))
             }
             out
-        },
-        _ -> c,
+        }
+        case _ { c }
     }
 }
 
 // The xterm 256 palette: pick the closer of the 6x6x6 color cube entry and
 // the grayscale-ramp entry.
-fun _nearest_256(r: Int, g: Int, b: Int) -> Int {
+fun _nearest_256(r: int, g: int, b: int) -> int {
     let ri = _cube_level(r)
     let gi = _cube_level(g)
     let bi = _cube_level(b)
@@ -127,7 +127,7 @@ fun _nearest_256(r: Int, g: Int, b: Int) -> Int {
     let cd = _dist(r, g, b, _cube_value(ri), _cube_value(gi), _cube_value(bi))
 
     let avg = (r + g + b) / 3
-    let step = (avg - 3) / 10
+    var step = (avg - 3) / 10
     if step < 0 {
         step = 0
     }
@@ -144,7 +144,7 @@ fun _nearest_256(r: Int, g: Int, b: Int) -> Int {
 }
 
 // The nearest of the basic 16, by RGB distance against the xterm defaults.
-fun _nearest_16(r: Int, g: Int, b: Int) -> Int {
+fun _nearest_16(r: int, g: int, b: int) -> int {
     let table = [
         0,
         0,
@@ -195,9 +195,9 @@ fun _nearest_16(r: Int, g: Int, b: Int) -> Int {
         255,
         255,
     ]
-    let best = 0
-    let best_d = _dist(r, g, b, table[0], table[1], table[2])
-    let i = 1
+    var best = 0
+    var best_d = _dist(r, g, b, table[0], table[1], table[2])
+    var i = 1
     while i < 16 {
         let d = _dist(r, g, b, table[i * 3], table[i * 3 + 1], table[i * 3 + 2])
         if d < best_d {
@@ -210,15 +210,15 @@ fun _nearest_16(r: Int, g: Int, b: Int) -> Int {
 }
 
 // The cube axis level (0..5) nearest to a channel value.
-fun _cube_level(v: Int) -> Int {
-    let best = 0
-    let best_d = v - _cube_value(0)
+fun _cube_level(v: int) -> int {
+    var best = 0
+    var best_d = v - _cube_value(0)
     if best_d < 0 {
         best_d = 0 - best_d
     }
-    let i = 1
+    var i = 1
     while i < 6 {
-        let d = v - _cube_value(i)
+        var d = v - _cube_value(i)
         if d < 0 {
             d = 0 - d
         }
@@ -232,14 +232,14 @@ fun _cube_level(v: Int) -> Int {
 }
 
 // The channel value of a cube axis level: 0, 95, 135, 175, 215, 255.
-fun _cube_value(level: Int) -> Int {
+fun _cube_value(level: int) -> int {
     if level == 0 {
         return 0
     }
     return 55 + level * 40
 }
 
-fun _dist(r: Int, g: Int, b: Int, r2: Int, g2: Int, b2: Int) -> Int {
+fun _dist(r: int, g: int, b: int, r2: int, g2: int, b2: int) -> int {
     let dr = r - r2
     let dg = g - g2
     let db = b - b2

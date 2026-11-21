@@ -1,10 +1,10 @@
-import std/string
-import std/test { assert_eq_str, assert_true, assert_false }
-import std/fs { read, write, remove_file, exists }
-import "./config" { provider_of, key_env, key_present, key_needed, key_needed_with, auth_with_key, save_key_to_path, _check_rook_json, _attribution_of }
-import "./catalog" { catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning }
-import "./direct_catalog" { direct_catalog }
-import "./openrouter_catalog" { openrouter_catalog, openrouter_models_without_tools }
+import std.string
+from std.test import assert_eq_str, assert_true, assert_false
+from std.fs import read, write, remove_file, exists
+from "./config" import provider_of, key_env, key_present, key_needed, key_needed_with, auth_with_key, save_key_to_path, _check_rook_json, _attribution_of
+from "./catalog" import catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning
+from "./direct_catalog" import direct_catalog
+from "./openrouter_catalog" import openrouter_catalog, openrouter_models_without_tools
 
 fun test_provider_of() {
     assert_eq_str(provider_of("openai/gpt-4o"), "openai")
@@ -55,12 +55,12 @@ fun test_auth_with_key_preserves_other_provider_keys() {
     assert_true(updated.ok)
     assert_true(updated.text.contains("\"anthropic\":\"old-a\""))
     assert_true(updated.text.contains("\"openai\":\"new-o\""))
-    assert_true(!updated.text.contains("old-o"))
+    assert_true(not updated.text.contains("old-o"))
 }
 
 fun test_auth_with_key_rejects_malformed_json() {
     let updated = auth_with_key("{\"anthropic\":", "openai", "new-o")
-    assert_true(!updated.ok)
+    assert_true(not updated.ok)
     assert_true(updated.error.contains("not valid JSON"))
     assert_eq_str(updated.text, "")
 }
@@ -70,8 +70,8 @@ fun test_save_key_to_path_does_not_overwrite_malformed_auth() {
     let err = save_key_to_path("_rook_auth_bad.json", "openai", "new-o")
     assert_true(err.contains("not valid JSON"))
     match read("_rook_auth_bad.json") {
-        Ok(text) -> assert_eq_str(text, "{\"anthropic\":"),
-        Err(e) -> assert_true(false),
+        case Ok(text) { assert_eq_str(text, "{\"anthropic\":") }
+        case Err(e) { assert_true(false) }
     }
     remove_file("_rook_auth_bad.json")
     return
@@ -80,15 +80,15 @@ fun test_save_key_to_path_does_not_overwrite_malformed_auth() {
 fun test_save_key_to_path_creates_missing_auth_file() {
     if exists("_rook_auth_new.json") {
         match remove_file("_rook_auth_new.json") {
-            Ok(ok) -> {},
-            Err(e) -> {},
+            case Ok(ok) {}
+            case Err(e) {}
         }
     }
     let err = save_key_to_path("_rook_auth_new.json", "openai", "new-o")
     assert_eq_str(err, "")
     match read("_rook_auth_new.json") {
-        Ok(text) -> assert_true(text.contains("\"openai\":\"new-o\"")),
-        Err(e) -> assert_true(false),
+        case Ok(text) { assert_true(text.contains("\"openai\":\"new-o\"")) }
+        case Err(e) { assert_true(false) }
     }
     remove_file("_rook_auth_new.json")
     return
@@ -106,9 +106,9 @@ fun test_catalog_index_of_unlisted_is_zero() {
 }
 
 fun test_catalog_carries_the_2026_flagships() {
-    let all = ""
+    var all = ""
     let items = catalog()
-    let i = 0
+    var i = 0
     while i < items.len() {
         all = "${all} ${items[i]}"
         i = i + 1
@@ -129,8 +129,8 @@ fun test_catalog_carries_the_2026_flagships() {
 
 fun test_direct_catalog_covers_every_static_picker_provider() {
     let items = direct_catalog()
-    let all = ""
-    let i = 0
+    var all = ""
+    var i = 0
     while i < items.len() {
         all = "${all} ${items[i]}"
         i = i + 1
@@ -163,9 +163,9 @@ fun test_direct_catalog_covers_every_static_picker_provider() {
 fun test_direct_catalog_has_no_duplicate_ids() {
     let items = direct_catalog()
     assert_true(items.len() >= 100)
-    let i = 0
+    var i = 0
     while i < items.len() {
-        let j = i + 1
+        var j = i + 1
         while j < items.len() {
             assert_true(items[i] != items[j])
             j = j + 1
@@ -175,9 +175,9 @@ fun test_direct_catalog_has_no_duplicate_ids() {
 }
 
 fun test_direct_catalog_excludes_retiring_aliases() {
-    let all = ""
+    var all = ""
     let items = direct_catalog()
-    let i = 0
+    var i = 0
     while i < items.len() {
         all = "${all} ${items[i]}"
         i = i + 1
@@ -191,8 +191,8 @@ fun test_direct_catalog_excludes_retiring_aliases() {
 fun test_openrouter_catalog_contains_the_complete_snapshot() {
     let items = openrouter_catalog()
     assert_true(items.len() >= 342)
-    let all = ""
-    let i = 0
+    var all = ""
+    var i = 0
     while i < items.len() {
         assert_true(items[i].starts_with("openrouter/"))
         all = "${all} ${items[i]}"
@@ -207,9 +207,9 @@ fun test_openrouter_catalog_contains_the_complete_snapshot() {
 
 fun test_openrouter_catalog_has_no_duplicate_ids() {
     let items = openrouter_catalog()
-    let i = 0
+    var i = 0
     while i < items.len() {
-        let j = i + 1
+        var j = i + 1
         while j < items.len() {
             assert_true(items[i] != items[j])
             j = j + 1
@@ -275,20 +275,20 @@ fun test_key_needed_with_uses_the_given_key() {
 
 fun test_malformed_rook_json_is_flagged() {
     write("_rook_cfg_bad.json", "{\"model\": ")
-    let bad: List<String> = []
+    let bad: list[str] = []
     _check_rook_json("_rook_cfg_bad.json", bad)
     assert_true(bad.len() == 1)
     assert_true(bad[0].contains("invalid JSON"))
     remove_file("_rook_cfg_bad.json")
 
     write("_rook_cfg_ok.json", "{\"model\": \"openai/gpt-5.6\"}")
-    let ok: List<String> = []
+    let ok: list[str] = []
     _check_rook_json("_rook_cfg_ok.json", ok)
     assert_true(ok.len() == 0)
     remove_file("_rook_cfg_ok.json")
 
     // A missing file is not an error.
-    let none: List<String> = []
+    let none: list[str] = []
     _check_rook_json("_rook_cfg_absent.json", none)
     assert_true(none.len() == 0)
 }

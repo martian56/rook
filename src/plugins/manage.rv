@@ -3,25 +3,25 @@
 // (optionally at a tag); remove deletes one; update re-installs from the
 // recorded source. Each returns a text result the UI shows as notices.
 
-import std/string
-import std/env { os_name }
-import std/fs { is_dir, list_dir }
-import std/process { run, Output }
-import "./model" { Plugin, installed_plugins, plugin_path, valid_plugin_name }
-import "./install" { install_plugin, plugin_source }
-import "./market" { browse_text, resolve_name_result }
-import "../agents/dir" { invalidate_roots }
-import "../agents/commands" { invalidate_commands }
+import std.string
+from std.env import os_name
+from std.fs import is_dir, list_dir
+from std.process import run, Output
+from "./model" import Plugin, installed_plugins, plugin_path, valid_plugin_name
+from "./install" import install_plugin, plugin_source
+from "./market" import browse_text, resolve_name_result
+from "../agents/dir" import invalidate_roots
+from "../agents/commands" import invalidate_commands
 
 // Dispatch a /plugins invocation. The argument is what followed the command
 // ("" or "list", "add <url> [tag]", "remove <name>", "update <name>").
-fun run_plugins_command(args: String) -> String {
+fun run_plugins_command(args: str) -> str {
     let a = args.trim()
-    if a == "" || a == "list" {
+    if a == "" or a == "list" {
         return list_text()
     }
-    let verb = a
-    let rest = ""
+    var verb = a
+    var rest = ""
     let sp = a.index_of(" ")
     if sp >= 0 {
         verb = a.substring(0, sp)
@@ -33,7 +33,7 @@ fun run_plugins_command(args: String) -> String {
         invalidate_commands()
         return r
     }
-    if verb == "remove" || verb == "rm" {
+    if verb == "remove" or verb == "rm" {
         let r = remove(rest)
         invalidate_roots()
         invalidate_commands()
@@ -45,27 +45,27 @@ fun run_plugins_command(args: String) -> String {
         invalidate_commands()
         return r
     }
-    if verb == "browse" || verb == "search" {
+    if verb == "browse" or verb == "search" {
         return browse_text(rest)
     }
     return "unknown /plugins command '${verb}'; try: list, browse [query], add <git-url or name> [tag], remove <name>, update <name>"
 }
 
 // The installed plugins, one line each with version and contributions.
-fun list_text() -> String {
+fun list_text() -> str {
     let plugins = installed_plugins()
     if plugins.len() == 0 {
         return "no plugins installed. add one with /plugins add <git-url>"
     }
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < plugins.len() {
         let p = plugins[i]
-        let v = p.version
+        var v = p.version
         if v == "" {
             v = "unversioned"
         }
-        let line = "${p.name} ${v}"
+        var line = "${p.name} ${v}"
         if p.description != "" {
             line = "${line} - ${p.description}"
         }
@@ -84,14 +84,14 @@ fun list_text() -> String {
 
 // A summary of what a plugin bundle contributes, by counting the entries in
 // its .agents-style subfolders. "" when it contributes nothing.
-fun contrib(path: String) -> String {
-    let parts: List<String> = []
+fun contrib(path: str) -> str {
+    let parts: list[str] = []
     _add_count(parts, path, "skills", "skills")
     _add_count(parts, path, "subagents", "subagents")
     _add_count(parts, path, "commands", "commands")
     _add_count(parts, path, "themes", "themes")
-    let out = ""
-    let i = 0
+    var out = ""
+    var i = 0
     while i < parts.len() {
         if i > 0 {
             out = out.concat(", ")
@@ -102,12 +102,12 @@ fun contrib(path: String) -> String {
     return out
 }
 
-fun add(rest: String) -> String {
+fun add(rest: str) -> str {
     if rest == "" {
         return "usage: /plugins add <git-url or index-name> [tag]"
     }
-    let first = rest
-    let ref = ""
+    var first = rest
+    var ref = ""
     let sp = rest.index_of(" ")
     if sp >= 0 {
         first = rest.substring(0, sp)
@@ -115,8 +115,8 @@ fun add(rest: String) -> String {
     }
     // A bare name (no path or scheme) is looked up in the marketplace index;
     // anything with a slash or scheme is treated as a git URL directly.
-    let url = first
-    if !_is_url(first) {
+    var url = first
+    if not _is_url(first) {
         let resolved = resolve_name_result(first)
         if resolved.error != "" {
             return resolved.error
@@ -129,19 +129,19 @@ fun add(rest: String) -> String {
     return install_plugin(url, ref)
 }
 
-fun _is_url(s: String) -> Bool {
-    return s.contains("/") || s.contains("://") || s.starts_with("git@")
+fun _is_url(s: str) -> bool {
+    return s.contains("/") or s.contains("://") or s.starts_with("git@")
 }
 
-fun remove(name: String) -> String {
+fun remove(name: str) -> str {
     if name == "" {
         return "usage: /plugins remove <name>"
     }
-    if !valid_plugin_name(name) {
+    if not valid_plugin_name(name) {
         return "error: unsafe plugin name: ${name}"
     }
     let path = plugin_path(name)
-    if path == "" || !is_dir(path) {
+    if path == "" or not is_dir(path) {
         return "no plugin named ${name}; /plugins list shows what is installed"
     }
     let err = _rmtree(path)
@@ -151,15 +151,15 @@ fun remove(name: String) -> String {
     return "removed plugin ${name}"
 }
 
-fun update(name: String) -> String {
+fun update(name: str) -> str {
     if name == "" {
         return "usage: /plugins update <name>"
     }
-    if !valid_plugin_name(name) {
+    if not valid_plugin_name(name) {
         return "error: unsafe plugin name: ${name}"
     }
     let path = plugin_path(name)
-    if path == "" || !is_dir(path) {
+    if path == "" or not is_dir(path) {
         return "no plugin named ${name}; /plugins list shows what is installed"
     }
     // plugin_source stores the url in name and the ref in description.
@@ -170,7 +170,7 @@ fun update(name: String) -> String {
     return install_plugin(src.name, src.description)
 }
 
-fun _add_count(parts: List<String>, path: String, sub: String, label: String) {
+fun _add_count(parts: list[str], path: str, sub: str, label: str) {
     let n = _count(path, sub)
     if n > 0 {
         parts.push("${n} ${label}")
@@ -178,21 +178,21 @@ fun _add_count(parts: List<String>, path: String, sub: String, label: String) {
     return
 }
 
-fun _count(path: String, sub: String) -> Int {
+fun _count(path: str, sub: str) -> int {
     let d = "${path}/${sub}"
-    if !is_dir(d) {
+    if not is_dir(d) {
         return 0
     }
     return match list_dir(d) {
-        Ok(ns) -> ns.len(),
-        Err(e) -> 0,
+        case Ok(ns) { ns.len() }
+        case Err(e) { 0 }
     }
 }
 
 // Remove a directory tree, clearing read-only attributes first on Windows
 // so a plugin's git files do not block removal. See install._remove_tree.
-fun _rmtree(path: String) -> String {
-    let detail = ""
+fun _rmtree(path: str) -> str {
+    var detail = ""
     if os_name() == "windows" {
         detail = _append_detail(
             detail,
@@ -205,21 +205,15 @@ fun _rmtree(path: String) -> String {
     return removal_error(path, detail)
 }
 
-fun _run_remove(command: String, args: List<String>) -> String {
+fun _run_remove(command: str, args: list[str]) -> str {
     return match run(command, args) {
-        Ok(o) -> {
-            if o.code == 0 {
-                ""
-            } else {
-                _output_error(command, o)
-            }
-        },
-        Err(e) -> "${command} failed to start: ${e.message}",
+        case Ok(o) { "" if o.code == 0 else _output_error(command, o) }
+        case Err(e) { "${command} failed to start: ${e.message}" }
     }
 }
 
-fun _output_error(command: String, out: Output) -> String {
-    let msg = out.stderr.trim()
+fun _output_error(command: str, out: Output) -> str {
+    var msg = out.stderr.trim()
     if msg == "" {
         msg = out.stdout.trim()
     }
@@ -231,7 +225,7 @@ fun _output_error(command: String, out: Output) -> String {
     return "${command}: ${msg}"
 }
 
-fun _append_detail(existing: String, next: String) -> String {
+fun _append_detail(existing: str, next: str) -> str {
     if next == "" {
         return existing
     }
@@ -241,8 +235,8 @@ fun _append_detail(existing: String, next: String) -> String {
     return "${existing}; ${next}"
 }
 
-fun removal_error(path: String, detail: String) -> String {
-    if !is_dir(path) {
+fun removal_error(path: str, detail: str) -> str {
+    if not is_dir(path) {
         return ""
     }
     if detail.trim() == "" {

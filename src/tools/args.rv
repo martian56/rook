@@ -1,23 +1,23 @@
 // Read a named string argument out of a tool call's JSON arguments. The
 // model produces this JSON; a missing or non-string field reads as "".
 
-import std/string
-import std/json { JsonValue, parse }
+import std.string
+from std.json import JsonValue, parse
 
-fun arg(args_json: String, key: String) -> String {
+fun arg(args_json: str, key: str) -> str {
     if args_json.trim() == "" {
         return ""
     }
     return match parse(args_json) {
-        Ok(j) -> _field(j, key),
-        Err(e) -> "",
+        case Ok(j) { _field(j, key) }
+        case Err(e) { "" }
     }
 }
 
-fun _field(j: JsonValue, key: String) -> String {
+fun _field(j: JsonValue, key: str) -> str {
     return match j.get(key) {
-        Some(v) -> _as_str(v),
-        None -> "",
+        case Some(v) { _as_str(v) }
+        case None { "" }
     }
 }
 
@@ -25,27 +25,27 @@ fun _field(j: JsonValue, key: String) -> String {
 // still send a bare JSON number or boolean (id 3, staged true, depth 5). Coerce
 // those to their text form so the tool does not silently see "" and fail or
 // pick a wrong default.
-fun _as_str(v: JsonValue) -> String {
+fun _as_str(v: JsonValue) -> str {
     match v.as_string() {
-        Some(s) -> {
+        case Some(s) {
             return s
-        },
-        None -> {},
+        }
+        case None {}
     }
     match v.as_int() {
-        Some(n) -> {
+        case Some(n) {
             return "${n}"
-        },
-        None -> {},
+        }
+        case None {}
     }
     match v.as_bool() {
-        Some(b) -> {
+        case Some(b) {
             if b {
                 return "true"
             }
             return "false"
-        },
-        None -> {},
+        }
+        case None {}
     }
     return ""
 }

@@ -1,19 +1,19 @@
 // Shared workspace path handling for model-facing file paths. Rook runs in
 // one workspace, so tools accept only relative paths that stay inside it.
 
-import std/string
-import std/env { os_name }
-import std/path { normalize }
-import std/fs { exists, is_symlink }
+import std.string
+from std.env import os_name
+from std.path import normalize
+from std.fs import exists, is_symlink
 
-struct ResolvedPath {
-    ok: Bool,
-    path: String,
-    error: String,
+class ResolvedPath {
+    ok: bool
+    path: str
+    error: str
 }
 
-fun resolve_path(raw: String, fallback: String) -> ResolvedPath {
-    let input = raw.trim()
+fun resolve_path(raw: str, fallback: str) -> ResolvedPath {
+    var input = raw.trim()
     if input == "" {
         input = fallback
     }
@@ -34,19 +34,19 @@ fun resolve_path(raw: String, fallback: String) -> ResolvedPath {
     if _has_symlink_segment(path) {
         return _err("path crosses a symlink and is not allowed: ${raw}")
     }
-    if os_name() == "windows" && _has_reserved_name(path) {
+    if os_name() == "windows" and _has_reserved_name(path) {
         return _err("path uses a Windows reserved device name: ${raw}")
     }
-    return ResolvedPath { ok: true, path, error: "" }
+    return ResolvedPath(ok: true, path: path, error: "")
 }
 
 // Whether any segment of `path` is a Windows reserved device name (con, prn,
 // aux, nul, com1..com9, lpt1..lpt9), with or without an extension. These map to
 // devices regardless of directory on Windows, so opening one can hang or
 // silently discard data.
-fun _has_reserved_name(path: String) -> Bool {
+fun _has_reserved_name(path: str) -> bool {
     let segs = path.split("/")
-    let i = 0
+    var i = 0
     while i < segs.len() {
         if _is_reserved(segs[i]) {
             return true
@@ -56,74 +56,74 @@ fun _has_reserved_name(path: String) -> Bool {
     return false
 }
 
-fun _is_reserved(seg: String) -> Bool {
-    let stem = seg
+fun _is_reserved(seg: str) -> bool {
+    var stem = seg
     let dot = stem.index_of(".")
     if dot >= 0 {
         stem = stem.substring(0, dot)
     }
     let s = stem.to_lower()
-    if s == "con" || s == "prn" || s == "aux" || s == "nul" {
+    if s == "con" or s == "prn" or s == "aux" or s == "nul" {
         return true
     }
-    if s.length() == 4 && (s.starts_with("com") || s.starts_with("lpt")) {
+    if s.length() == 4 and (s.starts_with("com") or s.starts_with("lpt")) {
         let d = s.substring(3, 4)
-        return d == "1" || d == "2" || d == "3" || d == "4" || d == "5" || d == "6" || d == "7" || d == "8" || d == "9"
+        return d == "1" or d == "2" or d == "3" or d == "4" or d == "5" or d == "6" or d == "7" or d == "8" or d == "9"
     }
     return false
 }
 
-fun display_path(raw: String, fallback: String) -> String {
+fun display_path(raw: str, fallback: str) -> str {
     let r = resolve_path(raw, fallback)
-    if !r.ok {
+    if not r.ok {
         return raw
     }
     let cleaned = raw.trim().replace("\\", "/")
-    if cleaned == "" || cleaned == r.path {
+    if cleaned == "" or cleaned == r.path {
         return r.path
     }
     return "${raw} -> ${r.path}"
 }
 
-fun _err(message: String) -> ResolvedPath {
-    return ResolvedPath { ok: false, path: "", error: "error: ${message}" }
+fun _err(message: str) -> ResolvedPath {
+    return ResolvedPath(ok: false, path: "", error: "error: ${message}")
 }
 
-fun _absolute(path: String) -> Bool {
+fun _absolute(path: str) -> bool {
     if path.starts_with("/") {
         return true
     }
-    if path.length() >= 2 && path.byte_at(1) == 58 {
+    if path.length() >= 2 and path.byte_at(1) == 58 {
         return _is_alpha(path.byte_at(0))
     }
     return false
 }
 
-fun _is_alpha(b: Int) -> Bool {
-    return (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
+fun _is_alpha(b: int) -> bool {
+    return (b >= 65 and b <= 90) or (b >= 97 and b <= 122)
 }
 
-fun _escapes(path: String) -> Bool {
-    return path == ".." || path.starts_with("../")
+fun _escapes(path: str) -> bool {
+    return path == ".." or path.starts_with("../")
 }
 
-fun _has_symlink_segment(path: String) -> Bool {
+fun _has_symlink_segment(path: str) -> bool {
     if path == "." {
         return false
     }
-    let cur = ""
+    var cur = ""
     let parts = path.split("/")
-    let i = 0
+    var i = 0
     while i < parts.len() {
         if parts[i] == ".." {
             cur = _parent(cur)
-        } else if parts[i] != "" && parts[i] != "." {
+        } else if parts[i] != "" and parts[i] != "." {
             if cur == "" {
                 cur = parts[i]
             } else {
                 cur = "${cur}/${parts[i]}"
             }
-            if exists(cur) && is_symlink(cur) {
+            if exists(cur) and is_symlink(cur) {
                 return true
             }
         }
@@ -132,7 +132,7 @@ fun _has_symlink_segment(path: String) -> Bool {
     return false
 }
 
-fun _parent(path: String) -> String {
+fun _parent(path: str) -> str {
     let slash = path.last_index_of("/")
     if slash < 0 {
         return ""

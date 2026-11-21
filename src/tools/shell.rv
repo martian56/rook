@@ -4,88 +4,84 @@
 // bury the answer. Foreground commands are polled so a bad command can be
 // killed on timeout or turn interruption.
 
-import std/string
-import std/env { os_name }
-import std/sync { sleep_millis }
-import std/json { JsonValue }
-import std/process { Child, start, Output }
-import "github.com/martian56/aviary/request" { CancelToken }
-import "../agents/dir" { roots }
-import "../agents/settings" { setting_section }
+import std.string
+from std.env import os_name
+from std.sync import sleep_millis
+from std.json import JsonValue
+from std.process import Child, start, Output
+from "github.com/martian56/aviary/request" import CancelToken
+from "../agents/dir" import roots
+from "../agents/settings" import setting_section
 
-const MAX_OUTPUT: Int = 4000
-const DEFAULT_TIMEOUT_MS: Int = 120000
-const POLL_MS: Int = 25
+let MAX_OUTPUT: int = 4000
+let DEFAULT_TIMEOUT_MS: int = 120000
+let POLL_MS: int = 25
 
-fun run_command(command: String) -> String {
+fun run_command(command: str) -> str {
     return run_command_cancelable(command, CancelToken.new())
 }
 
-fun run_command_cancelable(command: String, token: CancelToken) -> String {
+fun run_command_cancelable(command: str, token: CancelToken) -> str {
     return run_command_with_timeout_cancelable(command, command_timeout_ms(), token)
 }
 
-fun run_command_with_timeout(command: String, timeout_ms: Int) -> String {
+fun run_command_with_timeout(command: str, timeout_ms: int) -> str {
     return run_command_with_timeout_cancelable(command, timeout_ms, CancelToken.new())
 }
 
-fun run_command_with_timeout_cancelable(
-    command: String,
-    timeout_ms: Int,
-    token: CancelToken,
-) -> String {
+fun run_command_with_timeout_cancelable(command: str, timeout_ms: int, token: CancelToken) -> str {
     if command == "" {
         return "error: no command given"
     }
-    let shell = "sh"
-    let flag = "-c"
+    var shell = "sh"
+    var flag = "-c"
     if os_name() == "windows" {
         shell = "cmd"
         flag = "/c"
     }
     return match start(shell, [flag, command]) {
-        Ok(child) -> _run_child(child, timeout_ms, token),
-        Err(e) -> "error: ${e.message}",
+        case Ok(child) { _run_child(child, timeout_ms, token) }
+        case Err(e) { "error: ${e.message}" }
     }
 }
 
-fun command_timeout_ms() -> Int {
+fun command_timeout_ms() -> int {
     let rs = roots()
-    let i = 0
+    var i = 0
     while i < rs.len() {
         match setting_section(rs[i], "tools") {
-            Some(section) -> {
+            case Some(section) {
                 let n = parse_run_command_timeout_ms(section)
                 if n > 0 {
                     return n
                 }
-            },
-            None -> {},
+            }
+            case None {}
         }
         i = i + 1
     }
     return DEFAULT_TIMEOUT_MS
 }
 
-fun parse_run_command_timeout_ms(section: JsonValue) -> Int {
+fun parse_run_command_timeout_ms(section: JsonValue) -> int {
     match section.get("run_command") {
-        Some(tool) -> {
+        case Some(tool) {
             let n = _json_int_field(tool, "timeout_ms")
             if n > 0 {
                 return n
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
     return _json_int_field(section, "run_command_timeout_ms")
 }
 
-fun _run_child(child: Child, timeout_ms: Int, token: CancelToken) -> String {
+fun _run_child(child: Child, timeout_ms: int, token: CancelToken) -> str {
     child.close_stdin()
-    let stdout = ""
-    let stderr = ""
-    let waited = 0
-    let limit = timeout_ms
+    var stdout = ""
+    var stderr = ""
+    var waited = 0
+    var limit = timeout_ms
     if limit <= 0 {
         limit = DEFAULT_TIMEOUT_MS
     }
@@ -96,13 +92,13 @@ fun _run_child(child: Child, timeout_ms: Int, token: CancelToken) -> String {
             return _stop_child(child, "interrupted", stdout, stderr)
         }
         match child.poll() {
-            Some(code) -> {
+            case Some(code) {
                 stdout = stdout.concat(child.read_stdout())
                 stderr = stderr.concat(child.read_stderr())
                 child.free()
-                return _format(Output { code, stdout, stderr })
-            },
-            None -> {},
+                return _format(Output(code: code, stdout: stdout, stderr: stderr))
+            }
+            case None {}
         }
         if waited >= limit {
             return _stop_child(child, "timed out after ${limit}ms", stdout, stderr)
@@ -113,7 +109,7 @@ fun _run_child(child: Child, timeout_ms: Int, token: CancelToken) -> String {
     return "error: unreachable"
 }
 
-fun _stop_child(child: Child, reason: String, stdout: String, stderr: String) -> String {
+fun _stop_child(child: Child, reason: str, stdout: str, stderr: str) -> str {
     let ignored = child.kill()
     let code = child.wait()
     let out = stdout.concat(child.read_stdout())
@@ -122,7 +118,7 @@ fun _stop_child(child: Child, reason: String, stdout: String, stderr: String) ->
     return _format_stopped(reason, code, out, err)
 }
 
-fun _format(out: Output) -> String {
+fun _format(out: Output) -> str {
     let body = _body(out.stdout, out.stderr)
     let head = "exit ${out.code}"
     if body == "" {
@@ -131,7 +127,7 @@ fun _format(out: Output) -> String {
     return "${head}\n${body}"
 }
 
-fun _format_stopped(reason: String, code: Int, stdout: String, stderr: String) -> String {
+fun _format_stopped(reason: str, code: int, stdout: str, stderr: str) -> str {
     let body = _body(stdout, stderr)
     let head = "${reason} (killed, exit ${code})"
     if body == "" {
@@ -140,8 +136,8 @@ fun _format_stopped(reason: String, code: Int, stdout: String, stderr: String) -
     return "${head}\n${body}"
 }
 
-fun _body(stdout: String, stderr: String) -> String {
-    let body = stdout
+fun _body(stdout: str, stderr: str) -> str {
+    var body = stdout
     if stderr != "" {
         if body != "" {
             body = "${body}\n"
@@ -154,28 +150,28 @@ fun _body(stdout: String, stderr: String) -> String {
     return body
 }
 
-fun _json_int_field(j: JsonValue, key: String) -> Int {
+fun _json_int_field(j: JsonValue, key: str) -> int {
     return match j.get(key) {
-        Some(v) -> _json_int(v),
-        None -> 0,
+        case Some(v) { _json_int(v) }
+        case None { 0 }
     }
 }
 
-fun _json_int(v: JsonValue) -> Int {
+fun _json_int(v: JsonValue) -> int {
     match v.as_int() {
-        Some(n) -> {
+        case Some(n) {
             return n
-        },
-        None -> {},
+        }
+        case None {}
     }
     match v.as_string() {
-        Some(s) -> {
+        case Some(s) {
             return match s.trim().parse_int() {
-                Some(n) -> n,
-                None -> 0,
+                case Some(n) { n }
+                case None { 0 }
             }
-        },
-        None -> {},
+        }
+        case None {}
     }
     return 0
 }

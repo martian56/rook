@@ -14,92 +14,93 @@
 // settings.json outranks the global one, and each sits below the same root's
 // rook.json in the overall resolution order.
 
-import std/string
-import std/fs { read, exists }
-import std/json { JsonValue, parse }
+import std.string
+from std.fs import read, exists
+from std.json import JsonValue, parse
 
-struct SettingsLoad {
-    path: String,
-    present: Bool,
-    text: String,
-    error: String,
+class SettingsLoad {
+    path: str
+    present: bool
+    text: str
+    error: str
 }
 
-struct SettingsSectionLoad {
-    section: Option<JsonValue>,
-    error: String,
+class SettingsSectionLoad {
+    section: Option[JsonValue]
+    error: str
 }
 
 // A top-level string field from the settings.json under `root`, "" when the
 // root is empty, the file is absent or unreadable, or the field is not a
 // string.
-fun setting_str(root: String, key: String) -> String {
+fun setting_str(root: str, key: str) -> str {
     let loaded = load_settings(root)
-    if !loaded.present || loaded.error != "" {
+    if not loaded.present or loaded.error != "" {
         return ""
     }
     return setting_from(loaded.text, key)
 }
 
 // The pure half: pull one string field out of a settings document.
-fun setting_from(text: String, key: String) -> String {
+fun setting_from(text: str, key: str) -> str {
     if text.trim() == "" {
         return ""
     }
     return match parse(text) {
-        Ok(j) -> _field_str(j, key),
-        Err(e) -> "",
+        case Ok(j) { _field_str(j, key) }
+        case Err(e) { "" }
     }
 }
 
 // A top-level object section (permissions, tools, mcp) from the settings
 // under `root`, for the features that consume them. None when absent.
-fun setting_section(root: String, key: String) -> Option<JsonValue> {
+fun setting_section(root: str, key: str) -> Option[JsonValue] {
     return setting_section_load(root, key).section
 }
 
 // A top-level object section with any settings load or parse error from the
 // same pass, for hot paths that need to fail closed.
-fun setting_section_load(root: String, key: String) -> SettingsSectionLoad {
+fun setting_section_load(root: str, key: str) -> SettingsSectionLoad {
     let loaded = load_settings(root)
     if loaded.error != "" {
-        return SettingsSectionLoad { section: None, error: loaded.error }
+        return SettingsSectionLoad(section: None, error: loaded.error)
     }
-    if !loaded.present || loaded.text.trim() == "" {
-        return SettingsSectionLoad { section: None, error: "" }
+    if not loaded.present or loaded.text.trim() == "" {
+        return SettingsSectionLoad(section: None, error: "")
     }
     return match parse(loaded.text) {
-        Ok(j) -> SettingsSectionLoad { section: j.get(key), error: "" },
-        Err(e) -> SettingsSectionLoad {
-            section: None,
-            error: _invalid_json_error(loaded.path, e.message),
-        },
+        case Ok(j) { SettingsSectionLoad(section: j.get(key), error: "") }
+        case Err(e) {
+            SettingsSectionLoad(section: None, error: _invalid_json_error(loaded.path, e.message))
+        }
     }
 }
 
 // Read one root's settings file while preserving the distinction between a
 // missing file and a file that exists but cannot be read.
-fun load_settings(root: String) -> SettingsLoad {
-    let path = ""
+fun load_settings(root: str) -> SettingsLoad {
+    var path = ""
     if root != "" {
         path = "${root}/settings.json"
     }
-    if path == "" || !exists(path) {
-        return SettingsLoad { path, present: false, text: "", error: "" }
+    if path == "" or not exists(path) {
+        return SettingsLoad(path: path, present: false, text: "", error: "")
     }
     return match read(path) {
-        Ok(s) -> SettingsLoad { path, present: true, text: s, error: "" },
-        Err(e) -> SettingsLoad {
-            path,
-            present: true,
-            text: "",
-            error: "settings error: could not read ${path}: ${e.message}",
-        },
+        case Ok(s) { SettingsLoad(path: path, present: true, text: s, error: "") }
+        case Err(e) {
+            SettingsLoad(
+                path: path,
+                present: true,
+                text: "",
+                error: "settings error: could not read ${path}: ${e.message}",
+            )
+        }
     }
 }
 
 // The error for one settings root, if the file exists but cannot be used.
-fun settings_error_for(root: String) -> Option<String> {
+fun settings_error_for(root: str) -> Option[str] {
     let loaded = setting_section_load(root, "")
     if loaded.error != "" {
         return Some(loaded.error)
@@ -109,29 +110,31 @@ fun settings_error_for(root: String) -> Option<String> {
 
 // Human-readable diagnostics for settings files that exist but cannot be
 // used. Missing files stay quiet.
-fun settings_errors_from(rs: List<String>) -> List<String> {
-    let out: List<String> = []
-    let i = 0
+fun settings_errors_from(rs: list[str]) -> list[str] {
+    let out: list[str] = []
+    var i = 0
     while i < rs.len() {
         match settings_error_for(rs[i]) {
-            Some(msg) -> out.push(msg),
-            None -> {},
+            case Some(msg) { out.push(msg) }
+            case None {}
         }
         i = i + 1
     }
     return out
 }
 
-fun _invalid_json_error(path: String, message: String) -> String {
+fun _invalid_json_error(path: str, message: str) -> str {
     return "settings error: invalid JSON in ${path}: ${message}"
 }
 
-fun _field_str(j: JsonValue, key: String) -> String {
+fun _field_str(j: JsonValue, key: str) -> str {
     return match j.get(key) {
-        Some(v) -> match v.as_string() {
-            Some(s) -> s,
-            None -> "",
-        },
-        None -> "",
+        case Some(v) {
+            match v.as_string() {
+                case Some(s) { s }
+                case None { "" }
+            }
+        }
+        case None { "" }
     }
 }

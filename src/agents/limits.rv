@@ -5,11 +5,11 @@
 // earlier than expected. Each cap leaves a source-labeled [truncated] marker
 // so the model, and the reader, can see what was cut and where it came from.
 
-import std/string
+import std.string
 
 // `text` truncated to about `max` bytes, with a labeled marker when it was
 // cut. `source` names where the text came from, e.g. "skill body".
-fun cap_text(text: String, max: Int, source: String) -> String {
+fun cap_text(text: str, max: int, source: str) -> str {
     if text.length() <= max {
         return text
     }
@@ -19,7 +19,7 @@ fun cap_text(text: String, max: Int, source: String) -> String {
 // A one-liner clipped to about `max` bytes with an ellipsis, for index rows
 // (a skill or subagent description) where a newline-marked cap would break the
 // layout.
-fun clip_line(text: String, max: Int) -> String {
+fun clip_line(text: str, max: int) -> str {
     if text.length() <= max {
         return text
     }
@@ -34,13 +34,13 @@ fun clip_line(text: String, max: Int) -> String {
 // The largest cut position at or below `max` that does not split a UTF-8
 // sequence. Public so other truncation sites (session titles, memory) reuse it
 // instead of cutting on a raw byte boundary.
-fun safe_cut(text: String, max: Int) -> Int {
+fun safe_cut(text: str, max: int) -> int {
     return _safe_cut(text, max)
 }
 
-fun _safe_cut(text: String, max: Int) -> Int {
-    let cut = max
-    while cut > 0 && _is_continuation(text.byte_at(cut)) {
+fun _safe_cut(text: str, max: int) -> int {
+    var cut = max
+    while cut > 0 and _is_continuation(text.byte_at(cut)) {
         cut = cut - 1
     }
     return cut
@@ -48,6 +48,6 @@ fun _safe_cut(text: String, max: Int) -> Int {
 
 // Whether a byte is a UTF-8 continuation byte (10xxxxxx), i.e. the middle of a
 // multi-byte character rather than the start of one.
-fun _is_continuation(b: Int) -> Bool {
-    return b >= 128 && b < 192
+fun _is_continuation(b: int) -> bool {
+    return b >= 128 and b < 192
 }
