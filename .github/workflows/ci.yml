@@ -28,7 +28,7 @@ jobs:
       - name: Install Raven
         uses: martian56/setup-raven@v1
         with:
-          raven-version: "3.0.0"
+          raven-version: "3.0.1"
 
       - name: Build
         run: rvpm build

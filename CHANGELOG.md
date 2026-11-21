@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0 - 2026-11-21
+
+- Ported to Raven 3 syntax; requires Raven 3.0.1 or newer.
+
 ## 0.3.59
 
 - One command installs or updates rook: scripts/install.ps1 (Windows) and scripts/install.sh (Linux) fetch the latest release and swap the binary in place, handling a running rook.exe and unwritable locations. The startup update notice now prints the exact command for your platform, and the README leads with the one-liners. (#322)
