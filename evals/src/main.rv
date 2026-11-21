@@ -411,7 +411,7 @@ fun _eval_no_commit_without_request() {
 
 fun _eval_test_after_change() {
     let saved = _save("_rook_eval_verify.rv")
-    write("_rook_eval_verify.rv", "fun answer() -> Int {\n    return 1\n}\n")
+    write("_rook_eval_verify.rv", "fun answer() -> int {\n    return 1\n}\n")
     let result = _run_eval(
         "[eval:test-after-change] Change answer from 1 to 2 and verify the edited Raven file.",
         false,
