@@ -27,7 +27,7 @@ jobs:
       - name: Install Raven
         uses: martian56/setup-raven@v1
         with:
-          raven-version: "3.3.3"
+          raven-version: "3.3.4"
 
       - name: Package (Linux)
         if: runner.os == 'Linux'

@@ -14,10 +14,16 @@ from "./app/view" import chat_view
 from "./hooks/hooks" import fire_hooks
 from "./version" import version
 from "./headless" import run_print
+from "./dusk/session" import run_dusk
 
 fun main() {
     if _wants_version() {
         println("rook ${version()}")
+        return
+    }
+    if _is_dusk_mode() {
+        fire_hooks("session-start", "", "")
+        run_dusk()
         return
     }
     let print_prompt = _print_prompt()
@@ -33,6 +39,7 @@ fun main() {
         println("  --model <provider/model>   use this model for the session")
         println("  --continue, -c             reopen this directory's most recent session")
         println("  -p, --print <prompt>       run one prompt headless, stream to stdout, exit")
+        println("  --dusk                     run as a plugin inside the dusk editor")
         println("  --version, -V              print the version and exit")
         println("  --help, -h                 this text")
         println("")
@@ -46,6 +53,12 @@ fun main() {
     if not run[Chat](app) {
         println("rook needs an interactive terminal; run it from a real console")
     }
+}
+
+// `rook --dusk`: dusk starts rook with this as its only argument.
+fun _is_dusk_mode() -> bool {
+    let a = args()
+    return a.len() == 2 and a[1] == "--dusk"
 }
 
 // Whether the command line asks for the version, so `rook --version` (or -V)

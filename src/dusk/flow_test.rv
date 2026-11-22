@@ -1,0 +1,203 @@
+// rook's dusk mode: the approval and question paths a user can break by
+// pressing Stop, dismissing a picker, or answering late.
+
+import std.string
+from std.http import Server, Request, Response
+from std.sync import sleep_millis
+from std.time import now_millis
+from std.fs import exists, remove_file
+from std.test import assert_true, assert_false
+from "./session" import DuskSession
+from "./session_test" import session, line, pump_until, id_of
+
+var leak_hits = 0
+var deny_hits = 0
+var ask_hits = 0
+
+fun write_call(path: str) -> Response {
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"w1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"${path}\\\",\\\"content\\\":\\\"x\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun says(text: str) -> Response {
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"${text}\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+// Two turns that each try a write, then a reply.
+fun leak_handler(req: Request) -> Response {
+    leak_hits = leak_hits + 1
+    return write_call("_rook_dusk_leak.txt") if leak_hits <= 2 else says("ok")
+}
+
+fun deny_handler(req: Request) -> Response {
+    deny_hits = deny_hits + 1
+    return write_call("_rook_dusk_deny.txt") if deny_hits == 1 else says("fine")
+}
+
+fun ask_handler(req: Request) -> Response {
+    ask_hits = ask_hits + 1
+    if ask_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"q1\",\"function\":{\"name\":\"ask_user\",\"arguments\":\"{\\\"question\\\":\\\"Which path?\\\",\\\"options\\\":[\\\"src only\\\",\\\"tests\\\",\\\"whole repository\\\"]}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return says("Going wide.")
+}
+
+fun serve(port: int, handler: fun(Request) -> Response) {
+    let app = Server.new()
+    app.post("/v1/chat/completions", handler)
+    app.listen("127.0.0.1:${port}")
+}
+
+fun wait_idle(s: DuskSession) {
+    let end = now_millis() + 10000
+    while now_millis() < end and s.running {
+        s.pump(now_millis())
+        sleep_millis(30)
+    }
+}
+
+fun nth_pick(s: DuskSession, n: int, ms: int) -> str {
+    let end = now_millis() + ms
+    while now_millis() < end {
+        s.pump(now_millis())
+        let picks = s.wire.lines().filter(l => l.contains("ui/pick"))
+        if len(picks) >= n {
+            return picks[n - 1]
+        }
+        sleep_millis(30)
+    }
+    return ""
+}
+
+fun submit(text: str) -> str = line(
+    "ui/event",
+    0 - 1,
+    "{\"panel\":\"chat\",\"block\":\"ask\",\"kind\":\"submit\",\"value\":\"${text}\"}",
+)
+
+fun test_stop_during_approval_never_leaks_into_the_next_turn() {
+    if exists("_rook_dusk_leak.txt") {
+        let _ = remove_file("_rook_dusk_leak.txt")
+    }
+    spawn {
+        serve(8477, leak_handler)
+    }
+    sleep_millis(200)
+    let s = session(8477)
+    s.handle(submit("write it"))
+    let first = nth_pick(s, 1, 10000)
+    assert_true(first != "")
+    s.handle(
+        line(
+            "ui/event",
+            0 - 1,
+            "{\"panel\":\"chat\",\"block\":\"act\",\"kind\":\"press\",\"value\":0}",
+        ),
+    )
+    s.handle(
+        line(
+            "ui/event",
+            0 - 1,
+            "{\"panel\":\"chat\",\"block\":\"act\",\"kind\":\"press\",\"value\":0}",
+        ),
+    )
+    wait_idle(s)
+    // The picker dusk still had queued is answered late: it must not count.
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(first)},\"result\":{\"index\":0,\"label\":\"Allow\"}}",
+    )
+    s.handle(submit("again"))
+    let second = nth_pick(s, 2, 10000)
+    assert_true(second != "")
+    assert_false(exists("_rook_dusk_leak.txt"))
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(second)},\"result\":{\"index\":2,\"label\":\"Deny\"}}",
+    )
+    wait_idle(s)
+    assert_false(exists("_rook_dusk_leak.txt"))
+}
+
+fun test_dismissed_approval_denies() {
+    spawn {
+        serve(8478, deny_handler)
+    }
+    sleep_millis(200)
+    let s = session(8478)
+    s.handle(submit("write"))
+    let pick = nth_pick(s, 1, 10000)
+    s.handle("{\"jsonrpc\":\"2.0\",\"id\":${id_of(pick)},\"result\":{\"index\":-1,\"label\":\"\"}}")
+    assert_true(pump_until(s, "fine", 10000) != "")
+    assert_false(exists("_rook_dusk_deny.txt"))
+}
+
+fun test_question_gets_the_picked_choice() {
+    spawn {
+        serve(8479, ask_handler)
+    }
+    sleep_millis(200)
+    let s = session(8479)
+    s.handle(submit("which?"))
+    let pick = nth_pick(s, 1, 10000)
+    assert_true(pick.contains("Which path?"))
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(pick)},\"result\":{\"index\":2,\"label\":\"whole repository\"}}",
+    )
+    assert_true(pump_until(s, "Going wide.", 10000) != "")
+    assert_true(s.st.messages().any(m => m.content.contains("whole repository")))
+}
+
+var stop_ask_hits = 0
+
+fun stop_ask_handler(req: Request) -> Response {
+    stop_ask_hits = stop_ask_hits + 1
+    ask_hits = 0
+    return ask_handler(req) if stop_ask_hits == 1 else says("Stopped.")
+}
+
+fun test_stop_during_a_question_declines() {
+    spawn {
+        serve(8480, stop_ask_handler)
+    }
+    sleep_millis(200)
+    let s = session(8480)
+    s.handle(submit("which?"))
+    let pick = nth_pick(s, 1, 10000)
+    assert_true(pick != "")
+    s.handle(line("command/run", 7, "{\"command\":\"rook.stop\"}"))
+    wait_idle(s)
+    assert_false(s.running)
+    assert_false(s.st.messages().any(m => m.content.contains("src only")))
+}
+
+var race_hits = 0
+
+fun race_handler(req: Request) -> Response {
+    race_hits = race_hits + 1
+    return write_call("_rook_dusk_race.txt") if race_hits == 1 else says("stopped")
+}
+
+// Stop lands after the turn asked for approval but before any picker went
+// out: the turn must still be released, and no picker opened for it.
+fun test_stop_before_the_picker_is_sent_releases_the_turn() {
+    spawn {
+        serve(8482, race_handler)
+    }
+    sleep_millis(200)
+    let s = session(8482)
+    s.handle(submit("write"))
+    let end = now_millis() + 10000
+    while now_millis() < end and s.st.pending_now() == "" {
+        sleep_millis(20)
+    }
+    assert_true(s.st.pending_now() != "")
+    s.handle(line("command/run", 7, "{\"command\":\"rook.stop\"}"))
+    wait_idle(s)
+    assert_false(s.running)
+    assert_false(s.wire.lines().any(l => l.contains("ui/pick")))
+    assert_false(exists("_rook_dusk_race.txt"))
+}

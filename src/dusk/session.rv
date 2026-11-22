@@ -1,0 +1,538 @@
+// rook inside the dusk editor: `rook --dusk` speaks dusk's plugin protocol
+// (JSON-RPC lines on stdin and stdout) and runs the same agent turn as print
+// mode, shown in a dusk chat panel. Approvals and questions are asked with
+// dusk pickers.
+
+import std.string
+from std.io import read_line, print
+from std.json import JsonValue, parse, stringify, json_int, json_string, json_object, json_array
+from std.sync import Mutex, mutex, sleep_millis
+from std.time import now_millis
+from "../agent/state" import AgentState, DisplayEvent
+from "../agent/turn" import run_turn
+from "../config/config" import (
+    resolve_model,
+    resolve_base,
+    resolve_key,
+    key_needed_with,
+    provider_of,
+)
+
+let PANEL = "chat"
+let MAX_TRANSCRIPT = 12000
+let PANEL_EVERY_MS = 100
+
+fun obj(pairs: list[(str, JsonValue)]) -> JsonValue {
+    let m: dict[str, JsonValue] = {}
+    for (k, v) in pairs {
+        m.set(k, v)
+    }
+    return json_object(m)
+}
+
+fun jstr(s: str) -> JsonValue = json_string(s)
+
+fun jint(n: int) -> JsonValue = json_int(n)
+
+fun field(v: JsonValue, key: str) -> str {
+    return match v.get(key) {
+        case Some(x) { x.as_string().unwrap_or("") }
+        case None { "" }
+    }
+}
+
+fun int_field(v: JsonValue, key: str, default: int) -> int {
+    return match v.get(key) {
+        case Some(x) { x.as_int().unwrap_or(default) }
+        case None { default }
+    }
+}
+
+// Where protocol lines go: stdout, or memory for tests. Both the reader and
+// the pump goroutine write, so lines are written whole under a lock.
+class Wire {
+    lock: Mutex
+    real: bool
+    written: list[str] = []
+}
+
+fun stdout_wire() -> Wire = Wire(lock: mutex(), real: true)
+
+fun memory_wire() -> Wire = Wire(lock: mutex(), real: false)
+
+impl Wire {
+    fun send(self, pairs: list[(str, JsonValue)]) {
+        let all: list[(str, JsonValue)] = [("jsonrpc", jstr("2.0"))]
+        for p in pairs {
+            all.push(p)
+        }
+        let line = stringify(obj(all))
+        self.lock.lock()
+        if self.real {
+            print(line + "\n")
+        } else {
+            self.written.push(line)
+        }
+        self.lock.unlock()
+    }
+
+    fun lines(self) -> list[str] {
+        self.lock.lock()
+        let out = self.written.copy()
+        self.lock.unlock()
+        return out
+    }
+}
+
+class DuskSession {
+    wire: Wire
+    lock: Mutex
+    st: AgentState
+    model: str
+    api_key: str
+    base_url: str
+    transcript: str = ""
+    in_reply: bool = false
+    running: bool = false
+    panel_open: bool = false
+    changed: bool = false
+    last_sent: int = 0
+    next_id: int = 1
+    // Request id -> what the answer is for: "approve", "question", or "ask".
+    waiting: dict[int, str] = {}
+    asking: bool = false
+    approval: str = ""
+    approval_detail: str = ""
+    // The selection an ask_about_selection prompt is about.
+    context: str = ""
+    open_paths: list[str] = []
+    quit: bool = false
+}
+
+fun new_session(wire: Wire, model: str, api_key: str, base_url: str) -> DuskSession {
+    return DuskSession(
+        wire: wire,
+        lock: mutex(),
+        st: AgentState.new(),
+        model: model,
+        api_key: api_key,
+        base_url: base_url,
+    )
+}
+
+fun contributions() -> JsonValue {
+    let cmds = [
+        obj([("name", jstr("rook.chat")), ("title", jstr("Open the rook chat panel"))]),
+        obj(
+            [
+                ("name", jstr("rook.ask_about_selection")),
+                ("title", jstr("Ask rook about the selection")),
+            ],
+        ),
+        obj([("name", jstr("rook.stop")), ("title", jstr("Stop rook's current turn"))]),
+    ]
+    let binds = [
+        obj([("mode", jstr("normal")), ("keys", jstr("space r")), ("command", jstr("rook.chat"))]),
+        obj(
+            [
+                ("mode", jstr("visual")),
+                ("keys", jstr("space r")),
+                ("command", jstr("rook.ask_about_selection")),
+            ],
+        ),
+    ]
+    return obj(
+        [("name", jstr("rook")), ("commands", json_array(cmds)), ("bindings", json_array(binds))],
+    )
+}
+
+impl DuskSession {
+    fun reply(self, id: int, result: JsonValue) {
+        self.wire.send([("id", jint(id)), ("result", result)])
+    }
+
+    fun reply_error(self, id: int, message: str) {
+        self.wire.send(
+            [
+                ("id", jint(id)),
+                ("error", obj([("code", jint(0 - 32000)), ("message", jstr(message))])),
+            ],
+        )
+    }
+
+    fun notify(self, method: str, params: JsonValue) {
+        self.wire.send([("method", jstr(method)), ("params", params)])
+    }
+
+    fun request(self, method: str, params: JsonValue, purpose: str) {
+        let id = self.next_id
+        self.next_id += 1
+        self.waiting.set(id, purpose)
+        self.wire.send([("id", jint(id)), ("method", jstr(method)), ("params", params)])
+    }
+
+    fun message(self, text: str) {
+        self.notify("ui/message", obj([("text", jstr(text))]))
+    }
+
+    fun note(self, md: str) {
+        self.transcript += md
+        self.in_reply = false
+        self.changed = true
+        self.trim_transcript()
+    }
+
+    // Keep only what the panel can show, so a long session does not grow
+    // the copy on every chunk. The model's conversation is untouched.
+    fun trim_transcript(self) {
+        if self.transcript.length() > 2 * MAX_TRANSCRIPT {
+            self.transcript = self.transcript.substring(
+                self.transcript.length() - MAX_TRANSCRIPT,
+                self.transcript.length(),
+            )
+        }
+    }
+
+    // Start a turn with `text`, unless one is running.
+    fun start_turn(self, text: str) {
+        self.panel_open = true
+        self.changed = true
+        if self.running {
+            self.message("rook is still working; press Stop or run rook.stop first")
+            return
+        }
+        if key_needed_with(self.model, self.api_key) {
+            self.note(
+                "\n\n**No API key for ${provider_of(self.model)}.** Set its environment variable, or run rook in a terminal once and use /key.\n\n",
+            )
+            return
+        }
+        self.note("\n\n**You:** ${text}\n\n")
+        self.st.push_user(text)
+        self.st.begin()
+        self.running = true
+        let st = self.st
+        let model = self.model
+        let key = self.api_key
+        let base = self.base_url
+        spawn {
+            run_turn(st, model, key, base)
+        }
+    }
+
+    fun stop(self) {
+        if self.running {
+            self.st.request_interrupt()
+            self.release_ask()
+        }
+    }
+
+    // Drop the approval or question on screen: its picker's answer, if dusk
+    // still sends one, is ignored, and the waiting turn gets a refusal. Only
+    // a turn that is actually waiting is answered, so a decision can never
+    // be left behind for a later prompt.
+    fun release_ask(self) {
+        // The turn may have published its prompt before the pump sent the
+        // picker, so answer from the state, not from what dusk was shown.
+        for id in self.waiting.keys() {
+            let purpose = self.waiting.get(id).unwrap_or("")
+            if purpose == "approve" or purpose == "question" {
+                let _ = self.waiting.remove(id)
+            }
+        }
+        self.asking = false
+        self.approval = ""
+        self.approval_detail = ""
+        self.changed = true
+        if self.st.pending_now() != "" {
+            self.st.decide(0)
+        } else if self.st.question_now() != "" {
+            self.st.decide(0 - 1)
+        }
+    }
+
+    // One line from dusk.
+    fun handle(self, line: str) {
+        let v = match parse(line) {
+            case Ok(x) { x }
+            case Err(e) {
+                return
+            }
+        }
+        self.lock.lock()
+        self.handle_locked(v)
+        self.lock.unlock()
+    }
+
+    fun handle_locked(self, v: JsonValue) {
+        let method = field(v, "method")
+        let id = int_field(v, "id", 0 - 1)
+        let params = v.get("params").unwrap_or(JsonValue.Null)
+        if method == "" {
+            match self.waiting.get(id) {
+                case Some(purpose) {
+                    let _ = self.waiting.remove(id)
+                    self.answered(purpose, v.get("result").unwrap_or(JsonValue.Null))
+                }
+                case None {}
+            }
+            return
+        }
+        if method == "initialize" {
+            self.reply(id, contributions())
+        } else if method == "shutdown" {
+            self.reply(id, obj([]))
+            self.stop()
+            self.quit = true
+        } else if method == "command/run" {
+            self.command(id, field(params, "command"), params)
+        } else if method == "buffer/opened" {
+            let p = field(params, "path")
+            if p != "" and not self.open_paths.contains(p) {
+                self.open_paths.push(p)
+            }
+        } else if method == "buffer/closed" {
+            let p = field(params, "path")
+            self.open_paths = self.open_paths.filter(x => x != p)
+        } else if method == "ui/event" and field(params, "panel") == PANEL {
+            let kind = field(params, "kind")
+            if kind == "submit" {
+                let text = match params.get("value") {
+                    case Some(x) { x.as_string().unwrap_or("") }
+                    case None { "" }
+                }
+                if text.trim() != "" {
+                    self.start_turn(text.trim())
+                }
+            } else if kind == "press" {
+                self.stop()
+            } else if kind == "closed" {
+                self.panel_open = false
+            }
+        } else if id >= 0 {
+            self.reply_error(id, "rook does not handle ${method}")
+        }
+    }
+
+    fun command(self, id: int, name: str, params: JsonValue) {
+        if name == "rook.chat" {
+            self.panel_open = true
+            self.changed = true
+            self.last_sent = 0
+            self.reply(id, obj([]))
+        } else if name == "rook.stop" {
+            self.stop()
+            self.reply(id, obj([]))
+        } else if name == "rook.ask_about_selection" {
+            let sel = field(params, "selection")
+            self.reply(id, obj([]))
+            if sel.trim() == "" {
+                self.message("select some code first, then run rook.ask_about_selection")
+                return
+            }
+            let path = field(params, "path")
+            self.context = "In ${path if path != "" else "the current buffer"}:\n\n```\n${sel}\n```\n\n"
+            self.request("ui/prompt", obj([("title", jstr("Ask rook")), ("text", jstr(""))]), "ask")
+        } else {
+            self.reply_error(id, "rook has no command ${name}")
+        }
+    }
+
+    fun answered(self, purpose: str, result: JsonValue) {
+        if purpose == "ask" {
+            let text = field(result, "text")
+            if result.get("cancelled").is_none() and text.trim() != "" {
+                self.start_turn(self.context + text.trim())
+            }
+            self.context = ""
+            return
+        }
+        self.asking = false
+        let index = int_field(result, "index", 0 - 1)
+        if purpose == "approve" {
+            self.approval = ""
+            self.approval_detail = ""
+            self.changed = true
+            // Allow, allow all of this kind, deny; dismissing denies.
+            if self.st.pending_now() != "" {
+                self.st.decide(1 if index == 0 else (2 if index == 1 else 0))
+            }
+        } else if purpose == "question" {
+            if self.st.question_now() != "" {
+                self.st.decide(index)
+            }
+        }
+    }
+
+    fun apply_event(self, e: DisplayEvent) -> bool {
+        match e {
+            case Chunk(d) {
+                if not self.in_reply {
+                    self.transcript += "**rook:** "
+                    self.in_reply = true
+                }
+                self.transcript += d
+                self.changed = true
+                self.trim_transcript()
+            }
+            case ToolRan(label, result) {
+                self.note("\n\n`${label}`\n\n")
+                return changes_files(label)
+            }
+            case Info(t) { self.note("\n\n_${t}_\n\n") }
+            case AgentStarted(id, name) { self.note("\n\n_${name} agent started_\n\n") }
+            case AgentFinished(id, name, used) {
+                self.note("\n\n_${name} agent done, ${used} tools_\n\n")
+            }
+            case _ {}
+        }
+        return false
+    }
+
+    // Drain the turn and keep dusk up to date. Called every 50 ms.
+    fun pump(self, now_ms: int) {
+        self.lock.lock()
+        if self.running {
+            let snap = self.st.drain()
+            var touched = false
+            for e in snap.events {
+                if self.apply_event(e) {
+                    touched = true
+                }
+            }
+            if touched and len(self.open_paths) > 0 {
+                self.notify("files/changed", obj([("paths", json_array(self.open_paths.map(p => jstr(p))))]))
+            }
+            if snap.pending != "" and not self.asking {
+                self.asking = true
+                self.approval = snap.pending
+                self.approval_detail = snap.pending_detail
+                self.changed = true
+                let items = json_array([jstr("Allow"), jstr("Allow all of this kind"), jstr("Deny")])
+                self.request(
+                    "ui/pick",
+                    obj([("title", jstr("rook wants to run ${snap.pending}")), ("items", items)]),
+                    "approve",
+                )
+            } else if snap.question != "" and not self.asking {
+                self.asking = true
+                let choices = snap.choices if len(snap.choices) > 0 else ["OK"]
+                let items = json_array(choices.map(c => jstr(c)))
+                self.request("ui/pick", obj([("title", jstr(snap.question)), ("items", items)]), "question")
+            }
+            if snap.done {
+                self.running = false
+                self.in_reply = false
+                self.changed = true
+            }
+        }
+        if self.changed and self.panel_open and now_ms - self.last_sent >= PANEL_EVERY_MS {
+            self.changed = false
+            self.last_sent = now_ms
+            self.notify("ui/panel", self.panel())
+        }
+        self.lock.unlock()
+    }
+
+    fun shown_transcript(self) -> str {
+        let t = self.transcript.trim()
+        if t == "" {
+            return "Ask rook anything about this project. Enter sends, Ctrl+N adds a line."
+        }
+        if t.length() <= MAX_TRANSCRIPT {
+            return t
+        }
+        let tail = t.substring(t.length() - MAX_TRANSCRIPT, t.length())
+        let cut = tail.index_of("\n\n")
+        return "_(earlier messages hidden)_\n\n" + (tail.substring(cut + 2, tail.length()) if cut >= 0 else tail)
+    }
+
+    fun panel(self) -> JsonValue {
+        let blocks: list[JsonValue] = [
+            obj(
+                [
+                    ("id", jstr("transcript")),
+                    ("kind", jstr("text")),
+                    ("text", jstr(self.shown_transcript())),
+                ],
+            ),
+        ]
+        if self.approval != "" {
+            var md = "**Waiting for your approval:** ${self.approval}"
+            if self.approval_detail != "" {
+                md += "\n\n```\n${self.approval_detail}\n```"
+            }
+            blocks.push(obj([("id", jstr("approval")), ("kind", jstr("text")), ("text", jstr(md))]))
+        }
+        if self.running {
+            blocks.push(
+                obj([("id", jstr("busy")), ("kind", jstr("progress")), ("text", jstr("rook is working"))]),
+            )
+            blocks.push(
+                obj([("id", jstr("act")), ("kind", jstr("buttons")), ("items", json_array([jstr("Stop")]))]),
+            )
+        }
+        blocks.push(obj([("id", jstr("ask")), ("kind", jstr("input")), ("text", jstr(""))]))
+        return obj(
+            [
+                ("id", jstr(PANEL)),
+                ("title", jstr("rook")),
+                ("dock", jstr("right")),
+                ("blocks", json_array(blocks)),
+            ],
+        )
+    }
+
+    fun done(self) -> bool {
+        self.lock.lock()
+        let q = self.quit
+        self.lock.unlock()
+        return q
+    }
+}
+
+// Tools whose run can change files on disk, by their label's name.
+fun changes_files(label: str) -> bool {
+    for name in [
+        "write_file",
+        "edit_file",
+        "multi_edit",
+        "run_command",
+        "run_background",
+        "dispatch",
+        "git_commit",
+    ] {
+        if label.starts_with(name) {
+            return true
+        }
+    }
+    return false
+}
+
+fun pump_loop(s: DuskSession) {
+    while not s.done() {
+        s.pump(now_millis())
+        sleep_millis(50)
+    }
+}
+
+// `rook --dusk`: serve dusk until it shuts rook down or closes the pipe.
+fun run_dusk() {
+    let model = resolve_model()
+    let s = new_session(stdout_wire(), model, resolve_key(model), resolve_base())
+    spawn {
+        pump_loop(s)
+    }
+    while not s.done() {
+        let line = read_line()
+        if line == "" {
+            break
+        }
+        s.handle(line)
+    }
+    s.lock.lock()
+    s.stop()
+    s.quit = true
+    s.lock.unlock()
+    return
+}

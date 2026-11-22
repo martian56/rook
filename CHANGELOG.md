@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-11-22
+
+- `rook --dusk` runs rook as a plugin inside the dusk editor: a chat panel beside your code, approvals and questions as dusk pickers, a Stop button, `rook.ask_about_selection` for the selected code, and changed files reloaded in dusk. The terminal UI and print mode are unchanged.
+
 ## 0.5.0 - 2026-11-22
 
 - Faster: built on Raven 3.3.3 and plumage 0.5.2, where a fully changed frame draws in about 23 ms instead of over half a second, waiting keys apply before the next frame, and string building in the standard library is no longer quadratic. A 1,200-entry transcript draws its first frame in about 40 ms and later frames in about 1 ms.
