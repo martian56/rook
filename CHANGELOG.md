@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1 - 2026-11-23
+
+- A failed edit's error is cut short like other long output, and a result that starts with blank lines shows its first real line, indentation intact.
+- Inside dusk: a background command that finishes between two checks still reloads changed files, and the token count resets on `rook.new` and shows the restored total on `rook.resume`.
+
 ## 0.7.0 - 2026-11-22
 
 - Tool output folds to a summary such as "120 lines" or "3 matches"; Ctrl+O shows it all. The summary line is never blank (a result starting with an empty line showed nothing).
