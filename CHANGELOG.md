@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.0 - 2026-11-22
+
+- Tool output folds to a summary such as "120 lines" or "3 matches"; Ctrl+O shows it all. The summary line is never blank (a result starting with an empty line showed nothing).
+- Inside dusk: chats are saved and resumed (`rook.resume`, `rook.new`, and `rook --continue` in a terminal), `@path` attaches a file, messages sent while rook works are queued, the session's tokens show in the status line, and a background command that finishes tells dusk to reload changed files.
+- Built on Raven 3.4.0.
+
 ## 0.6.0 - 2026-11-22
 
 - `rook --dusk` runs rook as a plugin inside the dusk editor: a chat panel beside your code, approvals and questions as dusk pickers, a Stop button, `rook.ask_about_selection` for the selected code, and changed files reloaded in dusk. The terminal UI and print mode are unchanged.

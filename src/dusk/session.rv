@@ -5,11 +5,23 @@
 
 import std.string
 from std.io import read_line, print
+from "github.com/martian56/aviary/message" import Message
 from std.json import JsonValue, parse, stringify, json_int, json_string, json_object, json_array
 from std.sync import Mutex, mutex, sleep_millis
 from std.time import now_millis
 from "../agent/state" import AgentState, DisplayEvent
 from "../agent/turn" import run_turn
+from "../ui/transcript" import Entry
+from "../tools/mentions" import expand_mentions
+from "../tools/shells" import refresh, shells_snapshot
+from "../config/sessions" import (
+    new_session_id,
+    save_session_async,
+    list_sessions_result,
+    load_session,
+    session_cwd,
+    same_dir,
+)
 from "../config/config" import (
     resolve_model,
     resolve_base,
@@ -107,6 +119,15 @@ class DuskSession {
     context: str = ""
     open_paths: list[str] = []
     quit: bool = false
+    // The session as the terminal UI saves it, so `rook --continue` and
+    // rook.resume pick a dusk chat back up.
+    session_id: str = new_session_id()
+    entries: list[Entry] = []
+    // Prompts sent while a turn was running, started in order after it.
+    queued: list[str] = []
+    // Background shells running at the last check, to notice them finishing.
+    shells_running: list[int] = []
+    shells_checked: int = 0
 }
 
 fun new_session(wire: Wire, model: str, api_key: str, base_url: str) -> DuskSession {
@@ -130,6 +151,13 @@ fun contributions() -> JsonValue {
             ],
         ),
         obj([("name", jstr("rook.stop")), ("title", jstr("Stop rook's current turn"))]),
+        obj(
+            [
+                ("name", jstr("rook.resume")),
+                ("title", jstr("Continue this project's last rook session")),
+            ],
+        ),
+        obj([("name", jstr("rook.new")), ("title", jstr("Start a new rook conversation"))]),
     ]
     let binds = [
         obj([("mode", jstr("normal")), ("keys", jstr("space r")), ("command", jstr("rook.chat"))]),
@@ -186,10 +214,8 @@ impl DuskSession {
     // the copy on every chunk. The model's conversation is untouched.
     fun trim_transcript(self) {
         if self.transcript.length() > 2 * MAX_TRANSCRIPT {
-            self.transcript = self.transcript.substring(
-                self.transcript.length() - MAX_TRANSCRIPT,
-                self.transcript.length(),
-            )
+            let t = self.transcript
+            self.transcript = t.substring(char_start(t, t.length() - MAX_TRANSCRIPT), t.length())
         }
     }
 
@@ -198,7 +224,8 @@ impl DuskSession {
         self.panel_open = true
         self.changed = true
         if self.running {
-            self.message("rook is still working; press Stop or run rook.stop first")
+            self.queued.push(text)
+            self.note("\n\n_queued: ${text}_\n\n")
             return
         }
         if key_needed_with(self.model, self.api_key) {
@@ -208,7 +235,9 @@ impl DuskSession {
             return
         }
         self.note("\n\n**You:** ${text}\n\n")
-        self.st.push_user(text)
+        self.entries.push(Entry.UserMsg(text))
+        // @path mentions attach the file, as in the terminal.
+        self.st.push_user(expand_mentions(text))
         self.st.begin()
         self.running = true
         let st = self.st
@@ -220,7 +249,103 @@ impl DuskSession {
         }
     }
 
+    // Save the session, show its token use, and start a queued prompt.
+    fun turn_finished(self, prompt_tokens: int, completion_tokens: int) {
+        save_session_async(
+            self.session_id,
+            self.model,
+            self.entries.copy(),
+            self.st.messages(),
+            prompt_tokens,
+            completion_tokens,
+        )
+        self.notify(
+            "status/set",
+            obj(
+                [
+                    ("id", jstr("tokens")),
+                    ("text", jstr("rook ${tokens_text(prompt_tokens + completion_tokens)}")),
+                ],
+            ),
+        )
+        if len(self.queued) > 0 {
+            let next = self.queued.remove_at(0)
+            self.start_turn(next)
+        }
+    }
+
+    // A background shell that finished may have written files.
+    fun check_shells(self) {
+        refresh()
+        let running: list[int] = []
+        var finished = false
+        for sh in shells_snapshot() {
+            if sh.running {
+                running.push(sh.id)
+            } else if self.shells_running.contains(sh.id) {
+                finished = true
+            }
+        }
+        self.shells_running = running
+        if finished and len(self.open_paths) > 0 {
+            self.notify("files/changed", obj([("paths", json_array(self.open_paths.map(p => jstr(p))))]))
+        }
+    }
+
+    // Load the newest session saved from this directory, from the terminal
+    // or from dusk.
+    fun resume(self) {
+        if self.running {
+            self.message("rook is working; stop it before resuming another session")
+            return
+        }
+        let here = session_cwd()
+        var id = ""
+        for meta in list_sessions_result().sessions {
+            if id == "" and same_dir(meta.cwd, here) {
+                id = meta.id
+            }
+        }
+        if id == "" {
+            self.message("no saved rook session for this directory")
+            return
+        }
+        let l = load_session(id)
+        if l.error != "" {
+            self.message(l.error)
+            return
+        }
+        self.session_id = id
+        self.entries = l.entries
+        self.st.replace_convo(l.messages)
+        self.st.set_usage(l.usage_prompt, l.usage_completion)
+        self.transcript = transcript_of(l.entries)
+        self.in_reply = false
+        self.panel_open = true
+        self.changed = true
+        self.last_sent = 0
+        self.message("resumed the last rook session (${len(l.messages)} messages)")
+    }
+
+    fun new_conversation(self) {
+        if self.running {
+            self.message("rook is working; stop it first")
+            return
+        }
+        self.session_id = new_session_id()
+        let none: list[Entry] = []
+        self.entries = none
+        let empty: list[Message] = []
+        self.st.replace_convo(empty)
+        self.transcript = ""
+        self.queued = []
+        self.panel_open = true
+        self.changed = true
+        self.last_sent = 0
+    }
+
     fun stop(self) {
+        self.queued = []
         if self.running {
             self.st.request_interrupt()
             self.release_ask()
@@ -321,7 +446,14 @@ impl DuskSession {
             self.last_sent = 0
             self.reply(id, obj([]))
         } else if name == "rook.stop" {
+            self.queued = []
             self.stop()
+            self.reply(id, obj([]))
+        } else if name == "rook.resume" {
+            self.resume()
+            self.reply(id, obj([]))
+        } else if name == "rook.new" {
+            self.new_conversation()
             self.reply(id, obj([]))
         } else if name == "rook.ask_about_selection" {
             let sel = field(params, "selection")
@@ -370,16 +502,28 @@ impl DuskSession {
                 if not self.in_reply {
                     self.transcript += "**rook:** "
                     self.in_reply = true
+                    self.entries.push(Entry.BotMsg(""))
+                }
+                let last = len(self.entries) - 1
+                match self.entries[last] {
+                    case BotMsg(t) {
+                        self.entries[last] = Entry.BotMsg(t + d)
+                    }
+                    case _ {}
                 }
                 self.transcript += d
                 self.changed = true
                 self.trim_transcript()
             }
             case ToolRan(label, result) {
+                self.entries.push(Entry.ToolMsg(label, result))
                 self.note("\n\n`${label}`\n\n")
                 return changes_files(label)
             }
-            case Info(t) { self.note("\n\n_${t}_\n\n") }
+            case Info(t) {
+                self.entries.push(Entry.Notice(t))
+                self.note("\n\n_${t}_\n\n")
+            }
             case AgentStarted(id, name) { self.note("\n\n_${name} agent started_\n\n") }
             case AgentFinished(id, name, used) {
                 self.note("\n\n_${name} agent done, ${used} tools_\n\n")
@@ -424,7 +568,12 @@ impl DuskSession {
                 self.running = false
                 self.in_reply = false
                 self.changed = true
+                self.turn_finished(snap.sess_prompt, snap.sess_completion)
             }
+        }
+        if now_ms - self.shells_checked >= 1000 {
+            self.shells_checked = now_ms
+            self.check_shells()
         }
         if self.changed and self.panel_open and now_ms - self.last_sent >= PANEL_EVERY_MS {
             self.changed = false
@@ -442,7 +591,7 @@ impl DuskSession {
         if t.length() <= MAX_TRANSCRIPT {
             return t
         }
-        let tail = t.substring(t.length() - MAX_TRANSCRIPT, t.length())
+        let tail = t.substring(char_start(t, t.length() - MAX_TRANSCRIPT), t.length())
         let cut = tail.index_of("\n\n")
         return "_(earlier messages hidden)_\n\n" + (tail.substring(cut + 2, tail.length()) if cut >= 0 else tail)
     }
@@ -507,6 +656,45 @@ fun changes_files(label: str) -> bool {
         }
     }
     return false
+}
+
+// The byte offset of the first whole character at or after `at`.
+fun char_start(s: str, at: int) -> int {
+    var i = max(0, at)
+    while i < s.length() and s.byte_at(i) >= 128 and s.byte_at(i) < 192 {
+        i += 1
+    }
+    return i
+}
+
+fun tokens_text(n: int) -> str {
+    if n >= 1000 {
+        return "${n / 1000}.${(n % 1000) / 100}k tok"
+    }
+    return "${n} tok"
+}
+
+// A saved session's entries as the panel's markdown.
+fun transcript_of(entries: list[Entry]) -> str {
+    var out = ""
+    for e in entries {
+        match e {
+            case UserMsg(t) {
+                out += "\n\n**You:** ${t}\n\n"
+            }
+            case BotMsg(t) {
+                out += "**rook:** ${t}"
+            }
+            case ToolMsg(name, result) {
+                out += "\n\n`${name}`\n\n"
+            }
+            case Notice(t) {
+                out += "\n\n_${t}_\n\n"
+            }
+            case _ {}
+        }
+    }
+    return out
 }
 
 fun pump_loop(s: DuskSession) {

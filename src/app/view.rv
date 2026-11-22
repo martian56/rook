@@ -551,7 +551,7 @@ fun _help_menu(m: Chat, f: Frame) {
     f.buf.set_string(
         inner.x + 1,
         inner.y + count + 1,
-        "esc interrupts a turn · ctrl+c twice quits · pageup/pagedown scroll",
+        "esc interrupts a turn · ctrl+o shows tool output · ctrl+c twice quits · pageup/pagedown scroll",
         m.theme.dim,
     )
     return

@@ -6,6 +6,7 @@ from std.http import Server, Request, Response
 from std.sync import sleep_millis
 from std.time import now_millis
 from std.fs import exists, remove_file
+from "../testkit" import wait_listening
 from std.test import assert_true, assert_false
 from "./session" import DuskSession
 from "./session_test" import session, line, pump_until, id_of
@@ -87,7 +88,7 @@ fun test_stop_during_approval_never_leaks_into_the_next_turn() {
     spawn {
         serve(8477, leak_handler)
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8477))
     let s = session(8477)
     s.handle(submit("write it"))
     let first = nth_pick(s, 1, 10000)
@@ -126,7 +127,7 @@ fun test_dismissed_approval_denies() {
     spawn {
         serve(8478, deny_handler)
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8478))
     let s = session(8478)
     s.handle(submit("write"))
     let pick = nth_pick(s, 1, 10000)
@@ -139,7 +140,7 @@ fun test_question_gets_the_picked_choice() {
     spawn {
         serve(8479, ask_handler)
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8479))
     let s = session(8479)
     s.handle(submit("which?"))
     let pick = nth_pick(s, 1, 10000)
@@ -163,7 +164,7 @@ fun test_stop_during_a_question_declines() {
     spawn {
         serve(8480, stop_ask_handler)
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8480))
     let s = session(8480)
     s.handle(submit("which?"))
     let pick = nth_pick(s, 1, 10000)
@@ -187,7 +188,7 @@ fun test_stop_before_the_picker_is_sent_releases_the_turn() {
     spawn {
         serve(8482, race_handler)
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8482))
     let s = session(8482)
     s.handle(submit("write"))
     let end = now_millis() + 10000

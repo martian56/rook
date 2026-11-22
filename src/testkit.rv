@@ -1,0 +1,21 @@
+// Helpers for tests that start a local server.
+
+from std.net import connect
+from std.sync import sleep_millis
+from std.time import now_millis
+
+// Wait until something accepts connections on 127.0.0.1:`port`, up to five
+// seconds, so a test never talks to a server that is still starting.
+fun wait_listening(port: int) -> bool {
+    let end = now_millis() + 5000
+    while now_millis() < end {
+        match connect("127.0.0.1:${port}") {
+            case Ok(s) {
+                s.close()
+                return true
+            }
+            case Err(e) { sleep_millis(20) }
+        }
+    }
+    return false
+}

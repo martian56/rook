@@ -9,14 +9,28 @@ from "github.com/martian56/perch/keys" import Key
 from "github.com/martian56/aviary/message" import Message, Role
 from "github.com/martian56/plumage" import Event, Step, next, quit
 from "github.com/martian56/plumage/widgets/input" import TextInput
-from "./model" import Chat, set_model, apply_model, set_entry, replace_entries, ensure_cache_len
+from "./model" import (
+    Chat,
+    set_model,
+    apply_model,
+    set_entry,
+    replace_entries,
+    ensure_cache_len,
+    invalidate_all_cache,
+)
 from "../agent/state" import DisplayEvent, Snapshot
 from "../ui/transcript" import AgentBlock
 from "../agent/turn" import run_turn
 from "../agent/compact" import force_compact
 from "../ui/spinner" import thinking_word
 from "../ui/transcript" import Entry
-from "../ui/transcript" import EntryLines, empty_entry_lines, transcript_texts
+from "../ui/transcript" import (
+    EntryLines,
+    empty_entry_lines,
+    transcript_texts,
+    set_tool_expansion,
+    tool_expansion,
+)
 from "../ui/selection" import Selection, no_selection, normalize, extract, is_empty
 from "../tools/clipboard" import ClipResult, copy_to_clipboard
 from "../commands" import Command, parse_command, CmdInfo, menu_matches, help_filtered
@@ -618,6 +632,11 @@ fun _key(m: Chat, k: Key) -> Step[Chat] {
     // ctrl+c is always available, even over a modal.
     match k {
         case Ctrl(c) {
+            if c == "o" {
+                set_tool_expansion(not tool_expansion())
+                invalidate_all_cache(m)
+                return next(m)
+            }
             if c == "c" {
                 if m.armed {
                     kill_all_shells()

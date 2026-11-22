@@ -10,6 +10,7 @@ from "./transcript" import (
     validate_and_count,
     window_lines,
     transcript_texts,
+    set_tool_expansion,
 )
 from "./theme" import default_theme
 
@@ -193,4 +194,32 @@ fun test_bot_quotes_nest_and_diff_fences_color() {
     // The diff lines keep their +/- text.
     assert_true(all.contains("- old"))
     assert_true(all.contains("+ new"))
+}
+
+fun all_text(lines: list[Line]) -> str {
+    let out: list[str] = []
+    for i in range(lines.len()) {
+        out.push(line_text(lines, i))
+    }
+    return "|".join(out)
+}
+
+fun test_tool_output_collapses_until_expanded() {
+    let e = Entry.ToolMsg("read_file(a.rv)", "3 lines\none\ntwo\nthree")
+    set_tool_expansion(false)
+    let folded = all_text(build_lines([e], 60, default_theme()))
+    assert_true(folded.contains("3 lines"))
+    assert_true(not folded.contains("two"))
+    assert_true(folded.contains("3 more lines"))
+    set_tool_expansion(true)
+    let open = all_text(build_lines([e], 60, default_theme()))
+    assert_true(open.contains("two") and open.contains("three"))
+    set_tool_expansion(false)
+}
+
+fun test_edit_diffs_always_show() {
+    set_tool_expansion(false)
+    let e = Entry.ToolMsg("edit_file(a.rv)", "edited a.rv\n-old\n+new")
+    let text = all_text(build_lines([e], 60, default_theme()))
+    assert_true(text.contains("+new"))
 }

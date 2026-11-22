@@ -41,6 +41,28 @@ class EntryLines {
 }
 
 // An empty, invalid cache slot.
+let MAX_EXPANDED_ROWS = 60
+
+class ToolView {
+    expanded: bool = false
+}
+
+// Whether tool output shows in full. One switch for the whole transcript,
+// flipped by Ctrl+O.
+let TOOLS: ToolView = ToolView()
+
+fun set_tool_expansion(on: bool) {
+    TOOLS.expanded = on
+}
+
+fun tool_expansion() -> bool = TOOLS.expanded
+
+fun _always_full(name: str) -> bool {
+    return name.starts_with("$ ") or name.starts_with("write_file") or name.starts_with("edit_file") or name.starts_with(
+        "multi_edit",
+    )
+}
+
 fun empty_entry_lines() -> EntryLines {
     let none: list[Line] = []
     return EntryLines(valid: false, lines: none)
@@ -229,10 +251,27 @@ fun entry_lines(entry: Entry, w: int, theme: Theme) -> list[Line] {
                 first = rows[0]
             }
             out.push(Line.from_spans([Span.styled("  ⎿  ", res_style), Span.styled(first, res_style)]))
-            var r = 1
-            while r < rows.len() {
-                out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme)))
-                r = r + 1
+            // Diffs and shell commands the user ran always show in full;
+            // other output folds to a count until Ctrl+O expands it.
+            let full = _always_full(name)
+            let shown = rows.len() if full else min(rows.len(), MAX_EXPANDED_ROWS)
+            if full or TOOLS.expanded {
+                var r = 1
+                while r < shown {
+                    out.push(Line.styled("     ${rows[r]}", _diff_style(rows[r], theme) if full else theme.result))
+                    r = r + 1
+                }
+                if shown < rows.len() {
+                    out.push(Line.styled("     … ${rows.len() - shown} more lines", theme.result))
+                }
+            } else if rows.len() > 1 {
+                let more = rows.len() - 1
+                out.push(
+                    Line.styled(
+                        "     … ${more} more line${"" if more == 1 else "s"} · ctrl+o shows tool output",
+                        theme.result,
+                    ),
+                )
             }
         }
         case Notice(t) { out.push(Line.styled("  ${t}", _notice_style(t, theme))) }

@@ -471,7 +471,12 @@ protocol = true
 
 `space r` (or `:rook.chat`) opens the panel; type and press Enter to ask,
 Ctrl+N for a new line, and F6 to move between the panel and the editor.
-Select code and run `:rook.ask_about_selection` to ask about it. Approvals
+Select code and press `space r` (or run `:rook.ask_about_selection`) to ask
+about it, and use `@path` in a message to attach a file. A message sent while
+rook is working waits its turn. Chats are saved like terminal sessions:
+`:rook.resume` continues this project's last one (from dusk or the terminal),
+`:rook.new` starts fresh, and `rook --continue` in a terminal picks up a dusk
+chat. The status line shows the session's token count. Approvals
 and questions come up as dusk pickers, the Stop button (or `:rook.stop`)
 interrupts a turn, and files rook changes reload in dusk unless they have
 unsaved edits. The model, keys, permissions, skills, hooks, and MCP servers

@@ -1,7 +1,7 @@
 from std.test import assert_eq_str, assert_eq_int
 from "github.com/martian56/aviary/message" import ToolCall
 from "./state" import AgentState
-from "./turn" import ToolResults, _push_tool_results
+from "./turn" import ToolResults, _push_tool_results, _short, _display
 
 fun test_parallel_dispatch_results_are_pushed_in_call_order() {
     let calls = [
@@ -23,4 +23,37 @@ fun test_parallel_dispatch_results_are_pushed_in_call_order() {
     assert_eq_str(msgs[2].content, "slow finished second")
     assert_eq_str(msgs[3].tool_call_id, "f2")
     assert_eq_str(msgs[3].content, "fast finished first")
+}
+
+fun test_tool_summary_is_never_blank() {
+    assert_eq_str(_short("\n\n  \nfirst real line\nmore"), "first real line")
+    assert_eq_str(_short(""), "(no output)")
+    assert_eq_str(_short("\n \n"), "(no output)")
+    let long = "é" * 70
+    let s = _short(long)
+    assert_eq_str(s, "é" * 60 + "…")
+}
+
+fun test_tool_summaries_count_lines_and_matches() {
+    let read = ToolCall(id: "r", name: "read_file", arguments: "{\"path\":\"a.rv\"}")
+    assert_eq_str(_display(read, "one\ntwo\nthree"), "3 lines\none\ntwo\nthree")
+    let grep = ToolCall(id: "g", name: "grep", arguments: "{\"pattern\":\"x\"}")
+    assert_eq_str(_display(grep, "a.rv:1:x\nb.rv:2:x").split("\n")[0], "2 matches")
+    let cmd = ToolCall(id: "c", name: "run_command", arguments: "{}")
+    assert_eq_str(_display(cmd, "exit 0\nbuilt"), "exit 0\nbuilt")
+    assert_eq_str(_display(read, "error: no such file"), "error: no such file")
+}
+
+fun test_non_output_results_are_not_counted() {
+    let grep = ToolCall(id: "g", name: "grep", arguments: "{}")
+    assert_eq_str(_display(grep, "no matches for 'x' under ."), "no matches for 'x' under .")
+    let tree = ToolCall(id: "t", name: "file_tree", arguments: "{}")
+    assert_eq_str(_display(tree, "(empty)"), "(empty)")
+    let read = ToolCall(id: "r", name: "read_file", arguments: "{}")
+    let denied = "The user denied this action. Do not retry it; ask what they would prefer."
+    assert_eq_str(_display(read, denied), denied)
+    let blocked = "This action is blocked by the permission rule 'x' in settings. Do not retry it; find another way or ask the user."
+    assert_eq_str(_display(read, blocked), blocked)
+    let edit = ToolCall(id: "e", name: "edit_file", arguments: "{}")
+    assert_eq_str(_display(edit, "\nedited a.rv\n-old\n+new"), "edited a.rv\n-old\n+new")
 }
