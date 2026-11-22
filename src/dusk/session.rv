@@ -133,6 +133,13 @@ fun contributions() -> JsonValue {
     ]
     let binds = [
         obj([("mode", jstr("normal")), ("keys", jstr("space r")), ("command", jstr("rook.chat"))]),
+        obj(
+            [
+                ("mode", jstr("visual")),
+                ("keys", jstr("space r")),
+                ("command", jstr("rook.ask_about_selection")),
+            ],
+        ),
     ]
     return obj(
         [("name", jstr("rook")), ("commands", json_array(cmds)), ("bindings", json_array(binds))],
@@ -204,9 +211,32 @@ impl DuskSession {
     fun stop(self) {
         if self.running {
             self.st.request_interrupt()
-            if self.asking or self.approval != "" {
-                self.st.decide(0)
+            self.release_ask()
+        }
+    }
+
+    // Drop the approval or question on screen: its picker's answer, if dusk
+    // still sends one, is ignored, and the waiting turn gets a refusal. Only
+    // a turn that is actually waiting is answered, so a decision can never
+    // be left behind for a later prompt.
+    fun release_ask(self) {
+        if not self.asking {
+            return
+        }
+        for id in self.waiting.keys() {
+            let purpose = self.waiting.get(id).unwrap_or("")
+            if purpose == "approve" or purpose == "question" {
+                let _ = self.waiting.remove(id)
             }
+        }
+        self.asking = false
+        self.approval = ""
+        self.approval_detail = ""
+        self.changed = true
+        if self.st.pending_now() != "" {
+            self.st.decide(0)
+        } else if self.st.question_now() != "" {
+            self.st.decide(0 - 1)
         }
     }
 
@@ -313,9 +343,13 @@ impl DuskSession {
             self.approval_detail = ""
             self.changed = true
             // Allow, allow all of this kind, deny; dismissing denies.
-            self.st.decide(1 if index == 0 else (2 if index == 1 else 0))
+            if self.st.pending_now() != "" {
+                self.st.decide(1 if index == 0 else (2 if index == 1 else 0))
+            }
         } else if purpose == "question" {
-            self.st.decide(index)
+            if self.st.question_now() != "" {
+                self.st.decide(index)
+            }
         }
     }
 
@@ -331,7 +365,7 @@ impl DuskSession {
             }
             case ToolRan(label, result) {
                 self.note("\n\n`${label}`\n\n")
-                return true
+                return changes_files(label)
             }
             case Info(t) { self.note("\n\n_${t}_\n\n") }
             case AgentStarted(id, name) { self.note("\n\n_${name} agent started_\n\n") }
@@ -370,7 +404,8 @@ impl DuskSession {
                 )
             } else if snap.question != "" and not self.asking {
                 self.asking = true
-                let items = json_array(snap.choices.map(c => jstr(c)))
+                let choices = snap.choices if len(snap.choices) > 0 else ["OK"]
+                let items = json_array(choices.map(c => jstr(c)))
                 self.request("ui/pick", obj([("title", jstr(snap.question)), ("items", items)]), "question")
             }
             if snap.done {
@@ -442,6 +477,24 @@ impl DuskSession {
         self.lock.unlock()
         return q
     }
+}
+
+// Tools whose run can change files on disk, by their label's name.
+fun changes_files(label: str) -> bool {
+    for name in [
+        "write_file",
+        "edit_file",
+        "multi_edit",
+        "run_command",
+        "run_background",
+        "dispatch",
+        "git_commit",
+    ] {
+        if label.starts_with(name) {
+            return true
+        }
+    }
+    return false
 }
 
 fun pump_loop(s: DuskSession) {

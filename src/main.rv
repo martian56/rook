@@ -21,7 +21,8 @@ fun main() {
         println("rook ${version()}")
         return
     }
-    if _has_flag("--dusk") {
+    if _is_dusk_mode() {
+        fire_hooks("session-start", "", "")
         run_dusk()
         return
     }
@@ -54,17 +55,14 @@ fun main() {
     }
 }
 
-// Whether the command line asks for the version, so `rook --version` (or -V)
-// prints it and exits instead of starting the UI.
-fun _has_flag(flag: str) -> bool {
-    for a in args() {
-        if a == flag {
-            return true
-        }
-    }
-    return false
+// `rook --dusk`: dusk starts rook with this as its only argument.
+fun _is_dusk_mode() -> bool {
+    let a = args()
+    return a.len() == 2 and a[1] == "--dusk"
 }
 
+// Whether the command line asks for the version, so `rook --version` (or -V)
+// prints it and exits instead of starting the UI.
 fun _wants_version() -> bool {
     let a = args()
     var i = 0
