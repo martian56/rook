@@ -455,6 +455,28 @@ can find one without knowing its URL, and `add <name>` then installs a
 plugin by its index name. The index URL defaults to a martian56-hosted
 list and is overridable with `ROOK_PLUGIN_INDEX`.
 
+## Inside dusk
+
+rook also runs inside the [dusk](https://github.com/martian56/dusk) editor
+as a plugin, in a chat panel beside your code. Add it to
+`~/.config/dusk/config.toml`:
+
+```toml
+[[plugin]]
+name = "rook"
+command = "rook"
+args = ["--dusk"]
+protocol = true
+```
+
+`space r` (or `:rook.chat`) opens the panel; type and press Enter to ask,
+Ctrl+N for a new line, and F6 to move between the panel and the editor.
+Select code and run `:rook.ask_about_selection` to ask about it. Approvals
+and questions come up as dusk pickers, the Stop button (or `:rook.stop`)
+interrupts a turn, and files rook changes reload in dusk unless they have
+unsaved edits. The model, keys, permissions, skills, hooks, and MCP servers
+are the same as in the terminal.
+
 ## Hooks
 
 A hook runs a command when something happens in a session. Declare them

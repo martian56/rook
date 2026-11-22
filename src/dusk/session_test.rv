@@ -1,0 +1,185 @@
+// rook's dusk mode against a fake dusk (lines in, lines out) and an
+// in-process server posing as an OpenAI streaming endpoint.
+
+import std.string
+from std.http import Server, Request, Response
+from std.sync import sleep_millis
+from std.time import now_millis
+from std.fs import exists, remove_file, read
+from std.test import assert_true, assert_eq_str
+from "../agents/dir" import override_global_root
+from "./session" import DuskSession, Wire, memory_wire, new_session
+
+var chat_hits = 0
+var write_hits = 0
+
+fun chat_handler(req: Request) -> Response {
+    chat_hits = chat_hits + 1
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Hello from rook.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun write_handler(req: Request) -> Response {
+    write_hits = write_hits + 1
+    if write_hits == 1 {
+        return Response.text(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"w1\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"_rook_dusk_out.txt\\\",\\\"content\\\":\\\"from dusk\\\"}\"}}]}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n\ndata: [DONE]\n\n",
+        )
+    }
+    return Response.text(
+        "data: {\"choices\":[{\"delta\":{\"content\":\"Wrote it.\"}}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n",
+    )
+}
+
+fun serve_chat() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", chat_handler)
+    app.listen("127.0.0.1:8475")
+}
+
+fun serve_write() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", write_handler)
+    app.listen("127.0.0.1:8476")
+}
+
+fun session(port: int) -> DuskSession {
+    override_global_root("")
+    return new_session(memory_wire(), "custom/local", "", "http://127.0.0.1:${port}/v1")
+}
+
+fun line(method: str, id: int, params: str) -> str {
+    let ident = ",\"id\":${id}" if id >= 0 else ""
+    return "{\"jsonrpc\":\"2.0\"${ident},\"method\":\"${method}\",\"params\":${params}}"
+}
+
+// Pump until a written line contains `want`; returns that line or "".
+fun pump_until(s: DuskSession, want: str, ms: int) -> str {
+    let end = now_millis() + ms
+    while now_millis() < end {
+        s.pump(now_millis())
+        for l in s.wire.lines() {
+            if l.contains(want) {
+                return l
+            }
+        }
+        sleep_millis(30)
+    }
+    return ""
+}
+
+fun id_of(l: str) -> int {
+    let at = l.index_of("\"id\":")
+    if at < 0 {
+        return 0 - 1
+    }
+    var i = at + 5
+    var n = 0
+    while i < l.length() and l.byte_at(i) >= 48 and l.byte_at(i) <= 57 {
+        n = n * 10 + l.byte_at(i) - 48
+        i += 1
+    }
+    return n
+}
+
+fun test_initialize_contributes_rook_commands() {
+    let s = session(8475)
+    s.handle(line("initialize", 1, "{}"))
+    let out = s.wire.lines()
+    assert_true(out[0].contains("\"name\":\"rook\""))
+    assert_true(out[0].contains("rook.chat"))
+    assert_true(out[0].contains("rook.ask_about_selection"))
+}
+
+fun test_chat_turn_streams_into_the_panel() {
+    spawn {
+        serve_chat()
+    }
+    sleep_millis(200)
+    let s = session(8475)
+    s.handle(line("initialize", 1, "{}"))
+    s.handle(line("command/run", 2, "{\"command\":\"rook.chat\"}"))
+    assert_true(pump_until(s, "ui/panel", 2000) != "")
+    s.handle(
+        line(
+            "ui/event",
+            0 - 1,
+            "{\"panel\":\"chat\",\"block\":\"ask\",\"kind\":\"submit\",\"value\":\"hi there\"}",
+        ),
+    )
+    let shown = pump_until(s, "Hello from rook.", 10000)
+    assert_true(shown.contains("**You:** hi there"))
+    // The finished turn drops the Stop button and spinner.
+    let deadline = now_millis() + 5000
+    while now_millis() < deadline and s.running {
+        s.pump(now_millis())
+        sleep_millis(30)
+    }
+    assert_true(not s.running)
+    s.handle(line("shutdown", 9, "{}"))
+    assert_true(s.done())
+}
+
+fun test_write_is_approved_through_a_dusk_picker() {
+    if exists("_rook_dusk_out.txt") {
+        let _ = remove_file("_rook_dusk_out.txt")
+    }
+    spawn {
+        serve_write()
+    }
+    sleep_millis(200)
+    let s = session(8476)
+    s.handle(line("initialize", 1, "{}"))
+    s.handle(line("buffer/opened", 0 - 1, "{\"path\":\"_rook_dusk_out.txt\"}"))
+    s.handle(
+        line(
+            "ui/event",
+            0 - 1,
+            "{\"panel\":\"chat\",\"block\":\"ask\",\"kind\":\"submit\",\"value\":\"write it\"}",
+        ),
+    )
+    let ask = pump_until(s, "ui/pick", 10000)
+    assert_true(ask.contains("write_file"))
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(ask)},\"result\":{\"index\":0,\"label\":\"Allow\"}}",
+    )
+    assert_true(pump_until(s, "files/changed", 10000).contains("_rook_dusk_out.txt"))
+    assert_true(pump_until(s, "Wrote it.", 10000) != "")
+    match read("_rook_dusk_out.txt") {
+        case Ok(t) { assert_eq_str(t, "from dusk") }
+        case Err(e) { assert_true(false) }
+    }
+    let _ = remove_file("_rook_dusk_out.txt")
+}
+
+fun test_ask_about_empty_selection_explains() {
+    let s = session(8475)
+    s.handle(
+        line("command/run", 3, "{\"command\":\"rook.ask_about_selection\",\"selection\":\"\"}"),
+    )
+    let out = s.wire.lines()
+    assert_true(out.any(l => l.contains("select some code first")))
+    assert_true(not out.any(l => l.contains("ui/prompt")))
+}
+
+fun test_ask_about_selection_prompts_then_runs() {
+    let s = session(8475)
+    s.handle(
+        line(
+            "command/run",
+            3,
+            "{\"command\":\"rook.ask_about_selection\",\"selection\":\"let x = 1\",\"path\":\"a.rv\"}",
+        ),
+    )
+    let ask = s.wire.lines().filter(l => l.contains("ui/prompt"))[0]
+    s.handle("{\"jsonrpc\":\"2.0\",\"id\":${id_of(ask)},\"result\":{\"text\":\"what is this?\"}}")
+    let shown = pump_until(s, "ui/panel", 2000)
+    assert_true(shown.contains("let x = 1"))
+    assert_true(shown.contains("what is this?"))
+    let deadline = now_millis() + 10000
+    while now_millis() < deadline and s.running {
+        s.pump(now_millis())
+        sleep_millis(30)
+    }
+}
