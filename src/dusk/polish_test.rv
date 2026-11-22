@@ -5,7 +5,7 @@ import std.string
 from std.http import Server, Request, Response
 from std.sync import sleep_millis
 from std.time import now_millis
-from std.env import set_env, os_name
+from std.env import set_env, get_env, os_name
 from std.fs import write, exists, remove_file, list_dir
 from "../testkit" import wait_listening
 from std.test import assert_true, assert_eq_str, assert_eq_int
@@ -71,6 +71,8 @@ fun test_mentions_reach_the_model_but_not_the_panel() {
 }
 
 fun test_a_dusk_session_is_saved_and_resumed() {
+    let old_home = get_env("HOME")
+    let old_profile = get_env("USERPROFILE")
     let _ = set_env("HOME", "_rook_home_test")
     let _ = set_env("USERPROFILE", "_rook_home_test")
     start_server(8485)
@@ -94,6 +96,8 @@ fun test_a_dusk_session_is_saved_and_resumed() {
     assert_eq_str(b.session_id, a.session_id)
     b.handle(line("command/run", 6, "{\"command\":\"rook.new\"}"))
     assert_eq_int(b.st.messages().len(), 0)
+    let _ = set_env("HOME", old_home)
+    let _ = set_env("USERPROFILE", old_profile)
     let _ = _remove_tree("_rook_home_test")
 }
 
@@ -110,4 +114,22 @@ fun test_a_finished_background_shell_reloads_open_files() {
         s.check_shells()
     }
     assert_true(s.wire.lines().any(l => l.contains("files/changed") and l.contains("a.rv")))
+}
+
+fun test_stop_button_also_drops_queued_prompts() {
+    start_server(8486)
+    let s = ready_session(8486)
+    s.handle(submit("A"))
+    s.handle(submit("B"))
+    assert_eq_int(len(s.queued), 1)
+    s.handle(
+        line(
+            "ui/event",
+            0 - 1,
+            "{\"panel\":\"chat\",\"block\":\"act\",\"kind\":\"press\",\"value\":0}",
+        ),
+    )
+    assert_eq_int(len(s.queued), 0)
+    wait_idle(s)
+    assert_true(not s.transcript.contains("**You:** B"))
 }

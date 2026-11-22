@@ -500,23 +500,42 @@ let MAX_SHOWN_OUTPUT = 8000
 // The tool row's text: a one-line summary, then the output, which the
 // transcript folds away until expanded (an edit's diff always shows).
 fun _display(call: ToolCall, result: str) -> str {
-    let nl = result.index_of("\n")
     if call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit" {
-        let head = _short(result)
-        return head if nl < 0 else "${head}\n${result.substring(nl + 1, result.length())}"
-    }
-    if result.starts_with("error") {
-        return result
+        // The summary is the first non-blank line; the diff follows it.
+        let t = result.trim_start()
+        let nl = t.index_of("\n")
+        return _short(t) if nl < 0 else "${_short(t)}\n${t.substring(nl + 1, t.length())}"
     }
     var body = result
     if body.length() > MAX_SHOWN_OUTPUT {
         body = body.substring(0, _char_floor(body, MAX_SHOWN_OUTPUT)) + "\n…"
+    }
+    // Errors, refusals, and empty findings are not output to count.
+    if result.starts_with("error") or _is_message(result) {
+        return body
     }
     let counted = _count_summary(call.name, result)
     if counted != "" {
         return "${counted}\n${body}" if result.trim() != "" else counted
     }
     return body if result.trim() != "" else _short(result)
+}
+
+fun _is_message(result: str) -> bool {
+    let t = result.trim_start()
+    for lead in [
+        "no matches",
+        "(empty)",
+        "(no output)",
+        "The user denied",
+        "This action is blocked",
+        "(no changes)",
+    ] {
+        if t.starts_with(lead) {
+            return true
+        }
+    }
+    return false
 }
 
 // "120 lines" for reads, "3 matches" for searches, "8 entries" for listings.

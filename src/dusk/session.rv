@@ -345,6 +345,7 @@ impl DuskSession {
     }
 
     fun stop(self) {
+        self.queued = []
         if self.running {
             self.st.request_interrupt()
             self.release_ask()
