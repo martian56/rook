@@ -270,7 +270,10 @@ impl DuskSession {
     }
 
     fun show_tokens(self, n: int) {
-        self.notify("status/set", obj([("id", jstr("tokens")), ("text", jstr("rook ${tokens_text(n)}"))]))
+        self.notify(
+            "status/set",
+            obj([("id", jstr("tokens")), ("text", jstr("rook ${tokens_text(n)}"))]),
+        )
     }
 
     // A background shell that finished may have written files.
