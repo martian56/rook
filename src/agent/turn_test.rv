@@ -1,7 +1,7 @@
 from std.test import assert_eq_str, assert_eq_int
 from "github.com/martian56/aviary/message" import ToolCall
 from "./state" import AgentState
-from "./turn" import ToolResults, _push_tool_results
+from "./turn" import ToolResults, _push_tool_results, _short
 
 fun test_parallel_dispatch_results_are_pushed_in_call_order() {
     let calls = [
@@ -23,4 +23,13 @@ fun test_parallel_dispatch_results_are_pushed_in_call_order() {
     assert_eq_str(msgs[2].content, "slow finished second")
     assert_eq_str(msgs[3].tool_call_id, "f2")
     assert_eq_str(msgs[3].content, "fast finished first")
+}
+
+fun test_tool_summary_is_never_blank() {
+    assert_eq_str(_short("\n\n  \nfirst real line\nmore"), "first real line")
+    assert_eq_str(_short(""), "(no output)")
+    assert_eq_str(_short("\n \n"), "(no output)")
+    let long = "é" * 70
+    let s = _short(long)
+    assert_eq_str(s, "é" * 60 + "…")
 }

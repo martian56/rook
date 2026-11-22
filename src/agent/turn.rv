@@ -507,15 +507,22 @@ fun _display(call: ToolCall, result: str) -> str {
     return "${head}\n${result.substring(nl + 1, result.length())}"
 }
 
-// A compact one-liner for the tool bullet: the first line, clipped.
+// A compact one-liner for the tool bullet: the first non-blank line,
+// clipped to 60 characters.
 fun _short(result: str) -> str {
-    var first = result
-    let nl = result.index_of("\n")
-    if nl >= 0 {
-        first = result.substring(0, nl)
+    var first = ""
+    for line in result.split("\n") {
+        if line.trim() != "" {
+            first = line.trim_end()
+            break
+        }
     }
-    if first.length() > 60 {
-        first = "${first.substring(0, 60)}…"
+    if first == "" {
+        return "(no output)"
+    }
+    let cs = first.chars()
+    if len(cs) > 60 {
+        first = "".join(cs.slice(0, 60)) + "…"
     }
     return first
 }
