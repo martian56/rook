@@ -81,9 +81,11 @@ fun checkpoint_file(path: str) {
         }
     }
     STORE.lock.lock()
-    // A full store drops its oldest turn, so recent turns stay undoable
-    // instead of recording stopping for the rest of the session.
-    while STORE.snaps.len() >= MAX_SNAPSHOTS {
+    // A full store drops its oldest finished turn, so recent turns stay
+    // undoable. The current turn is never evicted: its first pre-images are
+    // what /rewind must restore. When the current turn alone fills the store,
+    // later files are recorded as unprotected rather than dropped silently.
+    while STORE.snaps.len() >= MAX_SNAPSHOTS and STORE.snaps[0].batch != STORE.batch {
         let oldest = STORE.snaps[0].batch
         let kept: list[Snapshot] = []
         for s in STORE.snaps {
@@ -91,10 +93,11 @@ fun checkpoint_file(path: str) {
                 kept.push(s)
             }
         }
-        if kept.len() == STORE.snaps.len() {
-            break
-        }
         STORE.snaps = kept
+    }
+    if STORE.snaps.len() >= MAX_SNAPSHOTS and skipped == "" {
+        content = ""
+        skipped = "checkpoint store full for this turn"
     }
     STORE.snaps.push(
         Snapshot(

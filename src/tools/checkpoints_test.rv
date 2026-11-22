@@ -99,3 +99,28 @@ fun test_summary_lists_failures_separately() {
     )
     return
 }
+
+fun test_the_current_turn_is_never_evicted() {
+    clear_checkpoints()
+    write("_rook_ckpt_first.txt", "original")
+    begin_checkpoint_batch()
+    checkpoint_file("_rook_ckpt_first.txt")
+    write("_rook_ckpt_first.txt", "edited once")
+    var n = 0
+    while n < 205 {
+        checkpoint_file("_rook_ckpt_many_${n}.txt")
+        n += 1
+    }
+    // A second edit in the same turn keeps the first pre-image.
+    checkpoint_file("_rook_ckpt_first.txt")
+    write("_rook_ckpt_first.txt", "edited twice")
+    let summary = rewind_last_batch()
+    match read("_rook_ckpt_first.txt") {
+        case Ok(t) { assert_eq_str(t, "original") }
+        case Err(e) { assert_true(false) }
+    }
+    assert_true(summary.contains("checkpoint store full for this turn"))
+    remove_file("_rook_ckpt_first.txt")
+    clear_checkpoints()
+    return
+}

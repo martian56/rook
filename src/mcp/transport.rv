@@ -104,11 +104,14 @@ class McpConn {
     buf: LineBuffer
     next_id: int
     lock: Mutex
+    // Held by the one request in flight. Waiters poll it rather than block on
+    // the lock, so Esc can release a call queued behind a slow one.
+    busy: bool
 }
 
 impl McpConn {
     fun new(child: Child) -> McpConn {
-        return McpConn(child: child, buf: LineBuffer.new(), next_id: 1, lock: mutex())
+        return McpConn(child: child, buf: LineBuffer.new(), next_id: 1, lock: mutex(), busy: false)
     }
 
     // Send a request and wait for its response, up to timeout_ms. Serialized
@@ -126,10 +129,42 @@ impl McpConn {
         timeout_ms: int,
         token: CancelToken,
     ) -> RpcResponse {
-        self.lock.lock()
+        if not self._acquire(token) {
+            return RpcResponse(ok: false, error: "interrupted", result: JsonValue.Null, id: 0 - 1)
+        }
         let resp = self._request_locked(method, params, timeout_ms, token)
-        self.lock.unlock()
+        self._release()
         return resp
+    }
+
+    // Wait for the connection, giving up when `token` is canceled. A canceled
+    // token is checked after acquiring too, so a request Esc already stopped
+    // is never written to the server.
+    fun _acquire(self, token: CancelToken) -> bool {
+        while true {
+            if token.canceled() {
+                return false
+            }
+            self.lock.lock()
+            if not self.busy {
+                self.busy = true
+                self.lock.unlock()
+                if token.canceled() {
+                    self._release()
+                    return false
+                }
+                return true
+            }
+            self.lock.unlock()
+            sleep_millis(5)
+        }
+        return false
+    }
+
+    fun _release(self) {
+        self.lock.lock()
+        self.busy = false
+        self.lock.unlock()
     }
 
     fun _request_locked(
@@ -154,9 +189,9 @@ impl McpConn {
 
     // Send a notification; nothing comes back.
     fun notify(self, method: str, params: str) {
-        self.lock.lock()
+        let _ = self._acquire(CancelToken.new())
         let ignored = self.child.write_stdin(build_notification(method, params))
-        self.lock.unlock()
+        self._release()
         return
     }
 

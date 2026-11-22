@@ -57,6 +57,12 @@ fun turn_agents_prompt() -> str {
     return "${memory_prompt()}${skills_prompt(load_skills(rs))}${subagents_prompt(all_subagents(rs))}"
 }
 
+// The full system prompt a request carries, also used to size compaction.
+fun system_prompt(plan: bool, agents_prompt: str) -> str {
+    let plan_note = PLAN_PROMPT if plan else ""
+    return "${base_system_prompt()}${platform_note()}${plan_note}${agents_prompt}${shells_note()}"
+}
+
 fun build_request(
     model: str,
     history: list[Message],
@@ -66,16 +72,10 @@ fun build_request(
     plan: bool,
     agents_prompt: str,
 ) -> ChatRequest {
-    var plan_note = ""
-    if plan {
-        plan_note = PLAN_PROMPT
-    }
     // Cache the system-and-tools prefix so the rounds of a turn, and later
     // turns that share it, reuse it instead of re-billing it every call. Only
     // the Anthropic adapter acts on this; other providers ignore it.
-    var req = ChatRequest.new(model).cache(true).system(
-        "${base_system_prompt()}${platform_note()}${plan_note}${agents_prompt}${shells_note()}",
-    )
+    var req = ChatRequest.new(model).cache(true).system(system_prompt(plan, agents_prompt))
     var i = 0
     while i < history.len() {
         req = req.message(history[i])

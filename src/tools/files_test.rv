@@ -80,3 +80,10 @@ fun test_read_is_capped_at_a_line_boundary() {
     assert_true(shown.starts_with(line))
     assert_eq_str(cap_read("small\n"), "small\n")
 }
+
+fun test_read_cap_without_newlines_keeps_characters_whole() {
+    let s = "\n" + "a" * 199998 + "€" + "a" * 10
+    let shown = cap_read(s)
+    assert_true(not shown.contains("�"))
+    assert_true(shown.starts_with("\n" + "a" * 199998 + "\n"))
+}

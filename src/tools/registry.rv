@@ -32,6 +32,7 @@ from "../mcp/manager" import (
     resource_tools,
     is_resource_tool,
     read_resource,
+    read_resource_cancelable,
 )
 
 // One schema field: a string property and its description.
@@ -251,7 +252,7 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> str {
         return call_mcp_tool(call.name, a, token)
     }
     if is_resource_tool(call.name) {
-        return read_resource(arg(a, "server"), arg(a, "uri"))
+        return read_resource_cancelable(arg(a, "server"), arg(a, "uri"), token)
     }
     if call.name == "read_file" {
         return read_file(arg(a, "path"))

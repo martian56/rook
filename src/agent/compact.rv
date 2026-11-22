@@ -141,7 +141,11 @@ fun family_window(model: str) -> int {
 // is what the request adds around the conversation: the system prompt and
 // the tool schemas.
 fun should_compact(msgs: list[Message], model: str, overhead_chars: int) -> bool {
-    let budget = (context_window(model) * COMPACT_RATIO_PCT) / 100
+    return over_budget(msgs, context_window(model), overhead_chars)
+}
+
+fun over_budget(msgs: list[Message], window: int, overhead_chars: int) -> bool {
+    let budget = (window * COMPACT_RATIO_PCT) / 100
     return estimate_tokens(msgs) + overhead_chars / 4 > budget
 }
 

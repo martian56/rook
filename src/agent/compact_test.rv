@@ -1,14 +1,7 @@
 import std.string
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from "github.com/martian56/aviary/message" import Message
-from "./compact" import (
-    estimate_tokens,
-    family_window,
-    should_compact,
-    split_index,
-    rebuild,
-    flatten,
-)
+from "./compact" import estimate_tokens, family_window, over_budget, split_index, rebuild, flatten
 
 fun test_estimate_tokens_is_chars_over_four() {
     // "abcd" is 4 chars plus 8 overhead = 12, /4 = 3.
@@ -34,19 +27,19 @@ fun test_request_overhead_counts_toward_compaction() {
     // a large system prompt and tool schemas are added.
     let unit = _repeat("x", 1000)
     let msgs = [Message.user(_repeat(unit, 320))]
-    assert_true(not should_compact(msgs, "deepseek/deepseek-v4-pro", 0))
-    assert_true(should_compact(msgs, "deepseek/deepseek-v4-pro", 60000))
+    assert_true(not over_budget(msgs, family_window("deepseek/deepseek-v4-pro"), 0))
+    assert_true(over_budget(msgs, family_window("deepseek/deepseek-v4-pro"), 60000))
 }
 
 fun test_should_compact_only_when_large_and_is_model_aware() {
     let small = [Message.user("hello"), Message.assistant("hi")]
-    assert_true(not should_compact(small, "gpt-4o", 0))
+    assert_true(not over_budget(small, family_window("gpt-4o"), 0))
 
     // ~400k chars is ~100k tokens: over 70% of gpt-4o's 128k, under claude's.
     let unit = _repeat("x", 1000)
     let huge = [Message.user(_repeat(unit, 400))]
-    assert_true(should_compact(huge, "gpt-4o", 0))
-    assert_true(not should_compact(huge, "claude-opus-4", 0))
+    assert_true(over_budget(huge, family_window("gpt-4o"), 0))
+    assert_true(not over_budget(huge, family_window("claude-opus-4"), 0))
 }
 
 fun test_split_index_keeps_the_last_turns() {

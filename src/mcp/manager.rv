@@ -274,7 +274,13 @@ fun is_resource_tool(name: str) -> bool {
 
 // Read a resource by uri, from `server` when given, else from whichever
 // connected server lists it. Returns its text (or an error string).
-fun read_resource(server: str, uri: str) -> str {
+fun read_resource(server: str, uri: str) -> str = read_resource_cancelable(
+    server,
+    uri,
+    CancelToken.new(),
+)
+
+fun read_resource_cancelable(server: str, uri: str, token: CancelToken) -> str {
     if uri.trim() == "" {
         return "error: a resource uri is required"
     }
@@ -285,7 +291,7 @@ fun read_resource(server: str, uri: str) -> str {
         return route.error
     }
     return match _find(clients, route.server) {
-        case Some(c) { _read_resource_from(c, uri) }
+        case Some(c) { _read_resource_from(c, uri, token) }
         case None { "error: MCP server '${route.server}' is not connected" }
     }
 }
@@ -401,13 +407,8 @@ fun resource_route(clients: list[McpClient], server: str, uri: str) -> ResourceR
     )
 }
 
-fun _read_resource_from(c: McpClient, uri: str) -> str {
-    let resp = c.call(
-        "resources/read",
-        "{\"uri\":${enc_str(uri)}}",
-        CALL_TIMEOUT,
-        CancelToken.new(),
-    )
+fun _read_resource_from(c: McpClient, uri: str, token: CancelToken) -> str {
+    let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT, token)
     if resp.ok {
         return format_resource(resp.result)
     }
