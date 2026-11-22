@@ -500,13 +500,15 @@ let MAX_SHOWN_OUTPUT = 8000
 // The tool row's text: a one-line summary, then the output, which the
 // transcript folds away until expanded (an edit's diff always shows).
 fun _display(call: ToolCall, result: str) -> str {
-    if call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit" {
+    let is_edit = call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit"
+    if is_edit and not result.starts_with("error") {
         // The summary is the first non-blank line; the diff follows it.
         let t = result.trim_start()
         let nl = t.index_of("\n")
         return _short(t) if nl < 0 else "${_short(t)}\n${t.substring(nl + 1, t.length())}"
     }
-    var body = result
+    // Blank lines before the output would leave the summary row empty.
+    var body = result.trim_start()
     if body.length() > MAX_SHOWN_OUTPUT {
         body = body.substring(0, _char_floor(body, MAX_SHOWN_OUTPUT)) + "\n…"
     }
