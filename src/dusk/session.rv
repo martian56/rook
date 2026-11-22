@@ -125,8 +125,11 @@ class DuskSession {
     entries: list[Entry] = []
     // Prompts sent while a turn was running, started in order after it.
     queued: list[str] = []
-    // Background shells running at the last check, to notice them finishing.
+    // Background shells running at the last check, and those already seen
+    // finished, so each finish is noticed once even if it never ran during a
+    // check.
     shells_running: list[int] = []
+    shells_done: list[int] = []
     shells_checked: int = 0
 }
 
@@ -259,19 +262,18 @@ impl DuskSession {
             prompt_tokens,
             completion_tokens,
         )
-        self.notify(
-            "status/set",
-            obj(
-                [
-                    ("id", jstr("tokens")),
-                    ("text", jstr("rook ${tokens_text(prompt_tokens + completion_tokens)}")),
-                ],
-            ),
-        )
+        self.show_tokens(prompt_tokens + completion_tokens)
         if len(self.queued) > 0 {
             let next = self.queued.remove_at(0)
             self.start_turn(next)
         }
+    }
+
+    fun show_tokens(self, n: int) {
+        self.notify(
+            "status/set",
+            obj([("id", jstr("tokens")), ("text", jstr("rook ${tokens_text(n)}"))]),
+        )
     }
 
     // A background shell that finished may have written files.
@@ -282,7 +284,8 @@ impl DuskSession {
         for sh in shells_snapshot() {
             if sh.running {
                 running.push(sh.id)
-            } else if self.shells_running.contains(sh.id) {
+            } else if not self.shells_done.contains(sh.id) {
+                self.shells_done.push(sh.id)
                 finished = true
             }
         }
@@ -324,6 +327,7 @@ impl DuskSession {
         self.panel_open = true
         self.changed = true
         self.last_sent = 0
+        self.show_tokens(l.usage_prompt + l.usage_completion)
         self.message("resumed the last rook session (${len(l.messages)} messages)")
     }
 
@@ -339,6 +343,8 @@ impl DuskSession {
         self.st.replace_convo(empty)
         self.transcript = ""
         self.queued = []
+        self.st.set_usage(0, 0)
+        self.show_tokens(0)
         self.panel_open = true
         self.changed = true
         self.last_sent = 0

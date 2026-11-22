@@ -1,4 +1,4 @@
-from std.test import assert_eq_str, assert_eq_int
+from std.test import assert_eq_str, assert_eq_int, assert_true
 from "github.com/martian56/aviary/message" import ToolCall
 from "./state" import AgentState
 from "./turn" import ToolResults, _push_tool_results, _short, _display
@@ -56,4 +56,16 @@ fun test_non_output_results_are_not_counted() {
     assert_eq_str(_display(read, blocked), blocked)
     let edit = ToolCall(id: "e", name: "edit_file", arguments: "{}")
     assert_eq_str(_display(edit, "\nedited a.rv\n-old\n+new"), "edited a.rv\n-old\n+new")
+}
+
+fun test_blank_leading_output_and_long_edit_errors() {
+    let mcp = ToolCall(id: "m", name: "mcp__srv__start", arguments: "{}")
+    assert_eq_str(_display(mcp, "\n\nready\nmore").split("\n")[0], "ready")
+    let read = ToolCall(id: "r", name: "read_file", arguments: "{}")
+    assert_true(
+        _display(read, "    def foo():\n        pass").split("\n").any(l => l == "    def foo():"),
+    )
+    let edit = ToolCall(id: "e", name: "edit_file", arguments: "{}")
+    let shown = _display(edit, "error: failed\n" + "x" * 9000)
+    assert_true(shown.length() < 8100)
 }

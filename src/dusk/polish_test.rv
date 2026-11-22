@@ -83,7 +83,7 @@ fun test_a_dusk_session_is_saved_and_resumed() {
     var saved = false
     while now_millis() < end and not saved {
         saved = match list_dir("_rook_home_test/.rook/sessions") {
-            case Ok(xs) { len(xs) > 0 }
+            case Ok(xs) { xs.any(x => x.ends_with(".meta.json")) }
             case Err(e) { false }
         }
         sleep_millis(50)
@@ -132,4 +132,21 @@ fun test_stop_button_also_drops_queued_prompts() {
     assert_eq_int(len(s.queued), 0)
     wait_idle(s)
     assert_true(not s.transcript.contains("**You:** B"))
+}
+
+fun test_a_shell_that_finishes_between_checks_still_reloads() {
+    let s = session(8483)
+    s.handle(line("buffer/opened", 0 - 1, "{\"path\":\"b.rv\"}"))
+    s.check_shells()
+    let cmd = "cmd /c echo hi" if os_name() == "windows" else "true"
+    let _ = run_background(cmd)
+    sleep_millis(1500)
+    s.check_shells()
+    assert_true(s.wire.lines().any(l => l.contains("files/changed") and l.contains("b.rv")))
+}
+
+fun test_token_status_follows_new_and_resumed_sessions() {
+    let s = session(8483)
+    s.handle(line("command/run", 6, "{\"command\":\"rook.new\"}"))
+    assert_true(s.wire.lines().any(l => l.contains("status/set") and l.contains("rook 0 tok")))
 }
