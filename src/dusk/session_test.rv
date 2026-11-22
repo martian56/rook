@@ -163,8 +163,18 @@ fun test_ask_about_empty_selection_explains() {
     assert_true(not out.any(l => l.contains("ui/prompt")))
 }
 
+fun serve_selection() {
+    let app = Server.new()
+    app.post("/v1/chat/completions", chat_handler)
+    app.listen("127.0.0.1:8481")
+}
+
 fun test_ask_about_selection_prompts_then_runs() {
-    let s = session(8475)
+    spawn {
+        serve_selection()
+    }
+    sleep_millis(200)
+    let s = session(8481)
     s.handle(
         line(
             "command/run",
@@ -177,9 +187,5 @@ fun test_ask_about_selection_prompts_then_runs() {
     let shown = pump_until(s, "ui/panel", 2000)
     assert_true(shown.contains("let x = 1"))
     assert_true(shown.contains("what is this?"))
-    let deadline = now_millis() + 10000
-    while now_millis() < deadline and s.running {
-        s.pump(now_millis())
-        sleep_millis(30)
-    }
+    assert_true(pump_until(s, "Hello from rook.", 10000) != "")
 }

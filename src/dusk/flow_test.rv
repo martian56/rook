@@ -170,5 +170,34 @@ fun test_stop_during_a_question_declines() {
     assert_true(pick != "")
     s.handle(line("command/run", 7, "{\"command\":\"rook.stop\"}"))
     wait_idle(s)
+    assert_false(s.running)
     assert_false(s.st.messages().any(m => m.content.contains("src only")))
+}
+
+var race_hits = 0
+
+fun race_handler(req: Request) -> Response {
+    race_hits = race_hits + 1
+    return write_call("_rook_dusk_race.txt") if race_hits == 1 else says("stopped")
+}
+
+// Stop lands after the turn asked for approval but before any picker went
+// out: the turn must still be released, and no picker opened for it.
+fun test_stop_before_the_picker_is_sent_releases_the_turn() {
+    spawn {
+        serve(8482, race_handler)
+    }
+    sleep_millis(200)
+    let s = session(8482)
+    s.handle(submit("write"))
+    let end = now_millis() + 10000
+    while now_millis() < end and s.st.pending_now() == "" {
+        sleep_millis(20)
+    }
+    assert_true(s.st.pending_now() != "")
+    s.handle(line("command/run", 7, "{\"command\":\"rook.stop\"}"))
+    wait_idle(s)
+    assert_false(s.running)
+    assert_false(s.wire.lines().any(l => l.contains("ui/pick")))
+    assert_false(exists("_rook_dusk_race.txt"))
 }

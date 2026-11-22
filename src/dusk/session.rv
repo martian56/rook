@@ -179,6 +179,18 @@ impl DuskSession {
         self.transcript += md
         self.in_reply = false
         self.changed = true
+        self.trim_transcript()
+    }
+
+    // Keep only what the panel can show, so a long session does not grow
+    // the copy on every chunk. The model's conversation is untouched.
+    fun trim_transcript(self) {
+        if self.transcript.length() > 2 * MAX_TRANSCRIPT {
+            self.transcript = self.transcript.substring(
+                self.transcript.length() - MAX_TRANSCRIPT,
+                self.transcript.length(),
+            )
+        }
     }
 
     // Start a turn with `text`, unless one is running.
@@ -220,9 +232,8 @@ impl DuskSession {
     // a turn that is actually waiting is answered, so a decision can never
     // be left behind for a later prompt.
     fun release_ask(self) {
-        if not self.asking {
-            return
-        }
+        // The turn may have published its prompt before the pump sent the
+        // picker, so answer from the state, not from what dusk was shown.
         for id in self.waiting.keys() {
             let purpose = self.waiting.get(id).unwrap_or("")
             if purpose == "approve" or purpose == "question" {
@@ -362,6 +373,7 @@ impl DuskSession {
                 }
                 self.transcript += d
                 self.changed = true
+                self.trim_transcript()
             }
             case ToolRan(label, result) {
                 self.note("\n\n`${label}`\n\n")
