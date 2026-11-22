@@ -1,7 +1,7 @@
 import std.string
 from std.test import assert_eq_str, assert_true
 from std.fs import remove_file, create_dir_all, remove_dir, exists
-from "./files" import read_file, write_file, edit_file, list_dir
+from "./files" import read_file, write_file, edit_file, list_dir, cap_read
 
 fun test_write_then_read_round_trips() {
     let p = "_rook_ft_a.txt"
@@ -69,4 +69,21 @@ fun test_write_accepts_mixed_separators_inside_workspace() {
     remove_file("_rook_mix/x.txt")
     remove_dir("_rook_mix")
     return
+}
+
+fun test_read_is_capped_at_a_line_boundary() {
+    let line = "0123456789" * 9 + "\n"
+    let big = line * 3000
+    let shown = cap_read(big)
+    assert_true(shown.length() < big.length())
+    assert_true(shown.contains("... (truncated: first 2197 lines"))
+    assert_true(shown.starts_with(line))
+    assert_eq_str(cap_read("small\n"), "small\n")
+}
+
+fun test_read_cap_without_newlines_keeps_characters_whole() {
+    let s = "\n" + "a" * 199998 + "€" + "a" * 10
+    let shown = cap_read(s)
+    assert_true(not shown.contains("�"))
+    assert_true(shown.starts_with("\n" + "a" * 199998 + "\n"))
 }

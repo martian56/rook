@@ -16,7 +16,15 @@ from "../agents/dir" import roots
 from "../agents/commands" import load_commands, command_infos
 from "../agents/settings" import settings_errors_from
 from "../hooks/hooks" import drain_hook_notices
-from "../config/config" import resolve_model, resolve_base, resolve_key, resolve_theme, save_model, rook_json_errors, resolve_budget_usd
+from "../config/config" import (
+    resolve_model,
+    resolve_base,
+    resolve_key,
+    resolve_theme,
+    save_model,
+    rook_json_errors,
+    resolve_budget_usd,
+)
 from "../tools/permission_menu" import PermissionGrantState
 from "../tools/mentions" import warm_files
 from "./update_check" import begin_update_check

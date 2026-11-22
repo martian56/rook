@@ -1,5 +1,12 @@
 from std.test import assert_true, assert_eq_str, assert_false
-from "./history" import push_history, recall_prev, recall_next, recalling, reset_recall, clear_history
+from "./history" import (
+    push_history,
+    recall_prev,
+    recall_next,
+    recalling,
+    reset_recall,
+    clear_history,
+)
 
 fun test_history_recalls_backward_and_forward() {
     clear_history()

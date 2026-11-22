@@ -2,7 +2,13 @@ import std.string
 from std.fs import write, remove_file
 from std.process import run
 from std.test import assert_true, assert_eq_str
-from "./git" import git_status, git_diff, git_commit, git_commit_preview, commit_message_with_attribution
+from "./git" import (
+    git_status,
+    git_diff,
+    git_commit,
+    git_commit_preview,
+    commit_message_with_attribution,
+)
 
 // These run against the real repository the suite executes in, which is a
 // git checkout, so only the read-only tools are exercised for real; the

@@ -3,7 +3,16 @@ from std.json import parse, JsonValue
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
 from std.process import Output
-from "./hooks" import Hook, hooks_from, hooks_for, hook_context, load_hooks_from_with_project_trust, run_pre_tool, drain_hook_notices, _shell_launch_error
+from "./hooks" import (
+    Hook,
+    hooks_from,
+    hooks_for,
+    hook_context,
+    load_hooks_from_with_project_trust,
+    run_pre_tool,
+    drain_hook_notices,
+    _shell_launch_error,
+)
 
 let CONFIG: str = "{\"pre-tool\": [{\"match\": \"write_file\", \"command\": \"a\", \"fail_closed\": true}, {\"command\": \"b\"}], \"turn-end\": [{\"command\": \"c\"}], \"post-tool\": [{\"match\": \"\", \"command\": \"\"}]}"
 

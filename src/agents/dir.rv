@@ -91,7 +91,18 @@ fun project_root() -> str {
 }
 
 // The global ~/.agents folder, "" when absent.
+// Tests set this to "" so the user's own ~/.agents (permission rules,
+// hooks) cannot change what a test observes. "-" means no override.
+var GLOBAL_ROOT_OVERRIDE = "-"
+
+fun override_global_root(path: str) {
+    GLOBAL_ROOT_OVERRIDE = path
+}
+
 fun global_root() -> str {
+    if GLOBAL_ROOT_OVERRIDE != "-" {
+        return GLOBAL_ROOT_OVERRIDE
+    }
     let h = _home()
     if h != "" and is_dir("${h}/.agents") {
         return "${h}/.agents"

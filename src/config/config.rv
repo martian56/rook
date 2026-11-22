@@ -432,6 +432,27 @@ fun auth_with_key(existing: str, provider: str, key: str) -> AuthUpdate {
     return AuthUpdate(ok: true, text: stringify(obj.build()), error: "")
 }
 
+// rook.json "context_window" (project first, then global), or 0 when unset.
+// Lets a user give the window of a model rook does not know.
+fun context_window_override() -> int {
+    for path in ["rook.json", "${_home()}/.config/rook/rook.json"] {
+        let text = _read_opt(path)
+        if text.trim() == "" {
+            continue
+        }
+        match parse(text) {
+            case Ok(j) {
+                let n = as_int_or(field(j, "context_window"), 0)
+                if n > 0 {
+                    return n
+                }
+            }
+            case Err(e) {}
+        }
+    }
+    return 0
+}
+
 // A string field from a JSON config document, or "" when absent.
 fun _json_str(text: str, key: str) -> str {
     if text.trim() == "" {

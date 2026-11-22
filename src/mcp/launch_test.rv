@@ -7,7 +7,13 @@ from std.time import now_millis
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from "./config" import ServerSpec
 from "./client" import connect_with_env_file
-from "./launch" import env_error, launch_for_os, write_windows_launcher, write_windows_environment, windows_launcher_script
+from "./launch" import (
+    env_error,
+    launch_for_os,
+    write_windows_launcher,
+    write_windows_environment,
+    windows_launcher_script,
+)
 
 fun test_mcp_environment_validation_accepts_portable_entries() {
     assert_eq_str(env_error(["TOKEN=abc", "_ENDPOINT=https://example.test", "EMPTY="]), "")

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 - 2026-11-22
+
+- Faster: built on Raven 3.3.3 and plumage 0.5.2, where a fully changed frame draws in about 23 ms instead of over half a second, waiting keys apply before the next frame, and string building in the standard library is no longer quadratic. A 1,200-entry transcript draws its first frame in about 40 ms and later frames in about 1 ms.
+- web_fetch strips a large page about 12 times faster, and every script and style block is removed (it stopped after 1,000 before).
+- read_file returns at most about 200 KB, cut at a line boundary with a note, so one large file cannot fill the context window.
+- Esc interrupts web_fetch, web_search, and MCP tool calls in flight instead of waiting up to two minutes. (#327)
+- /rewind reports files it could not restore and files too large to checkpoint instead of counting them as restored, and a long session drops its oldest checkpoints instead of silently stopping. (#326)
+- Context windows cover the shipped model catalog (GPT-5, Grok 4, Kimi K, Command A, and more), compaction counts the system prompt and tool schemas, and `context_window` in rook.json sets the window for any model. (#328)
+- README: the Known limits section describes the current grep. (#329)
+- Tests no longer depend on the user's global ~/.agents settings or on files left by an interrupted run.
+
 ## 0.4.0 - 2026-11-21
 
 - Ported to Raven 3 syntax; requires Raven 3.0.1 or newer.

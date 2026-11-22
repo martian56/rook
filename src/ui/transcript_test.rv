@@ -1,7 +1,16 @@
 import std.string
 from std.test import assert_eq_str, assert_true, assert_eq_int
 from "github.com/martian56/plumage/text" import Line
-from "./transcript" import Entry, EntryLines, empty_entry_lines, build_lines, assemble_cached, validate_and_count, window_lines, transcript_texts
+from "./transcript" import (
+    Entry,
+    EntryLines,
+    empty_entry_lines,
+    build_lines,
+    assemble_cached,
+    validate_and_count,
+    window_lines,
+    transcript_texts,
+)
 from "./theme" import default_theme
 
 fun line_text(lines: list[Line], i: int) -> str {

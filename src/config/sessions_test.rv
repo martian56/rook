@@ -2,7 +2,20 @@ import std.string
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
 from std.env import get_env, has_env
-from "./sessions" import SessionMeta, Loaded, new_session_id, save_session, save_session_to, list_sessions, list_sessions_from, load_session, load_session_from, delete_session_from, session_cwd, same_dir
+from "./sessions" import (
+    SessionMeta,
+    Loaded,
+    new_session_id,
+    save_session,
+    save_session_to,
+    list_sessions,
+    list_sessions_from,
+    load_session,
+    load_session_from,
+    delete_session_from,
+    session_cwd,
+    same_dir,
+)
 from "github.com/martian56/aviary/message" import Message, ToolCall, role_str
 from "../ui/transcript" import Entry
 

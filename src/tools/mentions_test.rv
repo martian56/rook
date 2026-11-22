@@ -1,7 +1,14 @@
 import std.string
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
-from "./mentions" import Mention, current_mention, fuzzy_match, mentioned_paths, expand_mentions, list_files
+from "./mentions" import (
+    Mention,
+    current_mention,
+    fuzzy_match,
+    mentioned_paths,
+    expand_mentions,
+    list_files,
+)
 
 fun test_current_mention_detects_a_trailing_at_token() {
     let m = current_mention("look at @src/ma")

@@ -2,7 +2,15 @@ import std.string
 from std.test import assert_eq_str, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
 from "github.com/martian56/aviary/message" import ToolCall
-from "./permissions" import Verdict, check_permission_from_roots, verdict, verdict_with_allow_trust, rule_matches, glob_match, subject_of
+from "./permissions" import (
+    Verdict,
+    check_permission_from_roots,
+    verdict,
+    verdict_with_allow_trust,
+    rule_matches,
+    glob_match,
+    subject_of,
+)
 
 fun tag(v: Verdict) -> str {
     return match v {

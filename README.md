@@ -128,7 +128,9 @@ Models are `provider/model` strings (aviary's format).
 ```
 
 `base_url` (or `ROOK_BASE_URL`) points at any OpenAI-compatible endpoint,
-for a local or self-hosted model.
+for a local or self-hosted model. `context_window` (a token count) tells
+rook the window of a model it does not recognize, so long sessions compact
+at the right point: `{ "model": "custom/my-model", "context_window": 32000 }`.
 
 The provider's key comes from its environment variable
 (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and so on), or
@@ -596,8 +598,8 @@ tests and commit both the generator and generated Raven module together.
 
 ## Known limits
 
-grep is literal substring matching, not regex. A subagent's own request
-(non-streaming) stops at its next tool round rather than mid-flight.
+grep uses RE2 regular expressions, so it has no backreferences or lookaround,
+and it returns at most 50 matches; prefix a pattern with `(?i)` to ignore case.
 
 ## License
 

@@ -6,6 +6,8 @@
 
 import std.string
 from std.http import request_with_timeout, HttpResponse
+from std.sync import Mutex, sleep_millis
+from "github.com/martian56/aviary/request" import CancelToken
 
 let TIMEOUT_MS: int = 15000
 let MAX_TEXT: int = 6000
@@ -54,16 +56,77 @@ fun web_fetch_approval_detail(url: str) -> str {
 
 // Fetch `url` and return its readable text, truncated. HTML is stripped to
 // text; other bodies come back as-is.
-fun web_fetch(url: str) -> str {
+fun web_fetch(url: str) -> str = web_fetch_cancelable(url, CancelToken.new())
+
+fun web_fetch_cancelable(url: str, token: CancelToken) -> str {
     let u = web_fetch_url(url)
     if u == "" {
         return "error: web_fetch needs a url"
     }
     let headers = "User-Agent: rook/1.0\nAccept: text/html,text/plain"
-    return match request_with_timeout("GET", u, "", headers, TIMEOUT_MS) {
-        case Ok(resp) { _readable(resp) }
-        case Err(e) { "error: could not fetch ${u}: ${e.message}" }
+    let got = _get(u, headers, token)
+    if got.error == "interrupted" {
+        return "error: interrupted"
     }
+    if got.error != "" {
+        return "error: could not fetch ${u}: ${got.error}"
+    }
+    return _readable(got.resp.unwrap())
+}
+
+// A GET that a canceled token abandons at once. The request runs on its own
+// goroutine; after a cancel its eventual result is dropped.
+class Fetch {
+    lock: Mutex
+    done: bool
+    resp: Option[HttpResponse]
+    error: str
+}
+
+fun _get(url: str, headers: str, token: CancelToken) -> Fetch {
+    let f = Fetch(Mutex.new(), false, None, "")
+    spawn {
+        // Search the web and list the top results (title and link).
+        // Strip HTML to readable text: drop script and style blocks, turn block
+        // boundaries into newlines, remove the remaining tags, decode the common
+        // entities, and collapse whitespace.
+        // Parse DuckDuckGo HTML results into a numbered list of title and link.
+        // A DuckDuckGo result href is often a redirect //duckduckgo.com/l/?uddg=<encoded>;
+        // pull the real URL out and decode it. A plain href is returned as-is, with
+        // a scheme added to a protocol-relative one.
+        // Unclosed: drop the rest.
+        // Collapse whitespace: trim each line, drop empty lines, and squeeze runs of
+        // spaces and tabs inside a line to one space.
+        _fetch_into(f, url, headers)
+    }
+    while true {
+        f.lock.lock()
+        let done = f.done
+        f.lock.unlock()
+        if done {
+            return f
+        }
+        if token.canceled() {
+            return Fetch(Mutex.new(), true, None, "interrupted")
+        }
+        sleep_millis(20)
+    }
+    return f
+}
+
+fun _fetch_into(f: Fetch, url: str, headers: str) {
+    let result = request_with_timeout("GET", url, "", headers, TIMEOUT_MS)
+    f.lock.lock()
+    match result {
+        case Ok(resp) {
+            f.resp = Some(resp)
+        }
+        case Err(e) {
+            f.error = e.message
+        }
+    }
+    f.done = true
+    f.lock.unlock()
 }
 
 fun _url_host(url: str) -> str {
@@ -550,23 +613,29 @@ fun _readable(resp: HttpResponse) -> str {
     return body
 }
 
-// Search the web and list the top results (title and link).
-fun web_search(query: str) -> str {
+fun web_search(query: str) -> str = web_search_cancelable(query, CancelToken.new())
+
+fun web_search_cancelable(query: str, token: CancelToken) -> str {
     let q = query.trim()
     if q == "" {
         return "error: web_search needs a query"
     }
     let url = "https://html.duckduckgo.com/html/?q=${_url_encode(q)}"
     let headers = "User-Agent: rook/1.0\nAccept: text/html"
-    return match request_with_timeout("GET", url, "", headers, TIMEOUT_MS) {
-        case Ok(resp) { "error: search returned ${resp.status_code} ${resp.status_text}" if resp.status_code >= 400 else parse_ddg(resp.body) }
-        case Err(e) { "error: could not search: ${e.message}" }
+    let got = _get(url, headers, token)
+    if got.error == "interrupted" {
+        return "error: interrupted"
     }
+    if got.error != "" {
+        return "error: could not search: ${got.error}"
+    }
+    let resp = got.resp.unwrap()
+    if resp.status_code >= 400 {
+        return "error: search returned ${resp.status_code} ${resp.status_text}"
+    }
+    return parse_ddg(resp.body)
 }
 
-// Strip HTML to readable text: drop script and style blocks, turn block
-// boundaries into newlines, remove the remaining tags, decode the common
-// entities, and collapse whitespace.
 fun html_to_text(html: str) -> str {
     var s = _remove_block(html, "<script", "</script>")
     s = _remove_block(s, "<style", "</style>")
@@ -581,7 +650,6 @@ fun html_to_text(html: str) -> str {
     return _collapse(s)
 }
 
-// Parse DuckDuckGo HTML results into a numbered list of title and link.
 fun parse_ddg(html: str) -> str {
     let out: list[str] = []
     var s = html
@@ -631,9 +699,6 @@ fun parse_ddg(html: str) -> str {
     return text
 }
 
-// A DuckDuckGo result href is often a redirect //duckduckgo.com/l/?uddg=<encoded>;
-// pull the real URL out and decode it. A plain href is returned as-is, with
-// a scheme added to a protocol-relative one.
 fun _ddg_url(raw: str) -> str {
     let key = "uddg="
     let at = raw.index_of(key)
@@ -662,46 +727,66 @@ fun _looks_like_html(body: str) -> bool {
     )
 }
 
+// Drop every `open ... close` block (scripts, styles) in one pass. A block
+// with no close runs to the end of the text.
 fun _remove_block(s: str, open: str, close: str) -> str {
-    var out = s
-    var guard = 0
-    while guard < 1000 {
-        let a = out.index_of(open)
+    let kept: list[str] = []
+    var from = 0
+    while true {
+        let a = _find_from(s, open, from)
         if a < 0 {
-            return out
+            kept.push(s.substring(from, s.length()))
+            break
         }
-        let tail = out.substring(a, out.length())
-        let b = tail.index_of(close)
+        kept.push(s.substring(from, a))
+        let b = _find_from(s, close, a)
         if b < 0 {
-            // Unclosed: drop the rest.
-            return out.substring(0, a)
+            break
         }
-        out = out.substring(0, a).concat(tail.substring(b + close.length(), tail.length()))
-        guard = guard + 1
+        from = b + close.length()
     }
-    return out
+    return "".join(kept)
 }
 
+// The first index of `needle` at or after `start`, or -1.
+fun _find_from(s: str, needle: str, start: int) -> int {
+    let last = s.length() - needle.length()
+    var i = start
+    while i <= last {
+        if s.matches_at(needle, i) {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+// Text outside `<...>` tags, copied as whole runs.
 fun _strip_tags(s: str) -> str {
-    var out = ""
+    let kept: list[str] = []
     var depth = 0
+    var start = 0
     var i = 0
-    while i < s.length() {
+    let n = s.length()
+    while i < n {
         let c = s.byte_at(i)
         if c == 60 {
-            depth = depth + 1
-        } else if c == 62 {
-            if depth > 0 {
-                depth = depth - 1
+            if depth == 0 and i > start {
+                kept.push(s.substring(start, i))
             }
-        } else {
+            depth = depth + 1
+        } else if c == 62 and depth > 0 {
+            depth = depth - 1
             if depth == 0 {
-                out = out.concat(s.substring(i, i + 1))
+                start = i + 1
             }
         }
         i = i + 1
     }
-    return out
+    if depth == 0 and start < n {
+        kept.push(s.substring(start, n))
+    }
+    return "".join(kept)
 }
 
 fun _decode_entities(s: str) -> str {
@@ -711,8 +796,6 @@ fun _decode_entities(s: str) -> str {
     return out
 }
 
-// Collapse whitespace: trim each line, drop empty lines, and squeeze runs of
-// spaces and tabs inside a line to one space.
 fun _collapse(s: str) -> str {
     let lines = s.lines()
     var out = ""

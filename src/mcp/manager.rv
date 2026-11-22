@@ -12,10 +12,18 @@
 import std.string
 from std.sync import Mutex, mutex
 from std.json import JsonValue, parse
+from "github.com/martian56/aviary/request" import CancelToken
 from "github.com/martian56/aviary/message" import ToolDef
 from "github.com/martian56/aviary/jsonutil" import Obj, field, as_str, as_list, is_null
 from "./config" import ServerSpec, configured_servers
-from "./client" import McpClient, McpTool, McpResource, McpPrompt, connect_with_env_file, failed_client
+from "./client" import (
+    McpClient,
+    McpTool,
+    McpResource,
+    McpPrompt,
+    connect_with_env_file,
+    failed_client,
+)
 from "./launch" import launch_for, env_error
 from "./transport" import enc_str
 from "../agents/limits" import cap_text
@@ -102,13 +110,13 @@ fun is_mcp_tool(name: str) -> bool {
 
 // Invoke an MCP tool by its namespaced name, returning the text result (or an
 // error string). Routes to the owning server's tools/call.
-fun call_mcp_tool(name: str, arguments: str) -> str {
+fun call_mcp_tool(name: str, arguments: str, token: CancelToken) -> str {
     ensure_started()
     let clients = _clients()
     return match route_in(clients, name) {
         case Some(r) {
             match _find(clients, r.server) {
-                case Some(c) { _do_call(c, r.tool, arguments) }
+                case Some(c) { _do_call(c, r.tool, arguments, token) }
                 case None { "error: MCP server '${r.server}' is not connected" }
             }
         }
@@ -266,7 +274,13 @@ fun is_resource_tool(name: str) -> bool {
 
 // Read a resource by uri, from `server` when given, else from whichever
 // connected server lists it. Returns its text (or an error string).
-fun read_resource(server: str, uri: str) -> str {
+fun read_resource(server: str, uri: str) -> str = read_resource_cancelable(
+    server,
+    uri,
+    CancelToken.new(),
+)
+
+fun read_resource_cancelable(server: str, uri: str, token: CancelToken) -> str {
     if uri.trim() == "" {
         return "error: a resource uri is required"
     }
@@ -277,7 +291,7 @@ fun read_resource(server: str, uri: str) -> str {
         return route.error
     }
     return match _find(clients, route.server) {
-        case Some(c) { _read_resource_from(c, uri) }
+        case Some(c) { _read_resource_from(c, uri, token) }
         case None { "error: MCP server '${route.server}' is not connected" }
     }
 }
@@ -294,7 +308,7 @@ fun get_prompt(server: str, name: str, args_json: str) -> str {
                 args = "{}"
             }
             let params = "{\"name\":${enc_str(name)},\"arguments\":${args}}"
-            let resp = c.call("prompts/get", params, CALL_TIMEOUT)
+            let resp = c.call("prompts/get", params, CALL_TIMEOUT, CancelToken.new())
             format_prompt(resp.result) if resp.ok else "error: ${resp.error}"
         }
         case None { "error: MCP server '${server}' is not connected" }
@@ -393,8 +407,8 @@ fun resource_route(clients: list[McpClient], server: str, uri: str) -> ResourceR
     )
 }
 
-fun _read_resource_from(c: McpClient, uri: str) -> str {
-    let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT)
+fun _read_resource_from(c: McpClient, uri: str, token: CancelToken) -> str {
+    let resp = c.call("resources/read", "{\"uri\":${enc_str(uri)}}", CALL_TIMEOUT, token)
     if resp.ok {
         return format_resource(resp.result)
     }
@@ -463,13 +477,13 @@ fun _resource_schema() -> JsonValue {
     ).build()
 }
 
-fun _do_call(c: McpClient, tool: str, arguments: str) -> str {
+fun _do_call(c: McpClient, tool: str, arguments: str, token: CancelToken) -> str {
     var args = arguments
     if args.trim() == "" {
         args = "{}"
     }
     let params = "{\"name\":${enc_str(tool)},\"arguments\":${args}}"
-    let resp = c.call("tools/call", params, CALL_TIMEOUT)
+    let resp = c.call("tools/call", params, CALL_TIMEOUT, token)
     if not resp.ok {
         return "error: ${resp.error}"
     }

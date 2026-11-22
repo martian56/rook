@@ -9,6 +9,7 @@ import std.string
 from std.sync import Mutex, mutex, sleep_millis
 from std.json import JsonValue, parse, stringify
 from std.process import Child
+from "github.com/martian56/aviary/request" import CancelToken
 from "github.com/martian56/aviary/jsonutil" import field, as_str
 from "./framing" import LineBuffer
 
@@ -103,23 +104,76 @@ class McpConn {
     buf: LineBuffer
     next_id: int
     lock: Mutex
+    // Held by the one request in flight. Waiters poll it rather than block on
+    // the lock, so Esc can release a call queued behind a slow one.
+    busy: bool
 }
 
 impl McpConn {
     fun new(child: Child) -> McpConn {
-        return McpConn(child: child, buf: LineBuffer.new(), next_id: 1, lock: mutex())
+        return McpConn(child: child, buf: LineBuffer.new(), next_id: 1, lock: mutex(), busy: false)
     }
 
     // Send a request and wait for its response, up to timeout_ms. Serialized
     // per connection so concurrent callers cannot interleave on one stdin.
     fun request(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
-        self.lock.lock()
-        let resp = self._request_locked(method, params, timeout_ms)
-        self.lock.unlock()
+        return self.request_cancelable(method, params, timeout_ms, CancelToken.new())
+    }
+
+    // A request that gives up as soon as `token` is canceled (Esc). The
+    // server's late reply is dropped by id, so the connection stays usable.
+    fun request_cancelable(
+        self,
+        method: str,
+        params: str,
+        timeout_ms: int,
+        token: CancelToken,
+    ) -> RpcResponse {
+        if not self._acquire(token) {
+            return RpcResponse(ok: false, error: "interrupted", result: JsonValue.Null, id: 0 - 1)
+        }
+        let resp = self._request_locked(method, params, timeout_ms, token)
+        self._release()
         return resp
     }
 
-    fun _request_locked(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
+    // Wait for the connection, giving up when `token` is canceled. A canceled
+    // token is checked after acquiring too, so a request Esc already stopped
+    // is never written to the server.
+    fun _acquire(self, token: CancelToken) -> bool {
+        while true {
+            if token.canceled() {
+                return false
+            }
+            self.lock.lock()
+            if not self.busy {
+                self.busy = true
+                self.lock.unlock()
+                if token.canceled() {
+                    self._release()
+                    return false
+                }
+                return true
+            }
+            self.lock.unlock()
+            sleep_millis(5)
+        }
+        return false
+    }
+
+    fun _release(self) {
+        self.lock.lock()
+        self.busy = false
+        self.lock.unlock()
+    }
+
+    fun _request_locked(
+        self,
+        method: str,
+        params: str,
+        timeout_ms: int,
+        token: CancelToken,
+    ) -> RpcResponse {
         let id = self.next_id
         self.next_id = self.next_id + 1
         if not self.child.write_stdin(build_request(id, method, params)) {
@@ -130,23 +184,26 @@ impl McpConn {
                 id: 0 - 1,
             )
         }
-        return self.read_response(id, timeout_ms)
+        return self.read_response(id, timeout_ms, token)
     }
 
     // Send a notification; nothing comes back.
     fun notify(self, method: str, params: str) {
-        self.lock.lock()
+        let _ = self._acquire(CancelToken.new())
         let ignored = self.child.write_stdin(build_notification(method, params))
-        self.lock.unlock()
+        self._release()
         return
     }
 
     // Read until the response for `want_id` arrives, the server exits, or the
     // timeout passes. Responses for a different id (a stale reply to an earlier
     // request that timed out) are discarded rather than returned.
-    fun read_response(self, want_id: int, timeout_ms: int) -> RpcResponse {
+    fun read_response(self, want_id: int, timeout_ms: int, token: CancelToken) -> RpcResponse {
         var waited = 0
         while waited < timeout_ms {
+            if token.canceled() {
+                return RpcResponse(ok: false, error: "interrupted", result: JsonValue.Null, id: 0 - 1)
+            }
             self.buf.push(self.child.read_stdout())
             match self._take_matching(want_id) {
                 case Some(resp) {

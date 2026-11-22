@@ -12,7 +12,14 @@ from "github.com/martian56/aviary/request" import ChatRequest
 from "github.com/martian56/aviary/message" import Message, ToolCall, ToolDef
 from "./state" import AgentState, DisplayEvent
 from "./session" import request_timeout_ms
-from "../tools/registry" import tools, needs_approval, call_needs_approval, call_approval_detail, dispatch_cancelable, label
+from "../tools/registry" import (
+    tools,
+    needs_approval,
+    call_needs_approval,
+    call_approval_detail,
+    dispatch_cancelable,
+    label,
+)
 from "../tools/preview" import change_preview, append_preview
 from "../tools/permissions" import Verdict, check_permission
 from "../hooks/hooks" import run_pre_tool_hooks_for_agent, fire_hooks_for_agent

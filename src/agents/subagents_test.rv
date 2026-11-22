@@ -1,7 +1,18 @@
 import std.string
 from std.test import assert_eq_str, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
-from "./subagents" import Subagent, load_subagents, parse_subagent, split_tools, resolve_tools, read_only_tools, subagent_index, subagents_prompt, builtin_subagents, all_subagents
+from "./subagents" import (
+    Subagent,
+    load_subagents,
+    parse_subagent,
+    split_tools,
+    resolve_tools,
+    read_only_tools,
+    subagent_index,
+    subagents_prompt,
+    builtin_subagents,
+    all_subagents,
+)
 from "./front" import parse_front, front_get
 
 let DOC: str = "---\nname: reviewer\ndescription: critique a diff\ntools: read_file, grep, list_dir\nmodel: openai/gpt-5.5\n---\nYou are a code reviewer. Find defects."

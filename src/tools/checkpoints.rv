@@ -16,6 +16,9 @@ class Snapshot {
     path: str
     existed: bool
     content: str
+    // Why the file could not be recorded ("" when it was), so /rewind can
+    // say which changes it cannot undo instead of skipping them silently.
+    skipped: str = ""
 }
 
 class CheckpointStore {
@@ -62,23 +65,49 @@ fun checkpoint_file(path: str) {
     }
     let existed = exists(path)
     var content = ""
+    var skipped = ""
     if existed {
         match read(path) {
             case Ok(t) {
                 content = t
             }
             case Err(e) {
-                return
+                skipped = "unreadable: ${e.message()}"
             }
         }
         if content.length() > MAX_SNAPSHOT_BYTES {
-            return
+            content = ""
+            skipped = "over ${MAX_SNAPSHOT_BYTES / 1024} KiB"
         }
     }
     STORE.lock.lock()
-    if STORE.snaps.len() < MAX_SNAPSHOTS {
-        STORE.snaps.push(Snapshot(batch: STORE.batch, path: path, existed: existed, content: content))
+    // A full store drops its oldest finished turn, so recent turns stay
+    // undoable. The current turn is never evicted: its first pre-images are
+    // what /rewind must restore. When the current turn alone fills the store,
+    // later files are recorded as unprotected rather than dropped silently.
+    while STORE.snaps.len() >= MAX_SNAPSHOTS and STORE.snaps[0].batch != STORE.batch {
+        let oldest = STORE.snaps[0].batch
+        let kept: list[Snapshot] = []
+        for s in STORE.snaps {
+            if s.batch != oldest {
+                kept.push(s)
+            }
+        }
+        STORE.snaps = kept
     }
+    if STORE.snaps.len() >= MAX_SNAPSHOTS and skipped == "" {
+        content = ""
+        skipped = "checkpoint store full for this turn"
+    }
+    STORE.snaps.push(
+        Snapshot(
+            batch: STORE.batch,
+            path: path,
+            existed: existed,
+            content: content,
+            skipped: skipped,
+        ),
+    )
     STORE.lock.unlock()
     return
 }
@@ -113,30 +142,49 @@ fun rewind_last_batch() -> str {
     }
     STORE.snaps = keep
     STORE.lock.unlock()
-    var restored = ""
-    i = 0
-    while i < todo.len() {
-        let s = todo[i]
+    let restored: list[str] = []
+    let failed: list[str] = []
+    let unprotected: list[str] = []
+    for s in todo {
+        if s.skipped != "" {
+            unprotected.push("${s.path} (${s.skipped})")
+            continue
+        }
+        var error = ""
         if s.existed {
             match write(s.path, s.content) {
                 case Ok(ok) {}
-                case Err(e) {}
+                case Err(e) {
+                    error = e.message()
+                }
             }
-        } else {
-            if exists(s.path) {
-                match remove_file(s.path) {
-                    case Ok(ok) {}
-                    case Err(e) {}
+        } else if exists(s.path) {
+            match remove_file(s.path) {
+                case Ok(ok) {}
+                case Err(e) {
+                    error = e.message()
                 }
             }
         }
-        if restored != "" {
-            restored = "${restored}, "
-        }
-        restored = restored.concat(s.path)
-        i = i + 1
+        restored.push(s.path) if error == "" else failed.push("${s.path} (${error})")
     }
-    return "restored ${todo.len()} file(s): ${restored}"
+    return rewind_summary(restored, failed, unprotected)
+}
+
+// The /rewind report: what was restored, what failed, and what was never
+// recorded, so a partial undo never reads as a complete one.
+fun rewind_summary(restored: list[str], failed: list[str], unprotected: list[str]) -> str {
+    var out = "restored ${restored.len()} file(s)"
+    if restored.len() > 0 {
+        out += ": ${", ".join(restored)}"
+    }
+    if failed.len() > 0 {
+        out += "; could not restore ${failed.len()}: ${", ".join(failed)}"
+    }
+    if unprotected.len() > 0 {
+        out += "; not checkpointed, so left as changed: ${", ".join(unprotected)}"
+    }
+    return out
 }
 
 // How many batches still have snapshots, for the /rewind notice.
