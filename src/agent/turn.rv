@@ -503,12 +503,12 @@ fun _display(call: ToolCall, result: str) -> str {
     let is_edit = call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit"
     if is_edit and not result.starts_with("error") {
         // The summary is the first non-blank line; the diff follows it.
-        let t = result.trim_start()
+        let t = _skip_blank_lines(result)
         let nl = t.index_of("\n")
         return _short(t) if nl < 0 else "${_short(t)}\n${t.substring(nl + 1, t.length())}"
     }
     // Blank lines before the output would leave the summary row empty.
-    var body = result.trim_start()
+    var body = _skip_blank_lines(result)
     if body.length() > MAX_SHOWN_OUTPUT {
         body = body.substring(0, _char_floor(body, MAX_SHOWN_OUTPUT)) + "\n…"
     }
@@ -524,7 +524,7 @@ fun _display(call: ToolCall, result: str) -> str {
 }
 
 fun _is_message(result: str) -> bool {
-    let t = result.trim_start()
+    let t = _skip_blank_lines(result)
     for lead in [
         "no matches",
         "(empty)",
@@ -562,6 +562,17 @@ fun _char_floor(s: str, at: int) -> int {
         i -= 1
     }
     return i
+}
+
+// Drops leading blank lines but keeps the first real line's indentation.
+fun _skip_blank_lines(s: str) -> str {
+    var rest = s
+    var nl = rest.index_of("\n")
+    while nl >= 0 and rest.substring(0, nl).trim() == "" {
+        rest = rest.substring(nl + 1, rest.length())
+        nl = rest.index_of("\n")
+    }
+    return rest
 }
 
 // A compact one-liner for the tool bullet: the first non-blank line,

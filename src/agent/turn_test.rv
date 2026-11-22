@@ -61,6 +61,10 @@ fun test_non_output_results_are_not_counted() {
 fun test_blank_leading_output_and_long_edit_errors() {
     let mcp = ToolCall(id: "m", name: "mcp__srv__start", arguments: "{}")
     assert_eq_str(_display(mcp, "\n\nready\nmore").split("\n")[0], "ready")
+    let read = ToolCall(id: "r", name: "read_file", arguments: "{}")
+    assert_true(
+        _display(read, "    def foo():\n        pass").split("\n").any(l => l == "    def foo():"),
+    )
     let edit = ToolCall(id: "e", name: "edit_file", arguments: "{}")
     let shown = _display(edit, "error: failed\n" + "x" * 9000)
     assert_true(shown.length() < 8100)
