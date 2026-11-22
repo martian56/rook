@@ -2,7 +2,13 @@ import std.string
 from std.http import Server, Request, Response
 from std.time import sleep_millis
 from std.test import assert_true, assert_false, assert_eq_str
-from "./web" import html_to_text, parse_ddg, web_fetch, web_fetch_approval_detail, web_fetch_needs_approval
+from "./web" import (
+    html_to_text,
+    parse_ddg,
+    web_fetch,
+    web_fetch_approval_detail,
+    web_fetch_needs_approval,
+)
 
 let PAGE: str = "<html><head><style>.x{color:red}</style><script>var a=1;</script></head><body><h1>Title</h1><p>Hello &amp; welcome.</p><div>Line   two</div></body></html>"
 
@@ -104,4 +110,15 @@ fun test_web_fetch_approval_detail_names_target() {
     let detail = web_fetch_approval_detail("http://169.254.169.254/latest/meta-data/")
     assert_true(detail.contains("link-local IPv4"))
     assert_true(detail.contains("169.254.169.254"))
+}
+
+fun test_html_to_text_strips_every_script_block() {
+    var html = ""
+    for i in range(1500) {
+        html += "<p>row ${i}</p><script>secret_${i}()</script>"
+    }
+    let text = html_to_text(html)
+    assert_false(text.contains("secret_"))
+    assert_true(text.contains("row 0"))
+    assert_true(text.contains("row 1499"))
 }

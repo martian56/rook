@@ -1,8 +1,26 @@
 import std.string
 from std.test import assert_eq_str, assert_true, assert_false
 from std.fs import read, write, remove_file, exists
-from "./config" import provider_of, key_env, key_present, key_needed, key_needed_with, auth_with_key, save_key_to_path, _check_rook_json, _attribution_of
-from "./catalog" import catalog, filter_catalog, index_of, catalog_label, catalog_labels, supports_tools, model_capability_warning
+from "./config" import (
+    provider_of,
+    key_env,
+    key_present,
+    key_needed,
+    key_needed_with,
+    auth_with_key,
+    save_key_to_path,
+    _check_rook_json,
+    _attribution_of,
+)
+from "./catalog" import (
+    catalog,
+    filter_catalog,
+    index_of,
+    catalog_label,
+    catalog_labels,
+    supports_tools,
+    model_capability_warning,
+)
 from "./direct_catalog" import direct_catalog
 from "./openrouter_catalog" import openrouter_catalog, openrouter_models_without_tools
 

@@ -13,6 +13,7 @@ from "github.com/martian56/aviary/request" import CancelToken
 from "github.com/martian56/aviary/request" import ChatRequest
 from "github.com/martian56/aviary/message" import Message, Role
 from "./state" import AgentState, DisplayEvent
+from "../config/config" import context_window_override
 
 // Keep this many recent user turns verbatim; summarize everything before.
 let KEEP_TURNS: int = 4
@@ -27,9 +28,15 @@ let SUMMARY_INSTRUCTION: str = "Summarize the conversation so far into a compact
 // older turns with a summary. Returns how many messages were summarized away
 // (0 when nothing was compacted). Runs on the turn goroutine before the
 // request is built.
-fun maybe_compact(st: AgentState, model: str, api_key: str, base_url: str) -> int {
+fun maybe_compact(
+    st: AgentState,
+    model: str,
+    api_key: str,
+    base_url: str,
+    overhead_chars: int,
+) -> int {
     let msgs = st.messages()
-    if not should_compact(msgs, model) {
+    if not should_compact(msgs, model, overhead_chars) {
         return 0
     }
     // The turn's cancel token, so Esc lands during the summarization request
@@ -92,25 +99,50 @@ fun estimate_tokens(msgs: list[Message]) -> int {
 
 // The context window for a model, by family, with a conservative default.
 fun context_window(model: str) -> int {
+    let configured = context_window_override()
+    if configured > 0 {
+        return configured
+    }
+    return family_window(model)
+}
+
+// The window for a model family. An unrecognized model gets DEFAULT_WINDOW;
+// rook.json "context_window" corrects one rook does not know.
+fun family_window(model: str) -> int {
     let m = model.to_lower()
-    if m.contains("claude") {
-        return 200000
-    }
-    if m.contains("gemini") {
-        return 1000000
-    }
-    if m.contains("gpt-4o") or m.contains("gpt-4.1") or m.contains("o1") or m.contains("o3") or m.contains(
-        "gpt-4-turbo",
-    ) {
-        return 128000
+    let table: list[(str, int)] = [
+        ("gemini", 1000000),
+        ("gpt-5", 400000),
+        ("gpt-4.1", 1000000),
+        ("claude", 200000),
+        ("grok-4", 256000),
+        ("grok-build", 256000),
+        ("kimi-k", 256000),
+        ("command-a", 256000),
+        ("fugu", 200000),
+        ("deepseek", 128000),
+        ("mistral", 128000),
+        ("ministral", 128000),
+        ("sonar", 128000),
+        ("gpt-4o", 128000),
+        ("o1", 128000),
+        ("o3", 128000),
+        ("gpt-4-turbo", 128000),
+    ]
+    for (needle, window) in table {
+        if m.contains(needle) {
+            return window
+        }
     }
     return DEFAULT_WINDOW
 }
 
-// Whether the conversation is large enough to compact.
-fun should_compact(msgs: list[Message], model: str) -> bool {
+// Whether a request would be large enough to compact first. `overhead_chars`
+// is what the request adds around the conversation: the system prompt and
+// the tool schemas.
+fun should_compact(msgs: list[Message], model: str, overhead_chars: int) -> bool {
     let budget = (context_window(model) * COMPACT_RATIO_PCT) / 100
-    return estimate_tokens(msgs) > budget
+    return estimate_tokens(msgs) + overhead_chars / 4 > budget
 }
 
 // The index at which the last `keep_turns` user turns begin: everything

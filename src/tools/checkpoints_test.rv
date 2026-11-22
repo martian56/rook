@@ -1,7 +1,14 @@
 import std.string
 from std.test import assert_true, assert_eq_str
 from std.fs import read, write, exists, remove_file
-from "./checkpoints" import begin_checkpoint_batch, checkpoint_file, rewind_last_batch, checkpoint_batches, clear_checkpoints
+from "./checkpoints" import (
+    begin_checkpoint_batch,
+    checkpoint_file,
+    rewind_last_batch,
+    rewind_summary,
+    checkpoint_batches,
+    clear_checkpoints,
+)
 
 fun test_rewind_restores_edits_and_deletes_created_files() {
     clear_checkpoints()
@@ -45,5 +52,50 @@ fun test_batches_rewind_newest_first() {
     }
     assert_eq_str(rewind_last_batch(), "")
     remove_file("_rook_ckpt_c.txt")
+    return
+}
+
+fun test_oversized_file_is_reported_not_silently_skipped() {
+    clear_checkpoints()
+    write("_rook_ckpt_big.txt", "x" * 600000)
+    begin_checkpoint_batch()
+    checkpoint_file("_rook_ckpt_big.txt")
+    write("_rook_ckpt_big.txt", "changed")
+    let summary = rewind_last_batch()
+    assert_true(summary.contains("restored 0 file(s)"))
+    assert_true(summary.contains("not checkpointed"))
+    assert_true(summary.contains("_rook_ckpt_big.txt (over 512 KiB)"))
+    remove_file("_rook_ckpt_big.txt")
+    return
+}
+
+fun test_a_full_store_drops_its_oldest_turn() {
+    clear_checkpoints()
+    var n = 0
+    while n < 250 {
+        begin_checkpoint_batch()
+        checkpoint_file("_rook_ckpt_many_${n}.txt")
+        n += 1
+    }
+    write("_rook_ckpt_late.txt", "before")
+    begin_checkpoint_batch()
+    checkpoint_file("_rook_ckpt_late.txt")
+    write("_rook_ckpt_late.txt", "after")
+    let _ = rewind_last_batch()
+    match read("_rook_ckpt_late.txt") {
+        case Ok(t) { assert_eq_str(t, "before") }
+        case Err(e) { assert_true(false) }
+    }
+    remove_file("_rook_ckpt_late.txt")
+    clear_checkpoints()
+    return
+}
+
+fun test_summary_lists_failures_separately() {
+    let s = rewind_summary(["a.rv"], ["b.rv (denied)"], ["c.bin (over 512 KiB)"])
+    assert_eq_str(
+        s,
+        "restored 1 file(s): a.rv; could not restore 1: b.rv (denied); not checkpointed, so left as changed: c.bin (over 512 KiB)",
+    )
     return
 }

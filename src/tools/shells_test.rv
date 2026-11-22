@@ -3,7 +3,22 @@ from std.test import assert_true, assert_eq_int, assert_eq_str
 from std.time import sleep_millis
 from std.env import os_name
 from std.json import JsonValue, parse
-from "./shells" import ShellInfo, run_background, run_background_with_limit, parse_background_shell_limit, shell_count, list_shells, read_shell, shells_list_text, kill_shell, shell_tail, shells_note, cap_output, kill_all_shells, Capped
+from "./shells" import (
+    ShellInfo,
+    run_background,
+    run_background_with_limit,
+    parse_background_shell_limit,
+    shell_count,
+    list_shells,
+    read_shell,
+    shells_list_text,
+    kill_shell,
+    shell_tail,
+    shells_note,
+    cap_output,
+    kill_all_shells,
+    Capped,
+)
 
 fun test_background_command_returns_an_id_immediately() {
     let before = shell_count()

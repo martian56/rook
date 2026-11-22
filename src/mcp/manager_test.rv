@@ -3,7 +3,18 @@ from std.json import parse, JsonValue
 from std.test import assert_eq_str, assert_eq_int, assert_true
 from "./client" import McpClient, McpTool, McpResource, McpPrompt
 from "./config" import ServerSpec
-from "./manager" import Route, exposed_name, tools_from, route_in, format_tool_result, is_mcp_tool, format_resource, format_prompt, status_from, resource_route
+from "./manager" import (
+    Route,
+    exposed_name,
+    tools_from,
+    route_in,
+    format_tool_result,
+    is_mcp_tool,
+    format_resource,
+    format_prompt,
+    status_from,
+    resource_route,
+)
 
 fun _client() -> McpClient {
     let tools = [

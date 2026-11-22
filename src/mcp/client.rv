@@ -10,6 +10,7 @@ from std.process import Child, start
 from std.fs import exists, remove_file
 from std.sync import sleep_millis
 from std.time import now_millis
+from "github.com/martian56/aviary/request" import CancelToken
 from "github.com/martian56/aviary/jsonutil" import field, as_str, as_list, is_null
 from "./transport" import McpConn, RpcResponse
 
@@ -54,9 +55,9 @@ class McpClient {
 impl McpClient {
     // Call a method on the connected server (used to invoke a tool). Errors
     // when the client never connected.
-    fun call(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
+    fun call(self, method: str, params: str, timeout_ms: int, token: CancelToken) -> RpcResponse {
         return match self.conn {
-            case Some(c) { c.request(method, params, timeout_ms) }
+            case Some(c) { c.request_cancelable(method, params, timeout_ms, token) }
             case None {
                 RpcResponse(ok: false, error: "not connected", result: JsonValue.Null, id: 0 - 1)
             }

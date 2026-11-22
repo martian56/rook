@@ -1,6 +1,14 @@
 import std.string
 from std.test import assert_eq_str, assert_eq_int, assert_true
-from "./pricing" import Price, price_for, cost_micros, cost_micros_cached, format_usd, format_tokens, usage_label
+from "./pricing" import (
+    Price,
+    price_for,
+    cost_micros,
+    cost_micros_cached,
+    format_usd,
+    format_tokens,
+    usage_label,
+)
 
 fun test_price_matches_across_providers() {
     assert_true(price_for("openrouter/anthropic/claude-sonnet-5").known)

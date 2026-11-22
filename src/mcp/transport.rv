@@ -9,6 +9,7 @@ import std.string
 from std.sync import Mutex, mutex, sleep_millis
 from std.json import JsonValue, parse, stringify
 from std.process import Child
+from "github.com/martian56/aviary/request" import CancelToken
 from "github.com/martian56/aviary/jsonutil" import field, as_str
 from "./framing" import LineBuffer
 
@@ -113,13 +114,31 @@ impl McpConn {
     // Send a request and wait for its response, up to timeout_ms. Serialized
     // per connection so concurrent callers cannot interleave on one stdin.
     fun request(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
+        return self.request_cancelable(method, params, timeout_ms, CancelToken.new())
+    }
+
+    // A request that gives up as soon as `token` is canceled (Esc). The
+    // server's late reply is dropped by id, so the connection stays usable.
+    fun request_cancelable(
+        self,
+        method: str,
+        params: str,
+        timeout_ms: int,
+        token: CancelToken,
+    ) -> RpcResponse {
         self.lock.lock()
-        let resp = self._request_locked(method, params, timeout_ms)
+        let resp = self._request_locked(method, params, timeout_ms, token)
         self.lock.unlock()
         return resp
     }
 
-    fun _request_locked(self, method: str, params: str, timeout_ms: int) -> RpcResponse {
+    fun _request_locked(
+        self,
+        method: str,
+        params: str,
+        timeout_ms: int,
+        token: CancelToken,
+    ) -> RpcResponse {
         let id = self.next_id
         self.next_id = self.next_id + 1
         if not self.child.write_stdin(build_request(id, method, params)) {
@@ -130,7 +149,7 @@ impl McpConn {
                 id: 0 - 1,
             )
         }
-        return self.read_response(id, timeout_ms)
+        return self.read_response(id, timeout_ms, token)
     }
 
     // Send a notification; nothing comes back.
@@ -144,9 +163,12 @@ impl McpConn {
     // Read until the response for `want_id` arrives, the server exits, or the
     // timeout passes. Responses for a different id (a stale reply to an earlier
     // request that timed out) are discarded rather than returned.
-    fun read_response(self, want_id: int, timeout_ms: int) -> RpcResponse {
+    fun read_response(self, want_id: int, timeout_ms: int, token: CancelToken) -> RpcResponse {
         var waited = 0
         while waited < timeout_ms {
+            if token.canceled() {
+                return RpcResponse(ok: false, error: "interrupted", result: JsonValue.Null, id: 0 - 1)
+            }
             self.buf.push(self.child.read_stdout())
             match self._take_matching(want_id) {
                 case Some(resp) {

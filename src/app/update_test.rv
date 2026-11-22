@@ -4,7 +4,15 @@ from "github.com/martian56/perch/keys" import Key, MouseEvent, MouseKind
 from "github.com/martian56/plumage" import Event
 from "github.com/martian56/plumage/widgets/input" import TextInput
 from "./model" import Chat, chat_init
-from "./update" import apply_events, chat_update, _apply_loaded, _run, _after_model_set, ensure_catalog, refresh_pick
+from "./update" import (
+    apply_events,
+    chat_update,
+    _apply_loaded,
+    _run,
+    _after_model_set,
+    ensure_catalog,
+    refresh_pick,
+)
 from "../agent/state" import DisplayEvent
 from "../ui/transcript" import Entry
 from "../config/sessions" import load_session

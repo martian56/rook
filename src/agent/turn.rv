@@ -10,10 +10,17 @@ from "github.com/martian56/aviary/request" import ChatRequest, CancelToken
 from "github.com/martian56/aviary/message" import ToolCall, ToolDef
 from "./state" import AgentState, DisplayEvent
 from "./session" import build_request, turn_agents_prompt
+from std.json import stringify
 from "./compact" import maybe_compact
 from "./subturn" import run_subagent
 from "./ask_options" import parse_ask_options, option_labels, option_count_error
-from "../tools/registry" import tools, needs_approval, call_approval_detail, dispatch_cancelable, label
+from "../tools/registry" import (
+    tools,
+    needs_approval,
+    call_approval_detail,
+    dispatch_cancelable,
+    label,
+)
 from "../tools/preview" import change_preview, append_preview
 from "../tools/permissions" import Verdict, check_permission
 from "../tools/pricing" import usage_label
@@ -37,6 +44,12 @@ fun run_turn(st: AgentState, model: str, api_key: str, base_url: str) {
     // within a turn, so build them once instead of reconstructing all of them,
     // and re-parsing every MCP tool's schema JSON, on every round.
     let tool_defs = tools()
+    // What every request carries besides the conversation, so compaction
+    // counts the whole request rather than only the messages.
+    var overhead = agents_prompt.length()
+    for t in tool_defs {
+        overhead += t.name.length() + t.description.length() + stringify(t.parameters).length()
+    }
     // File changes this turn group into one checkpoint batch for /rewind.
     begin_checkpoint_batch()
     while round < MAX_ROUNDS {
@@ -48,7 +61,7 @@ fun run_turn(st: AgentState, model: str, api_key: str, base_url: str) {
         // Fire before every model call, so a hook can log or set up state.
         fire_hooks("pre-prompt", "", "")
         // Summarize old turns when the conversation nears the context window.
-        let compacted = maybe_compact(st, model, api_key, base_url)
+        let compacted = maybe_compact(st, model, api_key, base_url, overhead)
         if compacted > 0 {
             st.emit(
                 DisplayEvent.Info(

@@ -1,6 +1,16 @@
 import std.string
 from std.test import assert_eq_str, assert_eq_int, assert_true
-from "./market" import MarketEntry, parse_index, parse_index_result, filter_entries, resolve_in, resolve_name_from_response, resolve_name_in_index, format_entries, market_url
+from "./market" import (
+    MarketEntry,
+    parse_index,
+    parse_index_result,
+    filter_entries,
+    resolve_in,
+    resolve_name_from_response,
+    resolve_name_in_index,
+    format_entries,
+    market_url,
+)
 
 let INDEX: str = "[{\"name\": \"fmt\", \"description\": \"formats on save\", \"url\": \"github.com/u/rook-fmt\"}, {\"name\": \"lint\", \"description\": \"runs the linter\", \"url\": \"github.com/u/rook-lint\"}, {\"name\": \"bad\"}]"
 

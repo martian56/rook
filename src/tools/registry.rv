@@ -16,10 +16,23 @@ from "./shells" import run_background, read_shell, shells_list_text, kill_shell
 from "./tree" import file_tree
 from "./todos" import set_todos
 from "./git" import git_status, git_diff, git_commit
-from "./web" import web_fetch, web_fetch_approval_detail, web_search
+from "./web" import (
+    web_fetch,
+    web_fetch_approval_detail,
+    web_search,
+    web_fetch_cancelable,
+    web_search_cancelable,
+)
 from "../agents/dir" import roots
 from "../agents/skills" import skill_body
-from "../mcp/manager" import mcp_tools, is_mcp_tool, call_mcp_tool, resource_tools, is_resource_tool, read_resource
+from "../mcp/manager" import (
+    mcp_tools,
+    is_mcp_tool,
+    call_mcp_tool,
+    resource_tools,
+    is_resource_tool,
+    read_resource,
+)
 
 // One schema field: a string property and its description.
 class Prop {
@@ -235,7 +248,7 @@ fun dispatch(call: ToolCall) -> str {
 fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> str {
     let a = call.arguments
     if is_mcp_tool(call.name) {
-        return call_mcp_tool(call.name, a)
+        return call_mcp_tool(call.name, a, token)
     }
     if is_resource_tool(call.name) {
         return read_resource(arg(a, "server"), arg(a, "uri"))
@@ -277,10 +290,10 @@ fun dispatch_cancelable(call: ToolCall, token: CancelToken) -> str {
         return kill_shell(arg(a, "id"))
     }
     if call.name == "web_search" {
-        return web_search(arg(a, "query"))
+        return web_search_cancelable(arg(a, "query"), token)
     }
     if call.name == "web_fetch" {
-        return web_fetch(arg(a, "url"))
+        return web_fetch_cancelable(arg(a, "url"), token)
     }
     if call.name == "use_skill" {
         return skill_body(roots(), arg(a, "name"))

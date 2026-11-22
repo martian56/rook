@@ -8,6 +8,7 @@ from std.http import Server, Request, Response
 from std.sync import sleep_millis
 from std.fs import write as fs_write, remove_file, remove_dir, create_dir_all, exists
 from std.test import assert_true, assert_eq_str, assert_eq_int
+from "../agents/dir" import override_global_root
 from "./state" import AgentState, DisplayEvent, Snapshot
 from "./turn" import run_turn
 
@@ -474,6 +475,11 @@ fun test_plan_mode_blocks_a_write() {
 // Esc at the approval prompt for the first of two writes in one batch must
 // stop the whole batch: the second write neither runs nor re-prompts.
 fun test_esc_at_an_approval_stops_the_rest_of_the_batch() {
+    // The user's global allow rules would skip the approval this test needs.
+    override_global_root("")
+    // A run killed partway can leave these behind; start from a clean slate.
+    let _ = remove_file("_rook_e2e_batch_a.txt")
+    let _ = remove_file("_rook_e2e_batch_b.txt")
     spawn {
         serve_batch()
     }
@@ -509,6 +515,8 @@ fun test_esc_at_an_approval_stops_the_rest_of_the_batch() {
 // (rather than for a slot nothing will ever fill), skip the one it did not,
 // and still leave every call with a result.
 fun test_esc_mid_fanout_waits_only_for_started_agents() {
+    override_global_root("")
+    let _ = remove_file("_rook_e2e_fanstop.txt")
     create_dir_all(".agents/subagents")
     fs_write(
         ".agents/subagents/echoer.md",

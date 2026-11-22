@@ -1,6 +1,12 @@
 import std.string
 from std.test import assert_eq_str, assert_true
-from "./permission_menu" import permission_grants, permission_states_from_allow, toggle_grant_rules, allow_rules_from_settings, settings_with_allow
+from "./permission_menu" import (
+    permission_grants,
+    permission_states_from_allow,
+    toggle_grant_rules,
+    allow_rules_from_settings,
+    settings_with_allow,
+)
 
 fun test_permission_grants_cover_common_mutating_tools() {
     let grants = permission_grants()

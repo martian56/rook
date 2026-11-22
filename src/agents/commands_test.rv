@@ -1,7 +1,14 @@
 import std.string
 from std.test import assert_eq_str, assert_true
 from std.fs import write, create_dir_all, remove_file, remove_dir
-from "./commands" import CustomCommand, load_commands, parse_command_file, find_expansion, expand, command_infos
+from "./commands" import (
+    CustomCommand,
+    load_commands,
+    parse_command_file,
+    find_expansion,
+    expand,
+    command_infos,
+)
 
 fun test_parse_reads_description_and_template() {
     let c = parse_command_file(
