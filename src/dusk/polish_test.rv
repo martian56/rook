@@ -1,0 +1,113 @@
+// rook's dusk mode: saved sessions, queued prompts, @file mentions,
+// background shells, and the small text helpers.
+
+import std.string
+from std.http import Server, Request, Response
+from std.sync import sleep_millis
+from std.time import now_millis
+from std.env import set_env, os_name
+from std.fs import write, exists, remove_file, list_dir
+from "../testkit" import wait_listening
+from std.test import assert_true, assert_eq_str, assert_eq_int
+from "../tools/shells" import run_background
+from "./session" import DuskSession, char_start, tokens_text
+from "../plugins/install" import _remove_tree
+from "./session_test" import session, line
+from "./flow_test" import says, serve, wait_idle
+
+fun reply_handler(req: Request) -> Response = says("Noted.")
+
+fun submit(text: str) -> str = line(
+    "ui/event",
+    0 - 1,
+    "{\"panel\":\"chat\",\"block\":\"ask\",\"kind\":\"submit\",\"value\":\"${text}\"}",
+)
+
+fun ready_session(port: int) -> DuskSession {
+    let s = session(port)
+    s.handle(line("initialize", 1, "{}"))
+    return s
+}
+
+fun start_server(port: int) {
+    spawn {
+        serve(port, reply_handler)
+    }
+    assert_true(wait_listening(port))
+}
+
+fun test_char_start_and_tokens_text() {
+    let s = "aé"
+    assert_eq_int(char_start(s, 2), 3)
+    assert_eq_int(char_start(s, 1), 1)
+    assert_eq_str(tokens_text(950), "950 tok")
+    assert_eq_str(tokens_text(12345), "12.3k tok")
+}
+
+fun test_prompts_sent_while_busy_run_in_order() {
+    start_server(8483)
+    let s = ready_session(8483)
+    s.handle(submit("first"))
+    s.handle(submit("second"))
+    assert_eq_int(len(s.queued), 1)
+    let end = now_millis() + 15000
+    while now_millis() < end and (s.running or len(s.queued) > 0) {
+        s.pump(now_millis())
+        sleep_millis(30)
+    }
+    assert_eq_int(s.transcript.split("**You:**").len() - 1, 2)
+    assert_true(s.transcript.index_of("first") < s.transcript.index_of("**You:** second"))
+}
+
+fun test_mentions_reach_the_model_but_not_the_panel() {
+    start_server(8484)
+    write("_rook_mention.txt", "SECRET123")
+    let s = ready_session(8484)
+    s.handle(submit("look at @_rook_mention.txt"))
+    wait_idle(s)
+    assert_true(s.st.messages()[0].content.contains("SECRET123"))
+    assert_true(not s.transcript.contains("SECRET123"))
+    let _ = remove_file("_rook_mention.txt")
+}
+
+fun test_a_dusk_session_is_saved_and_resumed() {
+    let _ = set_env("HOME", "_rook_home_test")
+    let _ = set_env("USERPROFILE", "_rook_home_test")
+    start_server(8485)
+    let a = ready_session(8485)
+    a.handle(submit("remember the walrus"))
+    wait_idle(a)
+    let end = now_millis() + 5000
+    var saved = false
+    while now_millis() < end and not saved {
+        saved = match list_dir("_rook_home_test/.rook/sessions") {
+            case Ok(xs) { len(xs) > 0 }
+            case Err(e) { false }
+        }
+        sleep_millis(50)
+    }
+    assert_true(saved)
+    let b = ready_session(8485)
+    b.handle(line("command/run", 5, "{\"command\":\"rook.resume\"}"))
+    assert_true(b.transcript.contains("remember the walrus"))
+    assert_true(b.st.messages().len() >= 2)
+    assert_eq_str(b.session_id, a.session_id)
+    b.handle(line("command/run", 6, "{\"command\":\"rook.new\"}"))
+    assert_eq_int(b.st.messages().len(), 0)
+    let _ = _remove_tree("_rook_home_test")
+}
+
+fun test_a_finished_background_shell_reloads_open_files() {
+    let s = session(8483)
+    s.handle(line("buffer/opened", 0 - 1, "{\"path\":\"a.rv\"}"))
+    let cmd = "ping -n 2 127.0.0.1 > nul" if os_name() == "windows" else "sleep 1"
+    let _ = run_background(cmd)
+    s.check_shells()
+    assert_true(len(s.shells_running) > 0)
+    let end = now_millis() + 10000
+    while now_millis() < end and not s.wire.lines().any(l => l.contains("files/changed")) {
+        sleep_millis(100)
+        s.check_shells()
+    }
+    assert_true(s.wire.lines().any(l => l.contains("files/changed") and l.contains("a.rv")))
+}

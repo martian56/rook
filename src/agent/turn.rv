@@ -495,16 +495,52 @@ fun _contains(xs: list[str], name: str) -> bool {
 
 // What a tool row shows: the clipped first line, plus the diff lines under
 // a file change so the transcript displays what changed.
+let MAX_SHOWN_OUTPUT = 8000
+
+// The tool row's text: a one-line summary, then the output, which the
+// transcript folds away until expanded (an edit's diff always shows).
 fun _display(call: ToolCall, result: str) -> str {
-    let head = _short(result)
-    if call.name != "write_file" and call.name != "edit_file" and call.name != "multi_edit" {
-        return head
-    }
     let nl = result.index_of("\n")
-    if nl < 0 {
-        return head
+    if call.name == "write_file" or call.name == "edit_file" or call.name == "multi_edit" {
+        let head = _short(result)
+        return head if nl < 0 else "${head}\n${result.substring(nl + 1, result.length())}"
     }
-    return "${head}\n${result.substring(nl + 1, result.length())}"
+    if result.starts_with("error") {
+        return result
+    }
+    var body = result
+    if body.length() > MAX_SHOWN_OUTPUT {
+        body = body.substring(0, _char_floor(body, MAX_SHOWN_OUTPUT)) + "\n…"
+    }
+    let counted = _count_summary(call.name, result)
+    if counted != "" {
+        return "${counted}\n${body}" if result.trim() != "" else counted
+    }
+    return body if result.trim() != "" else _short(result)
+}
+
+// "120 lines" for reads, "3 matches" for searches, "8 entries" for listings.
+fun _count_summary(name: str, result: str) -> str {
+    let rows = result.trim_end().split("\n").filter(l => l.trim() != "")
+    let n = len(rows) if result.trim() != "" else 0
+    if name == "read_file" {
+        return "1 line" if n == 1 else "${n} lines"
+    }
+    if name == "grep" {
+        return "1 match" if n == 1 else "${n} matches"
+    }
+    if name == "list_dir" or name == "file_tree" {
+        return "1 entry" if n == 1 else "${n} entries"
+    }
+    return ""
+}
+
+fun _char_floor(s: str, at: int) -> int {
+    var i = min(at, s.length())
+    while i > 0 and s.byte_at(i) >= 128 and s.byte_at(i) < 192 {
+        i -= 1
+    }
+    return i
 }
 
 // A compact one-liner for the tool bullet: the first non-blank line,

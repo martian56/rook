@@ -6,6 +6,7 @@ from std.http import Server, Request, Response
 from std.sync import sleep_millis
 from std.time import now_millis
 from std.fs import exists, remove_file, read
+from "../testkit" import wait_listening
 from std.test import assert_true, assert_eq_str
 from "../agents/dir" import override_global_root
 from "./session" import DuskSession, Wire, memory_wire, new_session
@@ -96,7 +97,7 @@ fun test_chat_turn_streams_into_the_panel() {
     spawn {
         serve_chat()
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8475))
     let s = session(8475)
     s.handle(line("initialize", 1, "{}"))
     s.handle(line("command/run", 2, "{\"command\":\"rook.chat\"}"))
@@ -128,7 +129,7 @@ fun test_write_is_approved_through_a_dusk_picker() {
     spawn {
         serve_write()
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8476))
     let s = session(8476)
     s.handle(line("initialize", 1, "{}"))
     s.handle(line("buffer/opened", 0 - 1, "{\"path\":\"_rook_dusk_out.txt\"}"))
@@ -173,7 +174,7 @@ fun test_ask_about_selection_prompts_then_runs() {
     spawn {
         serve_selection()
     }
-    sleep_millis(200)
+    assert_true(wait_listening(8481))
     let s = session(8481)
     s.handle(
         line(
