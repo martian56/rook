@@ -278,6 +278,7 @@ impl DuskSession {
         self.st.push_user(expand_mentions(text))
         self.st.begin()
         self.running = true
+        self.working(true)
         let st = self.st
         let model = self.model
         let key = self.api_key
@@ -302,6 +303,15 @@ impl DuskSession {
             let next = self.queued.remove_at(0)
             self.start_turn(next)
         }
+    }
+
+    // A status line item while a turn runs, so the work shows with the
+    // panel closed.
+    fun working(self, on: bool) {
+        self.notify(
+            "status/set",
+            obj([("id", jstr("working")), ("text", jstr("rook working…" if on else ""))]),
+        )
     }
 
     fun show_tokens(self, n: int) {
@@ -679,6 +689,7 @@ impl DuskSession {
             }
             if snap.done {
                 self.running = false
+                self.working(false)
                 self.in_reply = false
                 self.changed = true
                 self.turn_finished(snap.sess_prompt, snap.sess_completion)
@@ -989,7 +1000,12 @@ impl DuskSession {
                     [
                         ("id", jstr("changed-head")),
                         ("kind", jstr("text")),
-                        ("text", jstr("**Changed this turn** (Enter opens one; ] c jumps to changes)")),
+                        (
+                            "text",
+                            jstr(
+                                "**Changed this turn** (Enter opens one; in the file, ] c jumps to a change and g r reverts it)",
+                            ),
+                        ),
                     ],
                 ),
             )

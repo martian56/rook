@@ -111,6 +111,7 @@ fun test_chat_turn_streams_into_the_panel() {
     )
     let shown = pump_until(s, "Hello from rook.", 10000)
     assert_true(shown.contains("**You:** hi there"))
+    assert_true(s.wire.lines().any(l => l.contains("rook working")))
     // The finished turn drops the Stop button and spinner.
     let deadline = now_millis() + 5000
     while now_millis() < deadline and s.running {
