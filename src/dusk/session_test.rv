@@ -9,7 +9,7 @@ from std.fs import exists, remove_file, read
 from "../testkit" import wait_listening
 from std.test import assert_true, assert_eq_str
 from "../agents/dir" import override_global_root
-from "./session" import DuskSession, Wire, memory_wire, new_session
+from "./session" import DuskSession, Wire, memory_wire, new_session, dusk_path
 
 var chat_hits = 0
 var write_hits = 0
@@ -252,4 +252,18 @@ fun test_slash_theme_switches_the_dusk_theme() {
     assert_true(s.wire.lines().any(l => l.contains("theme/set") and l.contains("hal-9000")))
     s.handle(submit_line("/theme nord"))
     assert_true(s.wire.lines().any(l => l.contains("theme/set") and l.contains("nord")))
+}
+
+fun test_compacting_blocks_new_and_turns() {
+    let s = session(8475)
+    s.compacting = true
+    s.handle(submit_line("/new"))
+    assert_true(s.wire.lines().any(l => l.contains("compacting the conversation")))
+    s.handle(submit_line("hello"))
+    assert_true(not s.running)
+}
+
+fun test_dusk_path_is_relative_to_the_directory() {
+    assert_eq_str(dusk_path("./src/a.rv"), "src/a.rv")
+    assert_eq_str(dusk_path("src\\b.rv"), "src/b.rv")
 }

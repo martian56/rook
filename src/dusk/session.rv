@@ -22,6 +22,7 @@ from "../agents/dir" import roots
 from "../commands" import builtin_commands, CmdInfo, INIT_PROMPT
 from "../config/catalog" import catalog
 from std.fs import write
+from std.env import os_name
 from "../config/sessions" import (
     new_session_id,
     save_session_async,
@@ -148,6 +149,9 @@ class DuskSession {
     based: list[str] = []
     // What the open picker is choosing between.
     choices: list[str] = []
+    // A /compact summary is being written; the conversation must not be
+    // replaced or extended until it lands.
+    compacting: bool = false
 }
 
 fun new_session(wire: Wire, model: str, api_key: str, base_url: str) -> DuskSession {
@@ -239,10 +243,22 @@ impl DuskSession {
         }
     }
 
+    // Whether the conversation is busy with a turn or a /compact; says so.
+    fun busy(self, what: str) -> bool {
+        if self.compacting {
+            self.message("rook is compacting the conversation; ${what} after it finishes")
+            return true
+        }
+        return false
+    }
+
     // Start a turn with `text`, unless one is running.
     fun start_turn(self, text: str) {
         self.panel_open = true
         self.changed = true
+        if self.busy("send it") {
+            return
+        }
         if self.running {
             self.queued.push(text)
             self.note("\n\n_queued: ${text}_\n\n")
@@ -337,6 +353,9 @@ impl DuskSession {
 
     // Load saved session `id` into the panel and the conversation.
     fun load_id(self, id: str) {
+        if self.busy("resume one") {
+            return
+        }
         let l = load_session(id)
         if l.error != "" {
             self.message(l.error)
@@ -358,6 +377,9 @@ impl DuskSession {
     fun new_conversation(self) {
         if self.running {
             self.message("rook is working; stop it first")
+            return
+        }
+        if self.busy("start a new one") {
             return
         }
         self.session_id = new_session_id()
@@ -682,7 +704,10 @@ impl DuskSession {
         let paths: list[str] = []
         for snap in current_batch_files() {
             let p = dusk_path(snap.path)
-            if not self.based.contains(p) {
+            // A skipped checkpoint (a huge or unreadable file) has no known
+            // pre-turn text, so it gets no baseline: an empty one would mark
+            // every line as added.
+            if not self.based.contains(p) and snap.skipped == "" {
                 self.based.push(p)
                 self.notify(
                     "changes/baseline",
@@ -757,6 +782,9 @@ impl DuskSession {
         } else if name == "compact" {
             self.compact()
         } else if name == "rewind" {
+            if self.busy("rewind") {
+                return
+            }
             if self.running {
                 self.message("rook is working; stop it before rewinding")
                 return
@@ -853,11 +881,15 @@ impl DuskSession {
             self.message("rook is working; compact after this turn")
             return
         }
+        if self.busy("compact again") {
+            return
+        }
         if key_needed_with(self.model, self.api_key) {
             self.note("\n\n_no API key for ${provider_of(self.model)}_\n\n")
             return
         }
         self.note("\n\n_compacting the conversation…_\n\n")
+        self.compacting = true
         let me = self
         let st = self.st
         let model = self.model
@@ -866,6 +898,7 @@ impl DuskSession {
         spawn {
             let folded = force_compact(st, model, key, base)
             me.lock.lock()
+            me.compacting = false
             me.note(
                 "_compacted ${folded} earlier messages into a summary_\n\n" if folded > 0 else "_nothing to compact yet_\n\n",
             )
@@ -1004,7 +1037,10 @@ fun dusk_commands() -> list[CmdInfo] {
 fun dusk_path(p: str) -> str {
     var out = p.replace("\\", "/")
     let here = session_cwd().replace("\\", "/")
-    if here != "" and out.to_lower().starts_with(here.to_lower() + "/") {
+    // Paths compare without case only where the file system ignores it.
+    let fold = os_name() == "windows"
+    let inside = (out.to_lower().starts_with(here.to_lower() + "/")) if fold else out.starts_with(here + "/")
+    if here != "" and inside {
         out = out.substring(here.length() + 1, out.length())
     }
     while out.starts_with("./") {
