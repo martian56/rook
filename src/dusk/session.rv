@@ -14,6 +14,14 @@ from "../agent/turn" import run_turn
 from "../ui/transcript" import Entry
 from "../tools/mentions" import expand_mentions
 from "../tools/shells" import refresh, shells_snapshot
+from "../tools/checkpoints" import current_batch_files, rewind_last_batch
+from "../tools/clipboard" import copy_to_clipboard, ClipResult
+from "../agent/compact" import force_compact
+from "../agents/commands" import cached_commands, find_expansion, command_infos
+from "../agents/dir" import roots
+from "../commands" import builtin_commands, CmdInfo, INIT_PROMPT
+from "../config/catalog" import catalog
+from std.fs import write
 from "../config/sessions" import (
     new_session_id,
     save_session_async,
@@ -28,6 +36,9 @@ from "../config/config" import (
     resolve_key,
     key_needed_with,
     provider_of,
+    save_model,
+    model_source,
+    key_source,
 )
 
 let PANEL = "chat"
@@ -131,6 +142,12 @@ class DuskSession {
     shells_running: list[int] = []
     shells_done: list[int] = []
     shells_checked: int = 0
+    // Files this turn changed, as (path, created), for the panel's list, and
+    // those whose pre-turn text dusk already has as a change baseline.
+    changed_files: list[(str, bool)] = []
+    based: list[str] = []
+    // What the open picker is choosing between.
+    choices: list[str] = []
 }
 
 fun new_session(wire: Wire, model: str, api_key: str, base_url: str) -> DuskSession {
@@ -238,6 +255,8 @@ impl DuskSession {
             return
         }
         self.note("\n\n**You:** ${text}\n\n")
+        self.changed_files = []
+        self.based = []
         self.entries.push(Entry.UserMsg(text))
         // @path mentions attach the file, as in the terminal.
         self.st.push_user(expand_mentions(text))
@@ -313,6 +332,11 @@ impl DuskSession {
             self.message("no saved rook session for this directory")
             return
         }
+        self.load_id(id)
+    }
+
+    // Load saved session `id` into the panel and the conversation.
+    fun load_id(self, id: str) {
         let l = load_session(id)
         if l.error != "" {
             self.message(l.error)
@@ -328,7 +352,7 @@ impl DuskSession {
         self.changed = true
         self.last_sent = 0
         self.show_tokens(l.usage_prompt + l.usage_completion)
-        self.message("resumed the last rook session (${len(l.messages)} messages)")
+        self.message("resumed a rook session (${len(l.messages)} messages)")
     }
 
     fun new_conversation(self) {
@@ -432,8 +456,19 @@ impl DuskSession {
                     case Some(x) { x.as_string().unwrap_or("") }
                     case None { "" }
                 }
-                if text.trim() != "" {
+                if text.trim().starts_with("/") {
+                    self.slash(text.trim())
+                } else if text.trim() != "" {
                     self.start_turn(text.trim())
+                }
+            } else if kind == "choose" and field(params, "block") == "changed" {
+                let i = int_field(params, "value", 0 - 1)
+                if i >= 0 and i < len(self.changed_files) {
+                    self.request(
+                        "buffer/open",
+                        obj([("path", jstr(self.changed_files[i].0)), ("line", jint(1))]),
+                        "open",
+                    )
                 }
             } else if kind == "press" {
                 self.stop()
@@ -477,6 +512,56 @@ impl DuskSession {
     }
 
     fun answered(self, purpose: str, result: JsonValue) {
+        if purpose == "open" {
+            return
+        }
+        if purpose == "model" or purpose == "session" or purpose == "theme" {
+            let i = int_field(result, "index", 0 - 1)
+            if i < 0 or i >= len(self.choices) {
+                return
+            }
+            let pick = self.choices[i]
+            if purpose == "model" {
+                self.set_model(pick)
+            } else if purpose == "session" {
+                self.load_id(pick)
+            } else {
+                self.notify("theme/set", obj([("name", jstr(pick))]))
+            }
+            return
+        }
+        if purpose == "themes" {
+            let names: list[str] = []
+            let labels: list[JsonValue] = []
+            match result.get("themes") {
+                case Some(v) {
+                    match v {
+                        case Array(items) {
+                            for it in items {
+                                names.push(field(it, "name"))
+                                labels.push(
+                                    obj([("label", jstr(field(it, "name"))), ("detail", jstr(field(it, "description")))]),
+                                )
+                            }
+                        }
+                        case _ {}
+                    }
+                }
+                case None {}
+            }
+            self.choices = names
+            self.request(
+                "ui/pick",
+                obj(
+                    [
+                        ("title", jstr("dusk theme (now ${field(result, "current")})")),
+                        ("items", json_array(labels)),
+                    ],
+                ),
+                "theme",
+            )
+            return
+        }
         if purpose == "ask" {
             let text = field(result, "text")
             if result.get("cancelled").is_none() and text.trim() != "" {
@@ -550,8 +635,8 @@ impl DuskSession {
                     touched = true
                 }
             }
-            if touched and len(self.open_paths) > 0 {
-                self.notify("files/changed", obj([("paths", json_array(self.open_paths.map(p => jstr(p))))]))
+            if touched {
+                self.report_changes()
             }
             if snap.pending != "" and not self.asking {
                 self.asking = true
@@ -589,10 +674,248 @@ impl DuskSession {
         self.lock.unlock()
     }
 
+    // Tell dusk what this turn changed: each touched file's text from before
+    // the turn becomes its change baseline (sent once, before the reload, so
+    // dusk highlights exactly what rook did), then the changed and open files
+    // reload. A command or background shell may have changed open files too.
+    fun report_changes(self) {
+        let paths: list[str] = []
+        for snap in current_batch_files() {
+            let p = dusk_path(snap.path)
+            if not self.based.contains(p) {
+                self.based.push(p)
+                self.notify(
+                    "changes/baseline",
+                    obj([("path", jstr(p)), ("text", jstr(snap.content if snap.existed else ""))]),
+                )
+            }
+            if not self.changed_files.any(c => c.0 == p) {
+                self.changed_files.push((p, not snap.existed))
+                self.changed = true
+            }
+            paths.push(p)
+        }
+        for p in self.open_paths {
+            if not paths.contains(p) {
+                paths.push(p)
+            }
+        }
+        if len(paths) > 0 {
+            self.notify("files/changed", obj([("paths", json_array(paths.map(p => jstr(p))))]))
+        }
+    }
+
+    // A /command typed in the chat box.
+    fun slash(self, text: str) {
+        let sp = text.index_of(" ")
+        let name = (text.substring(1, sp) if sp > 0 else text.substring(1, text.length())).to_lower()
+        let arg = text.substring(sp + 1, text.length()).trim() if sp > 0 else ""
+        self.panel_open = true
+        self.changed = true
+        if name == "help" {
+            var md = "\n\n**Commands**\n\n"
+            for c in dusk_commands() {
+                md += "- `/${c.name}` ${c.desc}\n"
+            }
+            for c in command_infos(cached_commands(roots())) {
+                md += "- `/${c.name}` ${c.desc}\n"
+            }
+            self.note(md + "\n")
+        } else if name == "model" {
+            if arg != "" {
+                self.set_model(arg)
+            } else {
+                self.choices = catalog()
+                let items = self.choices.map(
+                    m => obj([("label", jstr(m)), ("detail", jstr("current" if m == self.model else ""))]),
+                )
+                self.request(
+                    "ui/pick",
+                    obj([("title", jstr("Model (now ${self.model})")), ("items", json_array(items))]),
+                    "model",
+                )
+            }
+        } else if name == "sessions" or name == "resume" {
+            self.pick_session()
+        } else if name == "clear" or name == "new" {
+            self.new_conversation()
+            self.note("_new conversation; the previous one is in /sessions_\n\n")
+        } else if name == "stop" {
+            self.queued = []
+            self.stop()
+        } else if name == "plan" {
+            let on = not self.st.plan()
+            self.st.set_plan(on)
+            self.note(
+                "\n\n_plan mode ${"on: rook researches and proposes, and changes nothing" if on else "off"}_\n\n",
+            )
+        } else if name == "status" {
+            let on = "on" if self.st.plan() else "off"
+            self.note(
+                "\n\n**Status**\n\n- model: `${self.model}` (from ${model_source()})\n- key: from ${key_source(self.model)}\n- plan mode: ${on}\n- session: `${self.session_id}`, ${len(self.entries)} entries\n- directory: `${session_cwd()}`\n\n",
+            )
+        } else if name == "compact" {
+            self.compact()
+        } else if name == "rewind" {
+            if self.running {
+                self.message("rook is working; stop it before rewinding")
+                return
+            }
+            self.note("\n\n_${rewind_last_batch()}_\n\n")
+            self.report_rewind()
+        } else if name == "init" {
+            self.start_turn_as(text, INIT_PROMPT)
+        } else if name == "copy" {
+            self.copy_last()
+        } else if name == "export" {
+            let target = arg if arg != "" else "rook-session-${self.session_id}.md"
+            match write(target, self.transcript.trim() + "\n") {
+                case Ok(ok) { self.note("\n\n_exported the conversation to ${target}_\n\n") }
+                case Err(e) { self.note("\n\n_could not write ${target}: ${e.message}_\n\n") }
+            }
+        } else if name == "shells" {
+            refresh()
+            var md = "\n\n**Background shells**\n\n"
+            let shells = shells_snapshot()
+            for sh in shells {
+                md += "- #${sh.id} `${sh.command}`: ${"running" if sh.running else "exited ${sh.code}"}\n"
+            }
+            self.note(md + ("_none_\n\n" if len(shells) == 0 else "\n"))
+        } else if name == "theme" {
+            self.notify("theme/set", obj([("name", jstr(arg))])) if arg != "" else self.request("theme/list", obj([]), "themes")
+        } else if name == "quit" or name == "exit" {
+            self.message("rook stops with dusk; Esc leaves the chat panel")
+        } else if name == "key" or name == "login" or name == "permissions" or name == "plugins" or name == "mcp" {
+            self.note("\n\n_/${name} needs rook in a terminal; what it sets applies here too_\n\n")
+        } else {
+            let exp = find_expansion(cached_commands(roots()), text)
+            self.start_turn_as(text, exp) if exp != "" else self.note("\n\n_unknown command ${text}; /help lists them_\n\n")
+        }
+    }
+
+    // Start a turn that shows `shown` but sends `prompt`.
+    fun start_turn_as(self, shown: str, prompt: str) {
+        if self.running {
+            self.queued.push(prompt)
+            self.note("\n\n_queued: ${shown}_\n\n")
+            return
+        }
+        self.start_turn(prompt)
+    }
+
+    fun set_model(self, model: str) {
+        if self.running {
+            self.message("rook is working; switch models after this turn")
+            return
+        }
+        self.model = model
+        self.api_key = resolve_key(model)
+        let err = save_model(model)
+        self.note("\n\n_model: ${model}${"" if err == "" else " (" + err + ")"}_\n\n")
+    }
+
+    fun pick_session(self) {
+        if self.running {
+            self.message("rook is working; stop it before resuming another session")
+            return
+        }
+        let here = session_cwd()
+        let ids: list[str] = []
+        let items: list[JsonValue] = []
+        for meta in list_sessions_result().sessions {
+            if same_dir(meta.cwd, here) {
+                ids.push(meta.id)
+                items.push(
+                    obj(
+                        [
+                            ("label", jstr(meta.title if meta.title != "" else meta.id)),
+                            ("detail", jstr(meta.model)),
+                        ],
+                    ),
+                )
+            }
+        }
+        if len(ids) == 0 {
+            self.message("no saved rook session for this directory")
+            return
+        }
+        self.choices = ids
+        self.request(
+            "ui/pick",
+            obj([("title", jstr("Resume a session")), ("items", json_array(items))]),
+            "session",
+        )
+    }
+
+    // Summarize older turns on a goroutine; the result shows when it is done.
+    fun compact(self) {
+        if self.running {
+            self.message("rook is working; compact after this turn")
+            return
+        }
+        if key_needed_with(self.model, self.api_key) {
+            self.note("\n\n_no API key for ${provider_of(self.model)}_\n\n")
+            return
+        }
+        self.note("\n\n_compacting the conversation…_\n\n")
+        let me = self
+        let st = self.st
+        let model = self.model
+        let key = self.api_key
+        let base = self.base_url
+        spawn {
+            let folded = force_compact(st, model, key, base)
+            me.lock.lock()
+            me.note(
+                "_compacted ${folded} earlier messages into a summary_\n\n" if folded > 0 else "_nothing to compact yet_\n\n",
+            )
+            me.lock.unlock()
+        }
+    }
+
+    fun copy_last(self) {
+        var last = ""
+        for e in self.entries {
+            match e {
+                case BotMsg(t) {
+                    last = t
+                }
+                case _ {}
+            }
+        }
+        if last == "" {
+            self.message("no reply to copy yet")
+            return
+        }
+        match copy_to_clipboard(last) {
+            case Failed { self.message("could not reach the clipboard") }
+            case _ { self.message("copied rook's last reply") }
+        }
+    }
+
+    // After /rewind the files are back; reload them and drop the highlights.
+    fun report_rewind(self) {
+        let paths: list[str] = []
+        for c in self.changed_files {
+            paths.push(c.0)
+            self.notify("changes/baseline", obj([("path", jstr(c.0))]))
+        }
+        for p in self.open_paths {
+            if not paths.contains(p) {
+                paths.push(p)
+            }
+        }
+        self.changed_files = []
+        self.based = []
+        if len(paths) > 0 {
+            self.notify("files/changed", obj([("paths", json_array(paths.map(p => jstr(p))))]))
+        }
+    }
+
     fun shown_transcript(self) -> str {
         let t = self.transcript.trim()
         if t == "" {
-            return "Ask rook anything about this project. Enter sends, Ctrl+N adds a line."
+            return "Ask rook anything about this project. Enter sends, Ctrl+N adds a line, and /help lists commands such as /model, /sessions, and /plan."
         }
         if t.length() <= MAX_TRANSCRIPT {
             return t
@@ -627,6 +950,21 @@ impl DuskSession {
                 obj([("id", jstr("act")), ("kind", jstr("buttons")), ("items", json_array([jstr("Stop")]))]),
             )
         }
+        if len(self.changed_files) > 0 {
+            blocks.push(
+                obj(
+                    [
+                        ("id", jstr("changed-head")),
+                        ("kind", jstr("text")),
+                        ("text", jstr("**Changed this turn** (Enter opens one; ] c jumps to changes)")),
+                    ],
+                ),
+            )
+            let rows = self.changed_files.map(
+                c => obj([("label", jstr(c.0)), ("detail", jstr("new file" if c.1 else "edited"))]),
+            )
+            blocks.push(obj([("id", jstr("changed")), ("kind", jstr("list")), ("items", json_array(rows))]))
+        }
         blocks.push(obj([("id", jstr("ask")), ("kind", jstr("input")), ("text", jstr(""))]))
         return obj(
             [
@@ -644,6 +982,35 @@ impl DuskSession {
         self.lock.unlock()
         return q
     }
+}
+
+// The commands the dusk chat box understands, for /help.
+fun dusk_commands() -> list[CmdInfo] {
+    let skip = ["theme", "permissions", "plugins", "mcp", "key", "quit"]
+    let out: list[CmdInfo] = []
+    for c in builtin_commands() {
+        if not skip.contains(c.name) {
+            out.push(c)
+        }
+    }
+    out.push(CmdInfo(name: "theme", desc: "switch dusk's theme; /theme <name> sets one"))
+    out.push(CmdInfo(name: "stop", desc: "stop the current turn"))
+    out.push(CmdInfo(name: "new", desc: "start a new conversation"))
+    return out
+}
+
+// A path as dusk names files: forward slashes, relative to the directory
+// both run in, without a leading "./".
+fun dusk_path(p: str) -> str {
+    var out = p.replace("\\", "/")
+    let here = session_cwd().replace("\\", "/")
+    if here != "" and out.to_lower().starts_with(here.to_lower() + "/") {
+        out = out.substring(here.length() + 1, out.length())
+    }
+    while out.starts_with("./") {
+        out = out.substring(2, out.length())
+    }
+    return out
 }
 
 // Tools whose run can change files on disk, by their label's name.

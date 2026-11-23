@@ -187,6 +187,21 @@ fun rewind_summary(restored: list[str], failed: list[str], unprotected: list[str
     return out
 }
 
+// The pre-images recorded in the current batch (this turn), oldest first.
+fun current_batch_files() -> list[Snapshot] {
+    let out: list[Snapshot] = []
+    STORE.lock.lock()
+    var i = 0
+    while i < STORE.snaps.len() {
+        if STORE.snaps[i].batch == STORE.batch {
+            out.push(STORE.snaps[i])
+        }
+        i = i + 1
+    }
+    STORE.lock.unlock()
+    return out
+}
+
 // How many batches still have snapshots, for the /rewind notice.
 fun checkpoint_batches() -> int {
     STORE.lock.lock()
