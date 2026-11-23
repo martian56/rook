@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0 - 2026-11-24
+
+- Inside dusk, the chat box takes slash commands: `/help`, `/model` (a dusk picker, or `/model <id>`), `/sessions`, `/new`, `/stop`, `/plan`, `/status`, `/compact`, `/rewind`, `/init`, `/copy`, `/export`, `/shells`, and the project's custom commands. `/theme` switches dusk's theme.
+- Inside dusk 0.6.0, the lines rook changed are highlighted: rook sends each file's text from before the turn, so dusk marks exactly what it edited, and the panel lists the changed files to open. Only the files rook touched (and open ones) reload.
+- Built on plumage 0.5.3, perch 0.4.1 (a sideways wheel scrolls sideways), and magpie 0.5.1.
+
 ## 0.7.1 - 2026-11-23
 
 - A failed edit's error is cut short like other long output, and a result that starts with blank lines shows its first real line, indentation intact.
