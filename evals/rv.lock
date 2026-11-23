@@ -7,18 +7,18 @@ hash = "sha256:49cca2a6bd2f2ba92f94cd9a756b1a9565f41e9e998a2c290be7bd2454363ea2"
 
 [[package]]
 source = "github.com/martian56/magpie"
-version = "v0.5.0"
-hash = "sha256:af4c73e0bdd712309ceeb016d54af3c1feec73df9abc153bcf1745b4e70d6e30"
+version = "v0.5.1"
+hash = "sha256:e021a6674d57f7e5da38ac9c47333f8000a0e4709c15133fd4466427ab09954e"
 
 [[package]]
 source = "github.com/martian56/perch"
-version = "v0.4.0"
-hash = "sha256:f3ec490328aabe46e3766db7188d381bdf13d71c909ce97e5eba6679990470c6"
+version = "v0.4.1"
+hash = "sha256:9862f37d33421b6a678b8a91efe083329dea509cb32d6486a3cefdb0c67fcef1"
 
 [[package]]
 source = "github.com/martian56/plumage"
-version = "v0.5.2"
-hash = "sha256:a9be689318af8da88e8f3439ee83b89ee907d4b2a06ab020b4570b767f5b9557"
+version = "v0.5.3"
+hash = "sha256:06e0611b3b19a1944e8317bff7e442147588ea73f050b80185ebda502fb44f6f"
 
 [[package]]
 source = "github.com/martian56/wingspan"

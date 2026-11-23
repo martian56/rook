@@ -33,7 +33,7 @@ from "../ui/transcript" import (
 )
 from "../ui/selection" import Selection, no_selection, normalize, extract, is_empty
 from "../tools/clipboard" import ClipResult, copy_to_clipboard
-from "../commands" import Command, parse_command, CmdInfo, menu_matches, help_filtered
+from "../commands" import Command, parse_command, CmdInfo, menu_matches, help_filtered, INIT_PROMPT
 from "../tools/mentions" import (
     Mention,
     current_mention,
@@ -115,7 +115,6 @@ from "./panel_filter" import (
 
 // The /init task: explore the repo and write (or improve) its AGENTS.md, the
 // memory file rook loads into every session here.
-let INIT_PROMPT: str = "Explore this repository (use file_tree first, then read the key files: the manifest, the entry points, any CI or scripts) and write an AGENTS.md file at the repository root. It should briefly cover: what the project is, how to build, test, and run it (exact commands), the layout (what lives where), and any conventions or gotchas a coding agent must follow when working here. Keep it under about 60 lines of plain markdown. If AGENTS.md already exists, read it and improve it rather than starting over."
 
 fun chat_update(m: Chat, e: Event) -> Step[Chat] {
     match e {

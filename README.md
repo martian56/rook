@@ -482,6 +482,17 @@ interrupts a turn, and files rook changes reload in dusk unless they have
 unsaved edits. The model, keys, permissions, skills, hooks, and MCP servers
 are the same as in the terminal.
 
+With dusk 0.6.0 or newer, dusk highlights exactly what rook changed: rook
+sends each file's text from before the turn, so added and changed lines get a
+bar and a tint, and `] c` jumps between them. The panel lists the files the
+turn changed; Enter on one opens it.
+
+The chat box takes slash commands too: `/help`, `/model` (a picker, or
+`/model <id>`), `/sessions`, `/new`, `/stop`, `/plan`, `/status`,
+`/compact`, `/rewind`, `/init`, `/copy`, `/export`, `/shells`, and the
+project's custom commands. `/theme` switches dusk's theme. `/key`,
+`/permissions`, `/plugins`, and `/mcp` need rook in a terminal.
+
 ## Hooks
 
 A hook runs a command when something happens in a session. Declare them

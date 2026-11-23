@@ -9,7 +9,7 @@ from std.fs import exists, remove_file, read
 from "../testkit" import wait_listening
 from std.test import assert_true, assert_eq_str
 from "../agents/dir" import override_global_root
-from "./session" import DuskSession, Wire, memory_wire, new_session
+from "./session" import DuskSession, Wire, memory_wire, new_session, dusk_path
 
 var chat_hits = 0
 var write_hits = 0
@@ -146,6 +146,22 @@ fun test_write_is_approved_through_a_dusk_picker() {
         "{\"jsonrpc\":\"2.0\",\"id\":${id_of(ask)},\"result\":{\"index\":0,\"label\":\"Allow\"}}",
     )
     assert_true(pump_until(s, "files/changed", 10000).contains("_rook_dusk_out.txt"))
+    // The new file's baseline (empty) goes out before the reload, so dusk
+    // highlights every line rook wrote, and the panel lists the file.
+    let out = s.wire.lines()
+    var base_at = 0 - 1
+    var changed_at = 0 - 1
+    for i in range(len(out)) {
+        if base_at < 0 and out[i].contains("changes/baseline") and out[i].contains("_rook_dusk_out.txt") {
+            base_at = i
+        }
+        if changed_at < 0 and out[i].contains("files/changed") {
+            changed_at = i
+        }
+    }
+    assert_true(base_at >= 0 and base_at < changed_at)
+    assert_true(out[base_at].contains("\"text\":\"\""))
+    assert_true(pump_until(s, "Changed this turn", 3000) != "")
     assert_true(pump_until(s, "Wrote it.", 10000) != "")
     match read("_rook_dusk_out.txt") {
         case Ok(t) { assert_eq_str(t, "from dusk") }
@@ -189,4 +205,65 @@ fun test_ask_about_selection_prompts_then_runs() {
     assert_true(shown.contains("let x = 1"))
     assert_true(shown.contains("what is this?"))
     assert_true(pump_until(s, "Hello from rook.", 10000) != "")
+}
+
+fun submit_line(text: str) -> str = line(
+    "ui/event",
+    0 - 1,
+    "{\"panel\":\"chat\",\"block\":\"ask\",\"kind\":\"submit\",\"value\":\"${text}\"}",
+)
+
+fun test_slash_help_and_plan() {
+    let s = session(8475)
+    s.handle(submit_line("/help"))
+    let shown = pump_until(s, "ui/panel", 2000)
+    assert_true(shown.contains("/model"))
+    assert_true(shown.contains("/sessions"))
+    assert_true(shown.contains("/theme"))
+    s.handle(submit_line("/plan"))
+    assert_true(s.st.plan())
+    s.handle(submit_line("/plan"))
+    assert_true(not s.st.plan())
+    s.handle(submit_line("/nonsense"))
+    assert_true(pump_until(s, "unknown command /nonsense", 2000) != "")
+    assert_true(not s.running)
+}
+
+fun test_slash_model_opens_a_picker() {
+    let s = session(8475)
+    s.handle(submit_line("/model"))
+    let pick = s.wire.lines().filter(l => l.contains("ui/pick"))
+    assert_true(len(pick) == 1)
+    assert_true(pick[0].contains("Model (now custom/local)"))
+}
+
+fun test_slash_theme_switches_the_dusk_theme() {
+    let s = session(8475)
+    s.handle(submit_line("/theme"))
+    let ask = s.wire.lines().filter(l => l.contains("theme/list"))[0]
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(ask)},\"result\":{\"themes\":[{\"name\":\"dusk\",\"description\":\"\"},{\"name\":\"hal-9000\",\"description\":\"red eye\"}],\"current\":\"dusk\"}}",
+    )
+    let pick = s.wire.lines().filter(l => l.contains("ui/pick"))[0]
+    assert_true(pick.contains("hal-9000"))
+    s.handle(
+        "{\"jsonrpc\":\"2.0\",\"id\":${id_of(pick)},\"result\":{\"index\":1,\"label\":\"hal-9000\"}}",
+    )
+    assert_true(s.wire.lines().any(l => l.contains("theme/set") and l.contains("hal-9000")))
+    s.handle(submit_line("/theme nord"))
+    assert_true(s.wire.lines().any(l => l.contains("theme/set") and l.contains("nord")))
+}
+
+fun test_compacting_blocks_new_and_turns() {
+    let s = session(8475)
+    s.compacting = true
+    s.handle(submit_line("/new"))
+    assert_true(s.wire.lines().any(l => l.contains("compacting the conversation")))
+    s.handle(submit_line("hello"))
+    assert_true(not s.running)
+}
+
+fun test_dusk_path_is_relative_to_the_directory() {
+    assert_eq_str(dusk_path("./src/a.rv"), "src/a.rv")
+    assert_eq_str(dusk_path("src\\b.rv"), "src/b.rv")
 }
