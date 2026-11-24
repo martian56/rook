@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 - 2026-11-24
+
+- Inside dusk, a "rook working…" status item shows while a turn runs, so the work is visible with the chat panel closed, and the changed-files list mentions dusk 0.7.0's `g r`, which reverts one change.
+
 ## 0.8.0 - 2026-11-24
 
 - Inside dusk, the chat box takes slash commands: `/help`, `/model` (a dusk picker, or `/model <id>`), `/sessions`, `/new`, `/stop`, `/plan`, `/status`, `/compact`, `/rewind`, `/init`, `/copy`, `/export`, `/shells`, and the project's custom commands. `/theme` switches dusk's theme.
