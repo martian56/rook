@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "v3"
 
 [dependencies]
-"github.com/martian56/plumage" = "v0.5.3"
-"github.com/martian56/perch" = "v0.4.1"
+"github.com/martian56/plumage" = "v0.5.4"
+"github.com/martian56/perch" = "v0.5.0"
 "github.com/martian56/wingspan" = "v0.2.0"
 "github.com/martian56/aviary" = "v0.5.0"
-"github.com/martian56/magpie" = "v0.5.1"
+"github.com/martian56/magpie" = "v0.5.2"
