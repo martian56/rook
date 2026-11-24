@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.2 - 2026-11-24
+
+- Built on plumage 0.5.4, perch 0.5.0, and magpie 0.5.2, the same TUI stack as dusk 0.7.2. Alt with a letter is reported as an Alt key, so it no longer types the letter in the prompt.
+
 ## 0.8.1 - 2026-11-24
 
 - Inside dusk, a "rook working…" status item shows while a turn runs, so the work is visible with the chat panel closed, and the changed-files list mentions dusk 0.7.0's `g r`, which reverts one change.
